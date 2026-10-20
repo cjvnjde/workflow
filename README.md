@@ -446,6 +446,8 @@ WORKFLOW_CHROMIUM_PATH=/usr/bin/chromium bun run test:e2e
 
 `bun run test:live` is an opt-in integration check using your existing ChatGPT sign-in. It creates a temporary project and local bare Git remote, then checks real planning on an unborn branch, browser approval, AI settings design, screenshot input, implementation/tests, commit/push, results/downloads and automatic execution. Chromium always runs headlessly. Set `WORKFLOW_CHROMIUM_PATH` if using a system browser, and optionally `WORKFLOW_LIVE_MODEL` (default `gpt-6-luna`). This consumes subscription usage, leaves the real project untouched, and writes its report/screenshots into the printed temporary directory.
 
+Use `WORKFLOW_LIVE_SCENARIO=cancellation bun run test:live` to check cancelling the real coordinator, stopping an executing Bash command without a late file write, persistence after browser reload, and successfully running another task afterward. `WORKFLOW_LIVE_SCENARIO=publication` runs just the screenshot-to-publication scenario.
+
 Tests use disposable projects and real local Temporal services. They cover safe pause/restart/resume, a SIGKILL/restart of the executable, no automatic replay of interrupted edits, and approval guards. Terminal tests use real Bun pseudo-terminals with no Pi/Node on PATH, dummy keys and offline catalog discovery. The SDK integration test uses a local streaming fake provider: no paid model calls or real credentials are required. Browser tests use a separate demo server on port 4311.
 
 With the pinned Temporal SDK on Bun, `v8.promiseHooks.createHook is not available` warns that workflow stack-trace collection is disabled. Execution/replay/signals work in the integration tests; this is a diagnostic limitation, not a switch to a fake/local executor.

@@ -32,13 +32,16 @@ export async function runProcess(
     const timeout = setTimeout(() => { timedOut = true; stop(); }, timeoutMs);
     signal.addEventListener("abort", stop, { once: true });
     if (signal.aborted) stop();
-    child.stdout.on("data", (chunk: Buffer) => {
-      stdout = (stdout + chunk.toString()).slice(-32_000);
-      output = (output + chunk.toString()).slice(-32_000);
+    // Streams buffer incomplete UTF-8 characters across chunk boundaries.
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      stdout = (stdout + chunk).slice(-32_000);
+      output = (output + chunk).slice(-32_000);
     });
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderr = (stderr + chunk.toString()).slice(-32_000);
-      output = (output + chunk.toString()).slice(-32_000);
+    child.stderr.on("data", (chunk: string) => {
+      stderr = (stderr + chunk).slice(-32_000);
+      output = (output + chunk).slice(-32_000);
     });
     const cleanup = () => {
       clearTimeout(timeout);
@@ -47,6 +50,10 @@ export async function runProcess(
     };
     child.once("error", (error) => { cleanup(); reject(error); });
     child.once("close", (exitCode) => {
+      // The parent can exit on SIGTERM while a child with redirected stdio
+      // ignores it. Finish stopping the group before clearing the fallback
+      // timer or reporting that cancellation/timeout has completed.
+      if (signal.aborted || timedOut) kill("SIGKILL");
       cleanup();
       if (signal.aborted) reject(signal.reason);
       else resolve({ exitCode, stdout, stderr, output, timedOut });

@@ -30,3 +30,37 @@ export function fitWindow(
     },
   };
 }
+
+/** Move the selected edges while keeping the opposite corner anchored. */
+export function resizeWindow(
+  size: WindowSize,
+  position: WindowPoint,
+  delta: WindowPoint,
+  left: boolean,
+  viewport: WindowSize,
+) {
+  const fitted = fitWindow(size, position, viewport);
+  const right = fitted.position.x + fitted.size.width;
+  const maxWidth = Math.max(
+    1,
+    left ? right - 12 : viewport.width - fitted.position.x - 12,
+  );
+  const maxHeight = Math.max(1, viewport.height - fitted.position.y - 72);
+  const bounded = {
+    width: Math.max(
+      Math.min(320, maxWidth),
+      Math.min(fitted.size.width + (left ? -delta.x : delta.x), maxWidth),
+    ),
+    height: Math.max(
+      Math.min(320, maxHeight),
+      Math.min(fitted.size.height + delta.y, maxHeight),
+    ),
+  };
+  return {
+    size: bounded,
+    position: {
+      x: left ? right - bounded.width : fitted.position.x,
+      y: fitted.position.y,
+    },
+  };
+}

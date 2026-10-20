@@ -973,6 +973,40 @@ test("floating chats resize independently, retain dimensions and stay usable on 
   await page.screenshot({ path: "/tmp/workflow-resized-chat-mobile.png", fullPage: true });
 });
 
+test("chat resizing keeps the opposite edges fixed at minimum and viewport limits", async ({ page, request }) => {
+  await ensureDesignConnection(request);
+  await page.setViewportSize({ width: 1400, height: 1000 });
+  await page.goto("/"); await settings(page, "Blocks");
+  await page.getByRole("button", { name: "Design with AI", exact: true }).click();
+  const chat = page.getByRole("dialog", { name: "Design blocks with AI", exact: true });
+  const header = (await chat.locator("header").boundingBox())!;
+  await page.mouse.move(header.x + 80, header.y + 20); await page.mouse.down();
+  await page.mouse.move(400, 70, { steps: 8 }); await page.mouse.up();
+  const before = (await chat.boundingBox())!;
+  const corner = (await chat.getByLabel("Resize chat from bottom left", { exact: true }).boundingBox())!;
+  await page.mouse.move(corner.x + 8, corner.y + 8); await page.mouse.down();
+  await page.mouse.move(corner.x + 320, corner.y + 8, { steps: 8 }); await page.mouse.up();
+  const minimum = (await chat.boundingBox())!;
+  expect(minimum.width).toBe(320);
+  expect(minimum.x + minimum.width).toBeCloseTo(before.x + before.width, 0);
+  expect(minimum.y).toBe(before.y);
+
+  // Keyboard movement of the left edge follows the same direction as dragging.
+  await chat.getByLabel("Resize chat from bottom left", { exact: true }).press("ArrowLeft");
+  const wider = (await chat.boundingBox())!;
+  expect(wider.width).toBe(340);
+  expect(wider.x + wider.width).toBeCloseTo(before.x + before.width, 0);
+
+  const right = (await chat.getByLabel("Resize chat from bottom right", { exact: true }).boundingBox())!;
+  await page.mouse.move(right.x + 8, right.y + 8); await page.mouse.down();
+  await page.mouse.move(1398, 998, { steps: 8 }); await page.mouse.up();
+  const maximum = (await chat.boundingBox())!;
+  expect(maximum.x).toBe(wider.x);
+  expect(maximum.y).toBe(wider.y);
+  expect(maximum.x + maximum.width).toBeLessThanOrEqual(1388);
+  expect(maximum.y + maximum.height).toBeLessThanOrEqual(928);
+});
+
 test("an AI proposal can be discarded without applying and its conversation stays open", async ({ page, request }) => {
   await ensureDesignConnection(request);
   const before = await (await request.get("/api/library")).json();
@@ -980,6 +1014,9 @@ test("an AI proposal can be discarded without applying and its conversation stay
   await page.getByRole("button", { name: "Design with AI", exact: true }).click();
   const chat = page.getByRole("dialog", { name: "Design blocks with AI", exact: true });
   await chat.getByRole("button", { name: "New design conversation", exact: true }).click();
+  // Creation is asynchronous: filling .last() before the new window exists
+  // writes to the previous chat and then tries to send the new empty one.
+  await expect(chat).toHaveCount(2);
   const current = chat.last();
   await current.getByLabel("Message AI designer", { exact: true }).fill("Inspect error cases in review");
   await current.getByRole("button", { name: "Send to AI designer", exact: true }).click();

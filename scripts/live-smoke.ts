@@ -2,7 +2,7 @@
 // All project/Git mutations stay in disposable fixtures. Chromium is always headless.
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -25,8 +25,8 @@ const execute = promisify(execFile);
 const signal = AbortSignal.timeout(15 * 60_000);
 const scenario = process.env.WORKFLOW_LIVE_SCENARIO ?? "all";
 assert.ok(
-  ["all", "publication"].includes(scenario),
-  "Use all or publication for WORKFLOW_LIVE_SCENARIO",
+  ["all", "publication", "cancellation"].includes(scenario),
+  "Use all, publication or cancellation for WORKFLOW_LIVE_SCENARIO",
 );
 const providers = await providerStatus(signal);
 assert.ok(
@@ -186,7 +186,7 @@ async function until<T>(
   }
   throw new Error(`Timed out: ${description}`);
 }
-async function taskFromComposer(prompt: string, attachment?: string) {
+async function startTaskFromComposer(prompt: string, attachment?: string) {
   await page.goto(address);
   await page.getByRole("button", { name: "New task", exact: true }).click();
   await page
@@ -202,6 +202,10 @@ async function taskFromComposer(prompt: string, attachment?: string) {
   await page.getByRole("button", { name: "Start task", exact: true }).click();
   const task = taskSchema.parse(await (await created).json());
   console.log(`Planning ${task.id}: ${prompt}`);
+  return task;
+}
+async function taskFromComposer(prompt: string, attachment?: string) {
+  const task = await startTaskFromComposer(prompt, attachment);
   const planned = await until(
     "Planning",
     async () => taskSchema.parse(await api(`/api/tasks/${task.id}`)),
@@ -229,13 +233,20 @@ async function finish(task: TaskRequest, publicationStep?: string) {
         run.cursor === publicationStep ||
         run.attempts.some((attempt) => attempt.nodeId === publicationStep);
       if (publicationStep && !reachedPublication) {
-        const pushed = (await execute("git", ["--git-dir", remote, "rev-list", "--all"])).stdout;
+        const pushed = (
+          await execute("git", ["--git-dir", remote, "rev-list", "--all"])
+        ).stdout;
         const committed = (await git("rev-list", "--all")).stdout;
         if (pushed || committed) {
           // A step can transition while the read-only Git checks are in flight.
           const latest = runSchema.parse(await api(`/api/runs/${task.runId}`));
-          reachedPublication = latest.attempts.some((attempt) => attempt.nodeId === publicationStep);
-          assert.ok(reachedPublication, "Implementation/verification must not commit or push ahead of the publication step");
+          reachedPublication = latest.attempts.some(
+            (attempt) => attempt.nodeId === publicationStep,
+          );
+          assert.ok(
+            reachedPublication,
+            "Implementation/verification must not commit or push ahead of the publication step",
+          );
           return latest;
         }
       }
@@ -287,10 +298,103 @@ async function approveAndFinish(
   return await finish(task, publicationStep?.id);
 }
 
+async function checkCancellation() {
+  const planning = await startTaskFromComposer(
+    "Review the accessible source and tests for correctness. Plan one read-only inspection step.",
+  );
+  await until(
+    "Planning model started",
+    async () => taskSchema.parse(await api(`/api/tasks/${planning.id}`)),
+    (task) => task.events.some((event) => event.kind === "agent_start"),
+  );
+  await page
+    .getByRole("button", { name: "Cancel planning", exact: true })
+    .click();
+  const stoppedPlanning = await until(
+    "Planning cancelled",
+    async () => taskSchema.parse(await api(`/api/tasks/${planning.id}`)),
+    (task) => task.status === "cancelled",
+  );
+  assert.equal(stoppedPlanning.runId, undefined);
+  await page.reload();
+  assert.equal(
+    taskSchema.parse(await api(`/api/tasks/${planning.id}`)).status,
+    "cancelled",
+  );
+  console.log(
+    "PASS: real coordinator cancellation persists without creating a workflow.",
+  );
+
+  const execution = await taskFromComposer(
+    "This is an execution-cancellation test. Plan one AI step whose only action during execution is to run this exact Bash command: `printf ready > cancel-started; sleep 8; printf unexpected > cancel-late`. Do not run it during planning. Do not edit source, tests, Git state or configuration. The user will stop execution while the command sleeps. No checks or other steps are needed.",
+  );
+  await assert.rejects(stat(path.join(project, "cancel-started")), /ENOENT/);
+  await page
+    .getByRole("button", { name: "Approve & start", exact: true })
+    .click();
+  await until(
+    "Real Bash command started",
+    () =>
+      stat(path.join(project, "cancel-started")).then(
+        () => true,
+        () => false,
+      ),
+    (started) => started,
+  );
+  await page
+    .getByRole("button", { name: "Stop execution", exact: true })
+    .click();
+  const stoppedRun = await until(
+    "Execution cancelled",
+    async () => runSchema.parse(await api(`/api/runs/${execution.runId}`)),
+    (run) => run.status === "cancelled",
+    30_000,
+  );
+  await expect(page.locator(".status-pill")).toHaveText("Cancelled");
+  await Bun.sleep(8500);
+  await assert.rejects(stat(path.join(project, "cancel-late")), /ENOENT/);
+  await page.reload();
+  await expect(page.locator(".status-pill")).toHaveText("Cancelled");
+  assert.equal((await git("rev-list", "--all")).stdout, "");
+  reports.push({ task: execution, run: stoppedRun });
+  console.log(
+    "PASS: real execution cancellation stops Bash with no late write and survives browser reload.",
+  );
+
+  // A subsequent real request proves cancellation releases both the task queue
+  // and the project's execution ownership.
+  const next = await taskFromComposer(
+    "Use one read-only inspection step to summarize the add function in math.ts as a Markdown artifact. Do not change files or Git state.",
+  );
+  await approveAndFinish(next);
+  assert.equal(
+    await readFile(path.join(project, "math.ts"), "utf8"),
+    "export function add(a: number, b: number) { return a + b; }\n",
+  );
+  assert.deepEqual(errors, []);
+  await writeFile(
+    path.join(directory, "report.json"),
+    JSON.stringify(
+      {
+        scenario,
+        model: agent.model,
+        stoppedPlanning,
+        reports,
+        browserErrors: errors,
+      },
+      null,
+      2,
+    ),
+  );
+  console.log(
+    `Live cancellation checks passed. Report and screenshots: ${directory}`,
+  );
+}
+
 console.log(
   `Live fixture: ${directory}\nModel: ${agent.provider}/${agent.model}\nBrowser: headless`,
 );
-try {
+async function checkWorkflows() {
   if (scenario === "all") {
     // The original failure: an unborn branch should still produce a useful review.
     const review = await taskFromComposer(
@@ -325,7 +429,7 @@ try {
     await chat
       .getByLabel("Message AI designer", { exact: true })
       .fill(
-        `Replace the profiles with one called Project lead. Use openai/${model.id} with medium thinking for planning and every execution role in this tiny project. Set it as planning model. Explain the proposed change.`,
+        `Replace the profiles with one called Project lead. Use openai/${agent.model} with medium thinking for planning and every execution role in this tiny project. Set it as planning model. Explain the proposed change.`,
       );
     await chat
       .getByRole("button", { name: "Send to AI designer", exact: true })
@@ -370,12 +474,23 @@ try {
     screenshot,
   );
   const implemented = await approveAndFinish(feature, true);
-  const pushNode = implemented.plan.nodes.find(node =>
-    implemented.blocks[node.block]?.definition.executor?.kind === "function");
-  assert.ok(pushNode, "The planner should select the deterministic push function");
-  const pushAttempt = implemented.attempts.find(attempt => attempt.nodeId === pushNode.id);
+  const pushNode = implemented.plan.nodes.find(
+    (node) =>
+      implemented.blocks[node.block]?.definition.executor?.kind === "function",
+  );
+  assert.ok(
+    pushNode,
+    "The planner should select the deterministic push function",
+  );
+  const pushAttempt = implemented.attempts.find(
+    (attempt) => attempt.nodeId === pushNode.id,
+  );
   assert.equal(pushAttempt?.result?.outcome, "pass");
-  assert.equal(pushAttempt?.usage?.requests ?? 0, 0, "The push function must not call a model");
+  assert.equal(
+    pushAttempt?.usage?.requests ?? 0,
+    0,
+    "The push function must not call a model",
+  );
   const local = (await git("rev-parse", "HEAD")).stdout.trim();
   const published = (
     await execute("git", ["--git-dir", remote, "rev-parse", "main"])
@@ -470,7 +585,7 @@ try {
     JSON.stringify(
       {
         scenario,
-        model: model.id,
+        model: agent.model,
         reports,
         head: local,
         tracked,
@@ -481,6 +596,10 @@ try {
     ),
   );
   console.log(`Live checks passed. Report and screenshots: ${directory}`);
+}
+try {
+  if (scenario === "cancellation") await checkCancellation();
+  else await checkWorkflows();
 } catch (error) {
   await page
     .screenshot({ path: path.join(directory, "failure.png"), fullPage: true })

@@ -16,7 +16,11 @@ import { request } from "../api.js";
 import Icon from "./Icon.vue";
 import ProposalPreview from "./ProposalPreview.vue";
 import MarkdownView from "./MarkdownView.vue";
-import type { WindowPoint, WindowSize } from "../floating-window.js";
+import {
+  resizeWindow,
+  type WindowPoint,
+  type WindowSize,
+} from "../floating-window.js";
 const props = defineProps<{
   initial: DesignSession;
   draft: string;
@@ -261,32 +265,34 @@ function startResize(event: PointerEvent, left: boolean) {
 }
 function resize(event: PointerEvent) {
   if (resizing?.pointer !== event.pointerId) return;
-  const dx = event.clientX - resizing.x;
-  emit("resize", {
-    size: {
-      width: resizing.size.width + (resizing.left ? -dx : dx),
-      height: resizing.size.height + event.clientY - resizing.y,
-    },
-    position: {
-      x: resizing.position.x + (resizing.left ? dx : 0),
-      y: resizing.position.y,
-    },
-  });
+  emit(
+    "resize",
+    resizeWindow(
+      resizing.size,
+      resizing.position,
+      { x: event.clientX - resizing.x, y: event.clientY - resizing.y },
+      resizing.left,
+      { width: window.innerWidth, height: window.innerHeight },
+    ),
+  );
 }
-function resizeWithKeys(event: KeyboardEvent) {
+function resizeWithKeys(event: KeyboardEvent, left: boolean) {
   if (!event.key.startsWith("Arrow")) return;
   event.preventDefault();
-  emit("resize", {
-    size: {
-      width:
-        props.size.width +
-        (event.key === "ArrowRight" ? 20 : event.key === "ArrowLeft" ? -20 : 0),
-      height:
-        props.size.height +
-        (event.key === "ArrowDown" ? 20 : event.key === "ArrowUp" ? -20 : 0),
-    },
-    position: props.position,
-  });
+  emit(
+    "resize",
+    resizeWindow(
+      props.size,
+      props.position,
+      {
+        x:
+          event.key === "ArrowRight" ? 20 : event.key === "ArrowLeft" ? -20 : 0,
+        y: event.key === "ArrowDown" ? 20 : event.key === "ArrowUp" ? -20 : 0,
+      },
+      left,
+      { width: window.innerWidth, height: window.innerHeight },
+    ),
+  );
 }
 </script>
 
@@ -471,7 +477,7 @@ function resizeWithKeys(event: KeyboardEvent) {
       @pointermove="resize"
       @pointerup="resizing = undefined"
       @pointercancel="resizing = undefined"
-      @keydown="resizeWithKeys"
+      @keydown="resizeWithKeys($event, edge === 'left')"
     />
   </section>
 </template>

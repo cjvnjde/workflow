@@ -132,6 +132,51 @@ test("cancelling a push terminates the Git process group before its hook can pub
   assert.equal(await git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/"), "");
 });
 
+test("function push follows explicit, branch and project remote preferences without publishing other refs", async (t) => {
+  const { project, library } = await fixture(t);
+  const origin = await repository(project);
+  const remotes: Record<string, string> = { origin };
+  for (const name of ["personal", "team"]) {
+    const directory = path.join(project, `${name}.git`);
+    await mkdir(directory);
+    await git(directory, "init", "--bare");
+    await git(project, "remote", "add", name, directory);
+    remotes[name] = directory;
+  }
+  await commit(project);
+  await git(project, "branch", "unrelated");
+  await git(project, "config", "branch.feature/publish.remote", "origin");
+  await git(project, "config", "branch.feature/publish.merge", "refs/heads/release");
+  await git(project, "config", "branch.feature/publish.pushRemote", "personal");
+  await git(project, "config", "remote.pushDefault", "team");
+  // A configured push refspec must not broaden the function's explicit branch.
+  await git(project, "config", "remote.personal.push", "refs/heads/*:refs/heads/*");
+  const step = execution(project, library);
+  for (const [index, selected] of ["origin", "personal", "team", "origin"].entries()) {
+    const head = await commit(project, `preference-${index}`);
+    if (index === 2) await git(project, "config", "--unset", "branch.feature/publish.pushRemote");
+    if (index === 3) await git(project, "config", "--unset", "remote.pushDefault");
+    // Set-upstream is part of successful publication, so restore the original
+    // fetch upstream to exercise each distinct remote selection case.
+    await git(project, "config", "branch.feature/publish.remote", "origin");
+    await git(project, "config", "branch.feature/publish.merge", "refs/heads/release");
+    step.bundle.definition.executor = {
+      kind: "function", function: "git-push", ...(index === 0 ? { remote: "origin" } : {}),
+    };
+    const result = await runFunctionBlock(step);
+    assert.equal(result.outcome, "pass", result.summary);
+    const destination = selected === "origin" ? "release" : "feature/publish";
+    assert.equal(await git(remotes[selected]!, "rev-parse", `refs/heads/${destination}`), head);
+    assert.equal(await git(remotes[selected]!, "for-each-ref", "--format=%(refname)", "refs/heads/"), `refs/heads/${destination}`);
+  }
+  await git(project, "config", "--unset", "branch.feature/publish.remote");
+  await git(project, "config", "--unset", "branch.feature/publish.merge");
+  await git(project, "remote", "rename", "origin", "archive");
+  const ambiguous = await runFunctionBlock(step);
+  assert.equal(ambiguous.outcome, "retry");
+  assert.match(ambiguous.summary, /No unambiguous push remote/);
+});
+
 test("an approved function workflow publishes using no AI runner or provider credentials", async (t) => {
   const { project, library, cleanup } = await fixture(t);
   const remote = await repository(project);
