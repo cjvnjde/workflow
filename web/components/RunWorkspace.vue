@@ -11,6 +11,8 @@ import Icon from "./Icon.vue";
 import { executionLabel } from "../execution-label.js";
 import MarkdownView from "./MarkdownView.vue";
 import MarkdownActions from "./MarkdownActions.vue";
+import ActivityFeed from "./ActivityFeed.vue";
+import { describeActivity } from "../activity.js";
 const WorkflowGraph = defineAsyncComponent(() => import("./WorkflowGraph.vue"));
 const PlanEditor = defineAsyncComponent(() => import("./PlanEditor.vue"));
 const props = defineProps<{
@@ -83,7 +85,16 @@ const active = computed(() =>
   props.run.plan.nodes.find((item) => item.id === props.run.cursor),
 );
 const latestEvent = computed(() =>
-  props.events.filter((event) => event.kind !== "usage").at(-1),
+  props.events
+    .filter(
+      (event) =>
+        event.kind !== "usage" &&
+        (!event.nodeId || event.nodeId === props.run.cursor),
+    )
+    .at(-1),
+);
+const latestActivity = computed(
+  () => latestEvent.value && describeActivity(latestEvent.value),
 );
 const elapsed = computed(() => {
   const attempt = props.run.attempts
@@ -101,12 +112,6 @@ const completed = computed(
     props.run.plan.nodes.filter(
       (item) => stepState(props.run, item.id) === "pass",
     ).length,
-);
-const visibleEvents = computed(() =>
-  (selected.value
-    ? props.events.filter((event) => event.nodeId === selected.value)
-    : props.events
-  ).toReversed(),
 );
 const running = computed(() =>
   ["running", "pausing"].includes(props.run.status),
@@ -303,8 +308,7 @@ function selectStep(id: string) {
         ><span>{{
           run.status === "pausing"
             ? "Finishing this step, then pausing"
-            : (latestEvent?.message.split("\n")[0]?.slice(0, 140) ??
-              "Starting…")
+            : (latestActivity?.preview.slice(0, 140) ?? "Starting…")
         }}</span>
       </div>
       <time
@@ -550,62 +554,16 @@ function selectStep(id: string) {
           </details>
         </aside>
       </div>
-      <div v-if="tab === 'activity'" class="activity">
-        <div class="activity-heading">
-          <span>{{
-            selected
-              ? `Activity for ${node?.label ?? selected}`
-              : "All workflow activity"
-          }}</span
-          ><button v-if="selected" class="quiet" @click="selected = undefined">
-            Show all steps</button
-          ><small>Latest 500 persisted events</small>
-        </div>
-        <div
-          v-if="liveText && (!selected || selected === run.cursor)"
-          class="live-output"
-        >
-          <span class="eyebrow"><span class="live-dot" /> LIVE OUTPUT</span>
-          <MarkdownView :content="liveText" />
-        </div>
-        <template v-if="visibleEvents.length">
-          <article
-            v-for="event in visibleEvents"
-            :key="event.id"
-            class="event"
-            :class="event.kind"
-          >
-            <div class="event-mark">
-              <Icon
-                :name="
-                  event.kind.startsWith('check')
-                    ? 'shield'
-                    : event.kind.startsWith('tool')
-                      ? 'terminal'
-                      : 'spark'
-                "
-                :size="15"
-              />
-            </div>
-            <div class="event-body">
-              <div class="event-meta">
-                <b>{{ event.kind.replaceAll("_", " ") }}</b
-                ><span>{{ event.nodeId ?? "workflow" }}</span
-                ><time>{{ new Date(event.time).toLocaleTimeString() }}</time>
-              </div>
-              <MarkdownView
-                v-if="['agent_message', 'node_end'].includes(event.kind)"
-                :content="event.message"
-              />
-              <pre v-else>{{ event.message }}</pre>
-            </div>
-          </article>
-        </template>
-        <div v-else class="panel-empty">
-          <Icon name="log" :size="26" />
-          <p>Step activity appears here as the workflow runs.</p>
-        </div>
-      </div>
+      <ActivityFeed
+        v-if="tab === 'activity'"
+        :key="run.id"
+        :events="events"
+        :nodes="plan.nodes"
+        :selected="selected"
+        :running="running"
+        :live-text="!selected || selected === run.cursor ? liveText : ''"
+        @select="selected = $event"
+      />
       <div v-if="tab === 'artifacts'" class="artifact-list">
         <p class="muted">
           Each step receives only the context selected in the workflow.

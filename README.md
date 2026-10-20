@@ -56,6 +56,8 @@ Open **http://127.0.0.1:4310**.
 6. The outcome appears above the graph, including failures and blockers. Open **Results** for rendered Markdown, verification checks and artifacts; use **Copy Markdown** or **Download** on any artifact, or export the whole report. The notification bell records completions, pauses and failures received while the app is open.
 7. Active and previous tasks stay in the sidebar; reloading restores the selected task. Pause, resume or stop execution there. **Delete workflow** (also available beside a sidebar entry) removes settled tasks and drafts from history. Stop active work first. Deletion does not undo project files or erase recovery journals, attachments or Temporal execution history from disk.
 
+The **Activity** view and **Planning activity** drawer let you search messages, commands, files and error output, then filter AI updates, tools, checks or usage. Execution activity can also be scoped to a step. Tool arguments and full command diagnostics are preserved under **View details**; usage is presented as a readable summary instead of raw JSON.
+
 Attachments support PNG, JPEG, WebP and GIF (up to 6 MB each), and UTF-8 text/code (up to 256 KB each); up to eight files and 20 MB per request. PDF and other binary document extraction are not implemented. Image requests need an image-capable planning model. The coordinator records relevant visual observations for steps that use text-only models. Attached content is passed to the selected model providers. Uploaded files are private project files under `.workflow/attachments/`, checked by hash before use.
 
 Use `workflow --port 4320` for another port, or `--port 0` to select a free port and print its address.

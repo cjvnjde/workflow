@@ -13,6 +13,14 @@ process.env.WORKFLOW_HOME = path.join(project, ".workflow-user");
 await initializeProject(project);
 process.env.WORKFLOW_DEMO_DELAY_MS = "400";
 const engine = new WorkflowEngine(project, "demo", async execution => {
+  if (execution.task.includes("[activity-fixture]") && execution.node.id === "work" && execution.visit === 1) {
+    execution.emit("tool_start", 'read_file {"path":"src/example.ts"}');
+    execution.emit("tool_end", "read_file: finished");
+    execution.emit("tool_start", 'bash {"command":"bun test --filter regression","timeout":60}');
+    execution.emit("tool_end", "bash: error\nRegression assertion failed: expected 5, received 4");
+    execution.emit("check", "test: condition NOT met\nDetailed diagnostic for regression");
+    execution.emit("usage", JSON.stringify({ inputTokens: 1000, outputTokens: 200, cacheReadTokens: 300, cacheWriteTokens: 0, requests: 2, costUsd: 0.0123 }));
+  }
   if (execution.task.includes("[result-fixture]") && execution.node.id === "review") {
     return {
       outcome: "fail",

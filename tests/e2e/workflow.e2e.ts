@@ -806,6 +806,43 @@ test("same-scope AI chats stay independent, draggable and restorable", async ({ 
   await page.screenshot({ path: "/tmp/workflow-multiple-chats.png", fullPage: true });
 });
 
+test("activity is searchable, filters tools and checks, and retains raw failure evidence", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/"); await newTask(page, "Fix the regression [activity-fixture]");
+  await page.getByRole("button", { name: "Approve & start", exact: true }).click();
+  await expect(page.locator(".status-pill")).toHaveText("Completed", { timeout: 15_000 });
+  await page.getByRole("button", { name: "Activity", exact: true }).click();
+  const activity = page.getByRole("region", { name: "Workflow activity", exact: true });
+  await activity.getByRole("button", { name: /^Tools/ }).click();
+  await expect(activity.locator(".event")).toHaveCount(4);
+  const command = activity.locator(".event.tool_start").filter({ hasText: "Run command" });
+  await expect(command).toContainText("bun test --filter regression");
+  await expect(command.locator("pre")).not.toBeVisible();
+  await command.getByText("View details", { exact: true }).click();
+  await expect(command.locator("pre")).toContainText('"timeout": 60');
+  await expect(activity.locator(".event.tool_end.error")).toContainText("expected 5, received 4");
+  await activity.getByLabel("Search activity", { exact: true }).fill("REGRESSION");
+  await expect(activity.locator(".event")).toHaveCount(2);
+  await activity.getByRole("button", { name: /^Checks/ }).click();
+  await expect(activity.locator(".event")).toHaveCount(1);
+  await activity.getByText("View details", { exact: true }).click();
+  await expect(activity.locator("pre")).toContainText("Detailed diagnostic for regression");
+  await activity.getByLabel("Search activity", { exact: true }).fill("");
+  await activity.getByRole("button", { name: /^Usage/ }).click();
+  await expect(activity).toContainText("2 requests · 1,500 tokens · $0.0123 reported");
+  await activity.getByLabel("Activity step", { exact: true }).selectOption("review");
+  await expect(activity).toContainText("No activity matches these filters.");
+  await activity.getByRole("button", { name: "Clear filters", exact: true }).click();
+  await expect(activity.locator(".event")).not.toHaveCount(0);
+  await activity.getByRole("button", { name: "Show all steps", exact: true }).click();
+  await page.screenshot({ path: "/tmp/workflow-activity-desktop.png", fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await activity.getByLabel("Search activity", { exact: true }).fill("src/example.ts");
+  await expect(activity.locator(".event")).toHaveCount(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: "/tmp/workflow-activity-mobile.png", fullPage: true });
+});
+
 test("deleting a workflow removes its task from history and stale responses cannot restore it", async ({ page }) => {
   await page.goto("/"); await newTask(page, "Delete this draft from history");
   const originalHash = new URL(page.url()).hash;

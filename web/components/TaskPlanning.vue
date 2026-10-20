@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import type { TaskRequest } from "../../src/task-schema.js";
 import type { TaskStream } from "../composables/use-workflow-data.js";
 import Icon from "./Icon.vue";
+import ActivityFeed from "./ActivityFeed.vue";
 const props = defineProps<{
   task: TaskRequest;
   stream?: TaskStream;
@@ -122,14 +123,13 @@ const stages = [
     </div>
     <details v-if="task.events.length || stream?.text" class="planning-logs">
       <summary><Icon name="log" :size="15" />Planning activity</summary>
-      <pre v-if="stream?.text" class="live-output">{{ stream.text }}</pre>
-      <div v-for="event in task.events.toReversed()" :key="event.id">
-        <small
-          >{{ new Date(event.time).toLocaleTimeString() }} ·
-          {{ event.kind.replaceAll("_", " ") }}</small
-        >
-        <pre>{{ event.message }}</pre>
-      </div>
+      <ActivityFeed
+        :key="task.id"
+        :events="task.events"
+        :live-text="stream?.text"
+        :running="['queued', 'planning'].includes(task.status)"
+        title="Planning activity"
+      />
     </details>
     <div class="planning-actions">
       <button
