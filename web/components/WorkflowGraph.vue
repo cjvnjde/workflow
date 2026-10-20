@@ -13,6 +13,7 @@ import {
 import { Background } from "@vue-flow/background";
 import { Controls } from "@vue-flow/controls";
 import { resolveAgentSettings, type WorkflowRun } from "../../src/domain.js";
+import { executionLabel } from "../execution-label.js";
 import "@vue-flow/core/dist/style.css";
 import "@vue-flow/core/dist/theme-default.css";
 import "@vue-flow/controls/dist/style.css";
@@ -126,7 +127,7 @@ const nodes = computed<Node[]>(() => [
         maxVisits: node.maxVisits,
         label: node.label,
         model: block?.executor
-          ? `⌘ ${block.executor.kind === "function" ? "Git push" : block.executor.command}`
+          ? executionLabel(block.executor)
           : (settings.model ?? "orchestrator chooses"),
         thinking: block?.executor ? block.executor.kind : settings.thinking,
         state,

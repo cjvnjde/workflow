@@ -8,6 +8,7 @@ import { WorkflowFailedError, WorkflowNotFoundError } from "@temporalio/client";
 import { Worker } from "@temporalio/worker";
 import {
   resolveAgentSettings,
+  executionTimeoutMs,
   resolveInputs,
   runSchema,
   validatePlan,
@@ -18,7 +19,8 @@ import {
   type UsageTotals,
 } from "./domain.js";
 import { runCommandBlock, validateBlockResult, type BlockRunner } from "./block-runner.js";
-import { runFunctionBlock } from "./function-blocks.js";
+import { runFunctionBlock } from "./legacy/git-push-v1.js";
+import { runScriptBlock } from "./script-runner.js";
 import { runCheck } from "./checks.js";
 import { RunStore } from "./run-store.js";
 import { connectTemporal, type TemporalOptions } from "./temporal-runtime.js";
@@ -589,7 +591,7 @@ export class WorkflowEngine {
     }
     const settings = resolveAgentSettings(run.config.agent, bundle.definition.agent, node.agent);
     const context = Context.current();
-    const signal = AbortSignal.any([context.cancellationSignal, this.leaseCancellation.signal, AbortSignal.timeout(settings.timeoutMs)]);
+    const signal = AbortSignal.any([context.cancellationSignal, this.leaseCancellation.signal, AbortSignal.timeout(executionTimeoutMs(run.config, bundle, node))]);
     signal.throwIfAborted();
     const directory = attemptDirectory(this.project, run.id, node.id, run.visits[node.id] ?? 1);
     const journal = run.executionProtocol === 2 ? await FileJournal.open(directory) : undefined;
@@ -599,6 +601,7 @@ export class WorkflowEngine {
     context.heartbeat({ nodeId: node.id });
     try {
       const runner = this.mode !== "live" || !bundle.definition.executor ? this.runner
+        : bundle.definition.executor.kind === "script" ? runScriptBlock
         : bundle.definition.executor.kind === "function" ? runFunctionBlock : runCommandBlock;
       const result = validateBlockResult(await runner({
         project: this.project, config: run.config, bundle, node, task: run.plan.task, workflow: run.plan,

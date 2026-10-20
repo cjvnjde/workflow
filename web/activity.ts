@@ -67,6 +67,10 @@ const labels: Record<string, string> = {
   recovery: "File recovery",
   function_start: "Function started",
   function_end: "Function result",
+  script_start: "Script started",
+  script_output: "Script output",
+  script_end: "Script finished",
+  script_error: "Script error",
 };
 
 /** Presentation only: retain the original event, including truncated/unknown formats. */
@@ -154,6 +158,12 @@ export function describeActivity(event: RunEvent): ActivityItem {
           .slice(1)
           .find((line) => line.trim()) ?? firstLine;
     }
+  } else if (event.kind.startsWith("script_")) {
+    item.category = "tools";
+    item.icon = "terminal";
+    item.tone = event.kind === "script_error" || /condition NOT met/.test(firstLine) ? "error"
+      : event.kind === "script_end" ? "success" : undefined;
+    item.state = event.kind === "script_start" ? "Started" : event.kind === "script_end" ? (item.tone === "error" ? "Not met" : "Finished") : undefined;
   } else if (event.kind === "check" || event.kind === "check_start") {
     item.category = "checks";
     item.icon = "shield";

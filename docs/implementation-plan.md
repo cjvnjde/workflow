@@ -19,7 +19,7 @@ Each block owns its prompt, explicit Markdown resources, named checks, declared 
 - **Terminal UI:** optional setup using the embedded TUI; it shares Workflow credentials and the ChatGPT/API-key policy with browser setup.
 - **Web UI:** Vue 3 Composition API, TypeScript single-file components, Vue Flow, and lifecycle-scoped composables for streams/drafts. Task-history sidebar, central composer with attachments, visible planning/execution states, graph review/editing, per-step activity and artifact inspection. A dedicated Settings page owns configuration.
 - **Task planning:** persisted requests and essential followups, model-profile selection, editable task instructions, task-local block proposals, reviewed or automatic execution.
-- **Capabilities:** explicitly enabled skill text and MCP servers, all discovered tools from enabled servers, immutable execution snapshots and deterministic named-command blocks.
+- **Capabilities:** explicitly enabled skill text and MCP servers, all discovered tools from enabled servers, immutable execution snapshots and editable Bash, JavaScript and TypeScript script blocks.
 
 No ambient Pi tools, extensions, skills, context files or conversations are loaded. Workflow-owned auth/catalog paths replace Pi's default credential directory. Tool restrictions are not an OS sandbox.
 
@@ -44,7 +44,7 @@ No ambient Pi tools, extensions, skills, context files or conversations are load
 - [x] Browser-first task workspace, attachments, task history and dedicated Settings.
 - [x] Dynamic case-based planning, optional followups, described model profiles and suggested blocks.
 - [x] Editable task cases, blocks, skills and MCP settings, with server enable/disable controls.
-- [x] Direct command blocks with diagnostic artifacts and bounded test/implementation cycles.
+- [x] Script blocks with Bun/Node runtimes, live output, structured artifact handoffs, cancellation and bounded test/implementation cycles.
 - [x] ChatGPT browser sign-in and API keys for other providers.
 - [x] AI-generated block-library proposals, per-block model selection from the available catalog, reviewed definition comparison, manual editing and draft refinement.
 

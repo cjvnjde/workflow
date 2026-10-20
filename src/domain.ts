@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { attachmentSchema, capabilitiesSchema } from "./capability-schema.js";
+import { scriptExecutorSchema } from "./script-schema.js";
 
 export const identifierSchema = z
   .string()
@@ -85,6 +86,8 @@ export const blockSchema = z
     name: z.string().min(1).max(120),
     description: z.string().min(1).max(4000),
     executor: z.discriminatedUnion("kind", [
+      scriptExecutorSchema,
+      // Compatibility for existing snapshots; current libraries expose scripts.
       z.object({ kind: z.literal("command"), command: identifierSchema, expect: z.enum(["success", "failure"]).default("success") }).strict(),
       z.object({
         kind: z.literal("function"),
@@ -270,6 +273,15 @@ export type BlockResult = z.infer<typeof resultSchema>;
 export type CheckResult = z.infer<typeof checkResultSchema>;
 export type RunEvent = z.infer<typeof eventSchema>;
 export type WorkflowRun = z.infer<typeof runSchema>;
+export function executionTimeoutMs(config: ProjectConfig, bundle: BlockBundle, node: WorkflowNode) {
+  if (bundle.definition.executor?.kind === "script") {
+    // Leave time for process termination and any host checks after the script.
+    return bundle.definition.executor.timeoutMs + 2000 + bundle.definition.checks.reduce(
+      (sum, check) => sum + (config.commands[check.command]?.timeoutMs ?? 0) + 2000, 0,
+    );
+  }
+  return resolveAgentSettings(config.agent, bundle.definition.agent, node.agent).timeoutMs;
+}
 
 /** Old saved runs keep permission metadata; agents use the current tool contract. */
 export function blocksForAgent(blocks: Library["blocks"]) {

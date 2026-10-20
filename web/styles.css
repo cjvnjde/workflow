@@ -735,6 +735,9 @@ button.danger, button.danger-quiet { color: var(--ctp-red); background: color-mi
 .notification-toast > .quiet { flex: 1; min-width: 0; display: block; text-align: left; }
 .notification-toast strong, .notification-toast span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.notification-toast span { font-size: 12px; color: var(--ctp-subtext0); margin-top: 4px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.script-source { font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.6; tab-size: 2; white-space: pre; }
+.script-contract { margin: 0 0 20px; color: var(--ctp-subtext0); font-size: 12px; line-height: 1.7; }
+.script-contract code { color: var(--ctp-lavender); }
 @media (max-width: 1000px) { .workflow-canvas.inspecting { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 700px) {
   .task-main { padding: 18px 12px 80px; }.graph-panel { height: 430px; }.graph-toolbar span { display: none; }

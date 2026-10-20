@@ -470,17 +470,17 @@ async function checkWorkflows() {
   await attachmentPage.screenshot({ path: screenshot });
   await attachmentPage.close();
   const feature = await taskFromComposer(
-    "Implement the clamp function described in the attached screenshot and add focused tests. After verifying the changes, stage and commit the intended project files in a dedicated commit step, then use the built-in git-push function block to push to the already configured origin on main, without an AI call for the push. Use the existing Git identity. Exclude private/runtime files.",
+    "Implement the clamp function described in the attached screenshot and add focused tests. After verifying the changes, stage and commit the intended project files in a dedicated commit step, then use the editable JavaScript push script block to push to the already configured origin on main, without an AI call for the push. Use the existing Git identity. Exclude private/runtime files.",
     screenshot,
   );
   const implemented = await approveAndFinish(feature, true);
   const pushNode = implemented.plan.nodes.find(
     (node) =>
-      implemented.blocks[node.block]?.definition.executor?.kind === "function",
+      implemented.blocks[node.block]?.definition.executor?.kind === "script",
   );
   assert.ok(
     pushNode,
-    "The planner should select the deterministic push function",
+    "The planner should select the editable push script",
   );
   const pushAttempt = implemented.attempts.find(
     (attempt) => attempt.nodeId === pushNode.id,
@@ -489,7 +489,7 @@ async function checkWorkflows() {
   assert.equal(
     pushAttempt?.usage?.requests ?? 0,
     0,
-    "The push function must not call a model",
+    "The push script must not call a model",
   );
   const local = (await git("rev-parse", "HEAD")).stdout.trim();
   const published = (

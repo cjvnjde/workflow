@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 import { atomicWrite } from "./atomic-file.js";
 import { resolveAgentSettings, type Library, type WorkflowPlan } from "./domain.js";
 import { loadLibrary, validateLibraryResources } from "./library.js";
+import { scriptBundle } from "./script-migration.js";
 import {
   approvedLibrarySchema, libraryChangesSchema, libraryProposalSchema, modelKey,
   type AvailableModel, type LibraryProposal,
@@ -35,6 +36,7 @@ export function validatePlanModels(plan: WorkflowPlan, library: Library, models:
 
 export function validateLibraryChanges(value: unknown, library: Library, kind: LibraryProposal["kind"], models: AvailableModel[]) {
   const changes = libraryChangesSchema.parse(value);
+  for (const change of changes.blocks) change.bundle = scriptBundle(change.bundle, library.config.commands);
   const blocks = structuredClone(library.blocks);
   const ids = new Set<string>();
   const removed = new Set(changes.remove ?? []);

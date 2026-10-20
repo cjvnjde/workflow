@@ -1,7 +1,7 @@
-import type { BlockRunner } from "./block-runner.js";
-import { runProcess } from "./process.js";
+import type { BlockRunner } from "../block-runner.js";
+import { runProcess } from "../process.js";
 
-/** A deterministic publication step. It never stages, commits or asks a model. */
+/** Compatibility for approved snapshots created before editable script blocks. */
 export const runFunctionBlock: BlockRunner = async (execution) => {
   const executor = execution.bundle.definition.executor;
   if (executor?.kind !== "function") throw new Error("Function block has no function executor");

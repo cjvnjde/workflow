@@ -21,6 +21,7 @@ import { request } from "../api.js";
 import { inputValue, inputChecked } from "../form-events.js";
 import Field from "../components/Field.vue";
 import Icon from "../components/Icon.vue";
+import { executionLabel } from "../execution-label.js";
 const props = defineProps<{
   library: Library;
   settings: OrchestrationSettings;
@@ -154,28 +155,15 @@ function add() {
 function execution(value: string) {
   if (definition.value) {
     definition.value.executor =
-      value === "command"
-        ? {
-            kind: "command",
-            command: Object.keys(props.library.config.commands)[0] ?? "test",
-            expect: "success",
-          }
-        : value === "function"
-          ? { kind: "function", function: "git-push" }
-          : undefined;
-    if (
-      value === "function" &&
-      !state.value?.blocks[selected.value] &&
-      definition.value.name === "New block"
-    ) {
-      definition.value.name = "Push current branch";
-      definition.value.description =
-        "Push existing commits after verification and commit creation. Creates the remote branch and configures upstream when needed.";
-      definition.value.outputs = ["publication"];
-      bundle.value!.prompt =
-        "Push existing commits from the current branch. Return failure diagnostics to the configured retry step; do not stage, commit, force push or fix changes.";
-    }
+      value === "script" ? { kind: "script", language: "bash", runtime: "bash",
+        code: 'printf "Script completed\\n"\n', timeoutMs: 120_000, expect: "success" } : undefined;
   }
+}
+function language(value: string) {
+  const executor = definition.value?.executor;
+  if (executor?.kind !== "script" || !["bash", "javascript", "typescript"].includes(value)) return;
+  executor.language = value as typeof executor.language;
+  executor.runtime = value === "bash" ? "bash" : executor.runtime === "bash" ? "bun" : executor.runtime;
 }
 async function save() {
   const current = bundle.value;
@@ -288,11 +276,7 @@ function check(command: string, enabled: boolean) {
             <strong>{{ item.definition.name }}</strong
             ><small
               >{{
-                item.definition.executor?.kind === "function"
-                  ? "Function"
-                  : item.definition.executor
-                    ? "Command"
-                    : "AI block"
+                executionLabel(item.definition.executor)
               }}
               · {{ item.definition.outputs.length }} outputs</small
             >
@@ -329,69 +313,38 @@ function check(command: string, enabled: boolean) {
               @change="execution(inputValue($event))"
             >
               <option value="ai">AI agent</option>
-              <option value="function">
-                Built-in function · no model call
-              </option>
-              <option value="command">
-                Configured command · no model call
-              </option>
+              <option value="script">Script · no model call</option>
             </select></Field
           >
-          <template v-if="definition.executor?.kind === 'function'">
-            <Field v-slot="{ id }" label="Function">
-              <select :id="id" v-model="definition.executor.function">
-                <option value="git-push">Git · Push current branch</option>
-              </select>
-            </Field>
-            <Field
-              v-slot="{ id }"
-              label="Git remote (optional)"
-              help="Use an existing remote name, such as origin. Leave empty to follow Git push configuration or upstream, then origin or the sole remote."
-            >
-              <input
-                :id="id"
-                :value="definition.executor.remote ?? ''"
-                placeholder="Automatic"
-                @input="
-                  definition.executor.remote =
-                    inputValue($event).trim() || undefined
-                "
-              />
-            </Field>
-            <div class="function-description">
-              <Icon name="terminal" :size="20" />
-              <p>
-                Pushes existing commits and sets upstream, creating the remote
-                branch if needed. No AI call, staging, commit creation or force
-                push. A failed push returns diagnostics to the workflow’s retry
-                route.
-              </p>
+          <template v-if="definition.executor?.kind === 'script'">
+            <div class="field-grid">
+              <Field v-slot="{ id }" label="Script language">
+                <select :id="id" :value="definition.executor.language" @change="language(inputValue($event))">
+                  <option value="bash">Bash</option><option value="typescript">TypeScript</option><option value="javascript">JavaScript</option>
+                </select>
+              </Field>
+              <Field v-if="definition.executor.language !== 'bash'" v-slot="{ id }" label="Script runtime">
+                <select :id="id" v-model="definition.executor.runtime"><option value="bun">Bun</option><option value="node">Node.js</option></select>
+              </Field>
             </div>
+            <Field v-slot="{ id }" label="Script source" help="Runs in the project root. Source is saved in each workflow snapshot; stdout and stderr appear live in Activity.">
+              <textarea v-autosize :id="id" v-model="definition.executor.code" class="script-source" :rows="8" spellcheck="false" autocapitalize="off" />
+            </Field>
+            <div class="field-grid">
+              <Field v-slot="{ id }" label="Script timeout (seconds)">
+                <input :id="id" type="number" min="0.1" max="3600" step="0.1" :value="definition.executor.timeoutMs / 1000" @input="definition.executor.timeoutMs = Number(inputValue($event)) * 1000" />
+              </Field>
+              <Field v-slot="{ id }" label="Success condition">
+                <select :id="id" v-model="definition.executor.expect"><option value="success">Exit code is zero</option><option value="failure">Exit code is nonzero (reproduction)</option></select>
+              </Field>
+            </div>
+            <details class="script-contract">
+              <summary>Inputs, results & artifacts</summary>
+              <p><code>WORKFLOW_INPUT</code> points to a JSON file with the task, step goal, visit, selected <code>inputs</code>, and declared <code>outputs</code>.</p>
+              <p>Optionally write <code>{ outcome, summary, artifacts }</code> as JSON to <code>WORKFLOW_RESULT</code>. Outcomes are <code>pass</code>, <code>retry</code>, and <code>fail</code>. Otherwise exit status decides the route and command output becomes the declared artifacts.</p>
+              <p>JavaScript and TypeScript use ES modules; choose Bun or an installed Node.js. TypeScript is transpiled for the selected runtime. Call existing files with Bash, for example <code>bun run scripts/check.ts</code>.</p>
+            </details>
           </template>
-          <div
-            v-else-if="definition.executor?.kind === 'command'"
-            class="field-grid"
-          >
-            <Field v-slot="{ id }" label="Command"
-              ><select :id="id" v-model="definition.executor.command">
-                <option value="">Choose a configured command</option>
-                <option
-                  v-for="command in Object.keys(library.config.commands)"
-                  :key="command"
-                  :value="command"
-                >
-                  {{ command }}
-                </option>
-              </select></Field
-            ><Field v-slot="{ id }" label="Success condition"
-              ><select :id="id" v-model="definition.executor.expect">
-                <option value="success">Exit code is zero</option>
-                <option value="failure">
-                  Exit code is nonzero (reproduction)
-                </option>
-              </select></Field
-            >
-          </div>
           <Field v-else v-slot="{ id }" label="Preferred model profile"
             ><select
               :id="id"
@@ -415,7 +368,7 @@ function check(command: string, enabled: boolean) {
             :label="definition.executor ? 'Step notes' : 'Block instructions'"
             :help="
               definition.executor
-                ? 'Documentation for the orchestrator. Execution follows the function or command settings above; no model interprets these notes.'
+                ? 'Describe when and how the orchestrator should use this script. The source above performs the work.'
                 : undefined
             "
           >

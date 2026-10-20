@@ -5,7 +5,9 @@ import { promisify } from "node:util";
 import { mkdir, writeFile, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fixture, passingResult } from "./helpers.js";
-import { runFunctionBlock } from "../src/function-blocks.js";
+import { runScriptBlock } from "../src/script-runner.js";
+import { runFunctionBlock } from "../src/legacy/git-push-v1.js";
+import { pushScript } from "../src/script-examples.js";
 import { budgetSchema, bundleSchema, nodeSchema, validatePlan } from "../src/domain.js";
 import { validatePlanModels } from "../src/library-proposals.js";
 import { validateLibraryResources } from "../src/library.js";
@@ -45,7 +47,7 @@ function execution(project: string, library: Awaited<ReturnType<typeof fixture>>
   };
 }
 
-test("function push creates a remote branch/upstream, updates it, and never stages or commits", async (t) => {
+test("editable push script creates a remote branch/upstream, updates it, and never stages or commits", async (t) => {
   const { project, library } = await fixture(t);
   const remote = await repository(project);
   const first = await commit(project);
@@ -55,14 +57,14 @@ test("function push creates a remote branch/upstream, updates it, and never stag
   const plan = validatePlan({ title: "Push", task: step.task, entry: "push", nodes: [step.node] }, library);
   validatePlanModels(plan, library, []);
   assert.equal(estimateBudget(plan, library, "live").expectedCostUsd, 0);
-  const created = await runFunctionBlock(step);
+  const created = await runScriptBlock(step);
   assert.equal(created.outcome, "pass", created.summary);
   assert.equal(await git(remote, "rev-parse", "refs/heads/feature/publish"), first);
   assert.equal(await git(project, "rev-parse", "--abbrev-ref", "@{upstream}"), "origin/feature/publish");
   const second = await commit(project, "second");
   await git(project, "config", "remote.origin.mirror", "true");
   await git(project, "branch", "unrelated");
-  const updated = await runFunctionBlock(step);
+  const updated = await runScriptBlock(step);
   assert.equal(updated.outcome, "pass", updated.summary);
   assert.equal(await git(remote, "rev-parse", "refs/heads/feature/publish"), second);
   assert.equal(await git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/"), "refs/heads/feature/publish");
@@ -70,42 +72,46 @@ test("function push creates a remote branch/upstream, updates it, and never stag
   assert.equal(await git(project, "rev-list", "--count", "HEAD"), "2");
   assert.equal(await readFile(path.join(project, "private-untracked.txt"), "utf8"), "leave alone");
   assert.match(updated.artifacts.publication!, /Git activity/);
-  assert.equal((await runFunctionBlock(step)).outcome, "pass", "Repeating a push is safe");
+  assert.equal((await runScriptBlock(step)).outcome, "pass", "Repeating a push is safe");
+  const legacy = structuredClone(step.bundle);
+  legacy.definition.executor = { kind: "function", function: "git-push" };
+  assert.equal((await runFunctionBlock({ ...step, bundle: legacy })).outcome, "pass",
+    "Already approved function snapshots retain their original executor");
 });
 
-test("function push respects an existing differently named upstream and rejects divergence without forcing", async (t) => {
+test("editable push script respects an existing differently named upstream and rejects divergence without forcing", async (t) => {
   const { project, library } = await fixture(t);
   const remote = await repository(project);
   await commit(project);
   await git(project, "push", "--set-upstream", "origin", "HEAD:refs/heads/release");
   const second = await commit(project, "second");
   const step = execution(project, library);
-  assert.equal((await runFunctionBlock(step)).outcome, "pass");
+  assert.equal((await runScriptBlock(step)).outcome, "pass");
   assert.equal(await git(remote, "rev-parse", "refs/heads/release"), second);
   await git(project, "reset", "--hard", "HEAD~1");
   await commit(project, "divergent");
-  const result = await runFunctionBlock(step);
+  const result = await runScriptBlock(step);
   assert.equal(result.outcome, "retry");
   assert.match(result.summary, /reject|non-fast-forward/i);
   assert.equal(await git(remote, "rev-parse", "refs/heads/release"), second);
 });
 
-test("function push uses an explicit configured remote and reports missing commits/remotes/detached HEAD", async (t) => {
+test("editable push script uses an explicit configured remote and reports missing commits/remotes/detached HEAD", async (t) => {
   const { project, library } = await fixture(t);
   const remote = await repository(project);
   const step = execution(project, library);
-  assert.equal((await runFunctionBlock(step)).outcome, "retry", "Unborn HEAD cannot be pushed");
+  assert.equal((await runScriptBlock(step)).outcome, "retry", "Unborn HEAD cannot be pushed");
   const head = await commit(project);
   step.bundle = bundleSchema.parse({ ...step.bundle, definition: { ...step.bundle.definition,
-    executor: { kind: "function", function: "git-push", remote: "absent" } } });
-  assert.match((await runFunctionBlock(step)).summary, /not configured/);
+    executor: pushScript("absent") } });
+  assert.match((await runScriptBlock(step)).summary, /not configured/);
   await git(project, "remote", "rename", "origin", "published");
-  step.bundle.definition.executor = { kind: "function", function: "git-push", remote: "published" };
-  assert.equal((await runFunctionBlock(step)).outcome, "pass");
+  step.bundle.definition.executor = pushScript("published");
+  assert.equal((await runScriptBlock(step)).outcome, "pass");
   assert.equal(await git(remote, "rev-parse", "refs/heads/feature/publish"), head);
   await git(project, "checkout", "--detach");
-  assert.match((await runFunctionBlock(step)).summary, /detached/);
-  await assert.rejects(runFunctionBlock({ ...step, signal: AbortSignal.abort(new Error("Stop")) }), /Stop/);
+  assert.match((await runScriptBlock(step)).summary, /detached/);
+  await assert.rejects(runScriptBlock({ ...step, signal: AbortSignal.abort(new Error("Stop")) }), /Stop/);
 });
 
 test("cancelling a push terminates the Git process group before its hook can publish late effects", async (t) => {
@@ -117,7 +123,7 @@ test("cancelling a push terminates the Git process group before its hook can pub
     "#!/bin/sh\nprintf ready > hook-ready\nsleep 2\nprintf late > hook-late\n", { mode: 0o755 });
   await git(project, "config", "core.hooksPath", ".hooks");
   const controller = new AbortController();
-  const operation = runFunctionBlock({ ...execution(project, library), signal: controller.signal });
+  const operation = runScriptBlock({ ...execution(project, library), signal: controller.signal });
   const stopped = assert.rejects(operation, /Cancelled push/);
   let ready = false;
   for (let i = 0; i < 100 && !ready; i++) {
@@ -132,7 +138,7 @@ test("cancelling a push terminates the Git process group before its hook can pub
   assert.equal(await git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/"), "");
 });
 
-test("function push follows explicit, branch and project remote preferences without publishing other refs", async (t) => {
+test("editable push script follows explicit, branch and project remote preferences without publishing other refs", async (t) => {
   const { project, library } = await fixture(t);
   const origin = await repository(project);
   const remotes: Record<string, string> = { origin };
@@ -149,7 +155,7 @@ test("function push follows explicit, branch and project remote preferences with
   await git(project, "config", "branch.feature/publish.merge", "refs/heads/release");
   await git(project, "config", "branch.feature/publish.pushRemote", "personal");
   await git(project, "config", "remote.pushDefault", "team");
-  // A configured push refspec must not broaden the function's explicit branch.
+  // A configured push refspec must not broaden the script's explicit branch.
   await git(project, "config", "remote.personal.push", "refs/heads/*:refs/heads/*");
   const step = execution(project, library);
   for (const [index, selected] of ["origin", "personal", "team", "origin"].entries()) {
@@ -160,10 +166,8 @@ test("function push follows explicit, branch and project remote preferences with
     // fetch upstream to exercise each distinct remote selection case.
     await git(project, "config", "branch.feature/publish.remote", "origin");
     await git(project, "config", "branch.feature/publish.merge", "refs/heads/release");
-    step.bundle.definition.executor = {
-      kind: "function", function: "git-push", ...(index === 0 ? { remote: "origin" } : {}),
-    };
-    const result = await runFunctionBlock(step);
+    step.bundle.definition.executor = pushScript(index === 0 ? "origin" : "");
+    const result = await runScriptBlock(step);
     assert.equal(result.outcome, "pass", result.summary);
     const destination = selected === "origin" ? "release" : "feature/publish";
     assert.equal(await git(remotes[selected]!, "rev-parse", `refs/heads/${destination}`), head);
@@ -172,16 +176,16 @@ test("function push follows explicit, branch and project remote preferences with
   await git(project, "config", "--unset", "branch.feature/publish.remote");
   await git(project, "config", "--unset", "branch.feature/publish.merge");
   await git(project, "remote", "rename", "origin", "archive");
-  const ambiguous = await runFunctionBlock(step);
+  const ambiguous = await runScriptBlock(step);
   assert.equal(ambiguous.outcome, "retry");
   assert.match(ambiguous.summary, /No unambiguous push remote/);
 });
 
-test("an approved function workflow publishes using no AI runner or provider credentials", async (t) => {
+test("an approved script workflow publishes using no AI runner or provider credentials", async (t) => {
   const { project, library, cleanup } = await fixture(t);
   const remote = await repository(project);
   const head = await commit(project);
-  const engine = new WorkflowEngine(project, "live", async () => { throw new Error("A function must never call AI"); });
+  const engine = new WorkflowEngine(project, "live", async () => { throw new Error("A script must never call AI"); });
   cleanup(() => engine.shutdown());
   await engine.initialize();
   const step = execution(project, library);
@@ -197,7 +201,7 @@ test("an approved function workflow publishes using no AI runner or provider cre
   assert.match(completed.attempts[0]!.result!.summary, /Pushed/);
 });
 
-test("a function can finish publication after the preceding AI step exhausts the model budget", async (t) => {
+test("a script can finish publication after the preceding AI step exhausts the model budget", async (t) => {
   const { project, library, cleanup } = await fixture(t);
   const remote = await repository(project);
   const head = await commit(project);

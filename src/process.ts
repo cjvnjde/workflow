@@ -2,17 +2,18 @@ import { spawn } from "node:child_process";
 
 export type ProcessResult = { exitCode: number | null; stdout: string; stderr: string; output: string; timedOut: boolean };
 
-/** Bounded output and process-group cancellation for host functions and checks. */
+/** Bounded output and process-group cancellation for scripts and checks. */
 export async function runProcess(
   project: string, argv: string[], signal: AbortSignal, timeoutMs: number,
   env?: NodeJS.ProcessEnv,
+  options: { stdin?: string; onOutput?: (chunk: string) => void } = {},
 ): Promise<ProcessResult> {
   signal.throwIfAborted();
   if (!argv[0]) throw new Error("Command executable must not be empty");
   return await new Promise((resolve, reject) => {
     const child = spawn(argv[0]!, argv.slice(1), {
       cwd: project, shell: false, detached: process.platform !== "win32",
-      stdio: ["ignore", "pipe", "pipe"], env,
+      stdio: [options.stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"], env,
     });
     let stdout = "", stderr = "", output = "", timedOut = false;
     let killTimer: ReturnType<typeof setTimeout> | undefined;
@@ -33,15 +34,17 @@ export async function runProcess(
     signal.addEventListener("abort", stop, { once: true });
     if (signal.aborted) stop();
     // Streams buffer incomplete UTF-8 characters across chunk boundaries.
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => {
+    child.stdout!.setEncoding("utf8");
+    child.stderr!.setEncoding("utf8");
+    child.stdout!.on("data", (chunk: string) => {
       stdout = (stdout + chunk).slice(-32_000);
       output = (output + chunk).slice(-32_000);
+      options.onOutput?.(chunk);
     });
-    child.stderr.on("data", (chunk: string) => {
+    child.stderr!.on("data", (chunk: string) => {
       stderr = (stderr + chunk).slice(-32_000);
       output = (output + chunk).slice(-32_000);
+      options.onOutput?.(chunk);
     });
     const cleanup = () => {
       clearTimeout(timeout);
@@ -58,5 +61,9 @@ export async function runProcess(
       if (signal.aborted) reject(signal.reason);
       else resolve({ exitCode, stdout, stderr, output, timedOut });
     });
+    // An interpreter can reject input or exit before consuming the whole script.
+    // Its exit/error is the result; a closed stdin must not crash the host.
+    child.stdin?.on("error", () => {});
+    if (options.stdin !== undefined) child.stdin?.end(options.stdin);
   });
 }

@@ -9,7 +9,7 @@ import {
   proxyActivities,
   setHandler,
 } from "@temporalio/workflow";
-import { resolveAgentSettings, resolveInputs, runSchema, type BlockResult, type CheckResult, type WorkflowRun, type RecoveryResult, type UsageTotals } from "./domain.js";
+import { executionTimeoutMs, resolveInputs, runSchema, type BlockResult, type CheckResult, type WorkflowRun, type RecoveryResult, type UsageTotals } from "./domain.js";
 import { addUsage, emptyUsage } from "./budget.js";
 import { failureMessage } from "./failure-message.js";
 
@@ -111,9 +111,8 @@ export async function executeWorkflow(input: WorkflowRun) {
         await checkpoint("resumed", message, node.id);
       };
       await checkpoint("node_start", `${node.label} · visit ${visit}/${node.maxVisits}`, node.id);
-      const settings = resolveAgentSettings(run.config.agent, bundle.definition.agent, node.agent);
       const activities = proxyActivities<WorkflowActivities>({
-        startToCloseTimeout: settings.timeoutMs + 5000,
+        startToCloseTimeout: executionTimeoutMs(run.config, bundle, node) + 5000,
         heartbeatTimeout: "10 seconds",
         cancellationType: "WAIT_CANCELLATION_COMPLETED",
         // Agent/check activities can mutate files. Never blindly retry them after a crash.

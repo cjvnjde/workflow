@@ -980,23 +980,39 @@ test("discard controls restore blocks, model defaults and settings without savin
   expect(await (await request.get("/api/settings/execution")).json()).toEqual(originalExecution);
 });
 
-test("a function block is configurable without a model or named command", async ({ page, request }) => {
+test("editable Bash, TypeScript and JavaScript blocks save source and runtime without a model", async ({ page, request }) => {
   await page.goto("/"); await settings(page, "Blocks");
   await page.getByRole("button", { name: "Add block", exact: true }).click();
-  await page.getByLabel("Execution", { exact: true }).selectOption("function");
-  await expect(page.getByLabel("Function", { exact: true })).toHaveValue("git-push");
+  await page.getByLabel("Execution", { exact: true }).selectOption("script");
+  await expect(page.getByLabel("Script language", { exact: true })).toHaveValue("bash");
+  await expect(page.getByLabel("Script runtime", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("option", { name: /Built-in function/ })).toHaveCount(0);
   await expect(page.getByLabel("Preferred model profile", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Command", { exact: true })).toHaveCount(0);
-  await page.getByLabel("Block name", { exact: true }).fill("Publish without AI");
-  await page.getByLabel("Git remote (optional)", { exact: true }).fill("origin");
+  await page.getByLabel("Block name", { exact: true }).fill("Process files without AI");
+  await page.getByLabel("Output artifacts", { exact: true }).fill("evidence");
+  await page.getByLabel("Script timeout (seconds)", { exact: true }).fill("30");
   const id = await page.getByLabel("Block ID", { exact: true }).inputValue();
-  await page.getByRole("button", { name: "Save block", exact: true }).click();
-  await expect(page.getByText(/Block saved. New workflows/)).toBeVisible();
-  const saved = (await (await request.get("/api/library")).json()).blocks[id];
-  expect(saved.definition.executor).toEqual({ kind: "function", function: "git-push", remote: "origin" });
-  expect(saved.definition.agent).toBeUndefined();
-  expect(saved.definition.outputs).toEqual(["publication"]);
-  await page.screenshot({ path: "/tmp/workflow-function-block.png", fullPage: true });
+  for (const [language, runtime, code] of [
+    ["bash", "bash", "printf 'Done\\n'\n"],
+    ["typescript", "node", "const result: number = 42;\nconsole.log(result);\n"],
+    ["javascript", "bun", "import { readFileSync } from 'node:fs';\nconsole.log(JSON.parse(readFileSync(process.env.WORKFLOW_INPUT, 'utf8')).inputs);\n"],
+  ]) {
+    await page.getByLabel("Script language", { exact: true }).selectOption(language!);
+    if (runtime !== "bash") await page.getByLabel("Script runtime", { exact: true }).selectOption(runtime!);
+    await page.getByLabel("Script source", { exact: true }).fill(code!);
+    await page.getByRole("button", { name: "Save block", exact: true }).click();
+    await expect(page.getByText(/Block saved. New workflows/)).toBeVisible();
+    const saved = (await (await request.get("/api/library")).json()).blocks[id];
+    expect(saved.definition.executor).toEqual({ kind: "script", language, runtime, code, timeoutMs: 30_000, expect: "success" });
+    expect(saved.definition.agent).toBeUndefined();
+    expect(saved.definition.outputs).toEqual(["evidence"]);
+  }
+  await page.getByLabel("Script source", { exact: true }).fill("unsaved");
+  await page.getByRole("button", { name: "Discard block changes", exact: true }).click();
+  await expect(page.getByLabel("Script source", { exact: true })).toHaveValue(/WORKFLOW_INPUT/);
+  await page.getByText("Inputs, results & artifacts", { exact: true }).click();
+  await page.screenshot({ path: "/tmp/workflow-script-block.png", fullPage: true });
 });
 
 test("multiline fields grow for typing and pasted text, cap height, and shrink after discard", async ({ page }) => {

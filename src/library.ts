@@ -18,6 +18,8 @@ import {
 } from "./domain.js";
 import { loadUserSettings } from "./user-settings.js";
 import { approvedLibrarySchema } from "./library-editor-schema.js";
+import { pushScript } from "./script-examples.js";
+import { scriptLibrary } from "./script-migration.js";
 
 export async function loadLibrary(project: string): Promise<Library> {
   const directory = path.join(project, ".workflow");
@@ -29,7 +31,7 @@ export async function loadLibrary(project: string): Promise<Library> {
   try {
     const saved = approvedLibrarySchema.parse(JSON.parse(await readFile(path.join(directory, "library.json"), "utf8")));
     validateLibraryResources(saved.blocks, config.commands);
-    return { config, blocks: saved.blocks };
+    return scriptLibrary({ config, blocks: saved.blocks });
   } catch (error) {
     if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) { throw error; }
   }
@@ -87,7 +89,7 @@ export async function loadLibrary(project: string): Promise<Library> {
   }
   validateLibraryResources(blocks, config.commands);
 
-  return { config, blocks };
+  return scriptLibrary({ config, blocks });
 }
 
 export function validateLibraryResources(blocks: Library["blocks"], commands: Library["config"]["commands"]) {
@@ -155,10 +157,10 @@ export async function initializeProject(project: string, instructions = "") {
       id: "push",
       name: "Push current branch",
       description: "Publish existing commits to the current branch's remote, creating the remote branch and upstream when needed. Use only when publication is requested, after implementation, checks and commit creation. No AI call.",
-      executor: { kind: "function", function: "git-push" },
+      executor: pushScript(),
       outputs: ["publication"],
       checks: [],
-      prompt: "Push the current branch using the configured Git remote. This function never stages files, creates commits, force pushes or fixes failures. Route failure diagnostics to a repair step or stop.",
+      prompt: "Push the current branch using the configured Git remote. This editable script publishes existing commits. Route failure diagnostics to a repair step or stop. Modify the script source to change its behavior.",
     },
     {
       id: "requirements",
