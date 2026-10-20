@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref, watch } from "vue";
+import { computed, defineAsyncComponent, nextTick, ref, watch } from "vue";
 import {
   resolveAgentSettings,
   type RunEvent,
@@ -35,6 +35,44 @@ const emit = defineEmits<{
 }>();
 const tab = ref("workflow");
 const selected = ref<string>();
+const expanded = ref(false);
+const focusDialog = ref<HTMLDialogElement>();
+const expandButton = ref<HTMLButtonElement>();
+const graph = ref<{ fit: () => void }>();
+async function expandWorkspace() {
+  expanded.value = true;
+  await nextTick();
+  focusDialog.value?.showModal();
+  expandButton.value?.focus();
+  requestAnimationFrame(() => graph.value?.fit());
+}
+function closeWorkspace() {
+  focusDialog.value?.close();
+  expanded.value = false;
+  void nextTick(() => {
+    expandButton.value?.focus();
+    requestAnimationFrame(() => graph.value?.fit());
+  });
+}
+function dialogClosed() {
+  if (!focusDialog.value?.open) expanded.value = false;
+}
+function dialogKeydown(event: KeyboardEvent) {
+  if (event.key !== "Escape" || event.isComposing) return;
+  // Search inputs otherwise consume Escape to clear their text before the
+  // native dialog can close. Preserve the search when leaving expanded mode.
+  event.preventDefault();
+  event.stopPropagation();
+  closeWorkspace();
+}
+watch(expanded, (open, _previous, cleanup) => {
+  if (!open) return;
+  const overflow = document.body.style.overflow;
+  document.body.style.overflow = "hidden";
+  cleanup(() => {
+    document.body.style.overflow = overflow;
+  });
+});
 const now = ref(Date.now());
 const tabs = [
   ["results", "Results", "file"],
@@ -46,6 +84,7 @@ const tabs = [
 watch(
   () => props.run.id,
   () => {
+    if (expanded.value) closeWorkspace();
     selected.value = undefined;
     tab.value = "workflow";
   },
@@ -382,226 +421,264 @@ function selectStep(id: string) {
         >
       </button>
     </div>
-    <section class="details-panel">
-      <nav class="tabs" aria-label="Workflow views">
-        <button
-          v-for="[id, label, icon] in tabs"
-          :key="id"
-          :class="{ active: tab === id }"
-          @click="tab = id"
-        >
-          <Icon :name="icon" :size="15" />{{ label }}</button
-        ><span>{{
-          running
-            ? "Live"
-            : `${completed}/${run.plan.nodes.length} blocks passed`
-        }}</span>
-      </nav>
-      <div v-if="tab === 'results'" class="results-panel">
-        <div class="card-title">
-          <h2>{{ finished ? resultTitle : "Results so far" }}</h2>
-          <MarkdownActions
-            :content="report"
-            :filename="`${run.id}-results.md`"
-          />
-        </div>
-        <MarkdownView v-if="finished" :content="resultSummary" />
-        <details
-          v-if="run.attempts.some((attempt) => attempt.checks.length)"
-          class="result-checks"
-        >
-          <summary>
-            Verification checks ·
-            {{
-              run.attempts.reduce(
-                (sum, attempt) => sum + attempt.checks.length,
-                0,
-              )
-            }}
-            recorded
-          </summary>
-          <template
-            v-for="attempt in run.attempts"
-            :key="`${attempt.nodeId}-${attempt.visit}`"
+    <dialog
+      ref="focusDialog"
+      class="workflow-dialog"
+      aria-label="Expanded workflow workspace"
+      @cancel.prevent="closeWorkspace"
+      @close="dialogClosed"
+      @click.self="closeWorkspace"
+      @keydown="dialogKeydown"
+    />
+    <Teleport :to="focusDialog ?? 'body'" :disabled="!expanded">
+      <section class="details-panel">
+        <header v-if="expanded" class="expanded-heading">
+          <div>
+            <span class="eyebrow">WORKFLOW WORKSPACE</span>
+            <h2>{{ run.plan.title }}</h2>
+          </div>
+          <span class="status-pill" :class="run.status"
+            ><span class="status-dot" :class="run.status" />{{
+              statusLabel(run.status)
+            }}</span
           >
-            <details v-for="(check, index) in attempt.checks" :key="index">
-              <summary>
-                {{
-                  check.matched
-                    ? "✓ Met expectation"
-                    : "× Did not meet expectation"
-                }}
-                · {{ attempt.nodeId }} / visit {{ attempt.visit }} ·
-                {{ check.command }} · exit {{ check.exitCode ?? "unknown" }}
-              </summary>
-              <pre>{{ check.output }}</pre>
-            </details>
-          </template>
-        </details>
-        <div v-if="!artifacts.length && !finished" class="panel-empty">
-          Step results will appear here as the workflow runs.
-        </div>
-        <article
-          v-for="artifact in resultArtifacts"
-          :key="`${artifact.nodeId}/${artifact.name}`"
-          class="result-artifact"
-        >
+        </header>
+        <nav class="tabs" aria-label="Workflow views">
+          <button
+            v-for="[id, label, icon] in tabs"
+            :key="id"
+            :class="{ active: tab === id }"
+            @click="tab = id"
+          >
+            <Icon :name="icon" :size="15" />{{ label }}</button
+          ><span>{{
+            running
+              ? "Live"
+              : `${completed}/${run.plan.nodes.length} blocks passed`
+          }}</span>
+          <button
+            ref="expandButton"
+            class="expand-workspace"
+            :aria-label="expanded ? 'Close expanded view' : 'Expand workspace'"
+            :title="
+              expanded
+                ? 'Close expanded view (Esc)'
+                : 'Expand workflow, results and activity'
+            "
+            @click="expanded ? closeWorkspace() : expandWorkspace()"
+          >
+            <Icon :name="expanded ? 'close' : 'expand'" :size="16" /><span>{{
+              expanded ? "Close" : "Expand"
+            }}</span>
+          </button>
+        </nav>
+        <div v-if="tab === 'results'" class="results-panel">
           <div class="card-title">
-            <h3>
+            <h2>{{ finished ? resultTitle : "Results so far" }}</h2>
+            <MarkdownActions
+              :content="report"
+              :filename="`${run.id}-results.md`"
+            />
+          </div>
+          <MarkdownView v-if="finished" :content="resultSummary" />
+          <details
+            v-if="run.attempts.some((attempt) => attempt.checks.length)"
+            class="result-checks"
+          >
+            <summary>
+              Verification checks ·
               {{
-                run.plan.nodes.find((n) => n.id === artifact.nodeId)?.label ??
-                artifact.nodeId
+                run.attempts.reduce(
+                  (sum, attempt) => sum + attempt.checks.length,
+                  0,
+                )
               }}
-              / {{ artifact.name }}
-            </h3>
+              recorded
+            </summary>
+            <template
+              v-for="attempt in run.attempts"
+              :key="`${attempt.nodeId}-${attempt.visit}`"
+            >
+              <details v-for="(check, index) in attempt.checks" :key="index">
+                <summary>
+                  {{
+                    check.matched
+                      ? "✓ Met expectation"
+                      : "× Did not meet expectation"
+                  }}
+                  · {{ attempt.nodeId }} / visit {{ attempt.visit }} ·
+                  {{ check.command }} · exit {{ check.exitCode ?? "unknown" }}
+                </summary>
+                <pre>{{ check.output }}</pre>
+              </details>
+            </template>
+          </details>
+          <div v-if="!artifacts.length && !finished" class="panel-empty">
+            Step results will appear here as the workflow runs.
+          </div>
+          <article
+            v-for="artifact in resultArtifacts"
+            :key="`${artifact.nodeId}/${artifact.name}`"
+            class="result-artifact"
+          >
+            <div class="card-title">
+              <h3>
+                {{
+                  run.plan.nodes.find((n) => n.id === artifact.nodeId)?.label ??
+                  artifact.nodeId
+                }}
+                / {{ artifact.name }}
+              </h3>
+              <MarkdownActions
+                :content="artifact.content"
+                :filename="`${artifact.nodeId}-${artifact.name}.md`"
+              />
+            </div>
+            <MarkdownView :content="artifact.content" />
+          </article>
+        </div>
+        <div
+          v-if="tab === 'workflow'"
+          class="workflow-canvas"
+          :class="{ inspecting: node }"
+        >
+          <div class="graph-panel">
+            <WorkflowGraph
+              ref="graph"
+              :key="run.id"
+              :run="{ ...run, plan }"
+              @select="selectStep"
+            />
+            <div class="graph-legend">
+              <strong v-if="draft.dirty && draft.validPlan"
+                >Unsaved preview</strong
+              ><span>― pass</span><span>┄ retry with feedback</span
+              ><span>― fail</span>
+            </div>
+          </div>
+          <aside v-if="node && bundle" class="step-inspector">
+            <div class="card-title">
+              <span class="eyebrow">STEP DETAILS</span
+              ><button
+                class="icon-button"
+                aria-label="Close step details"
+                @click="selected = undefined"
+              >
+                <Icon name="close" />
+              </button>
+            </div>
+            <h2>{{ node.label }}</h2>
+            <p>{{ node.goal }}</p>
+            <div
+              v-if="selectedAttempt?.result || selectedAttempt?.error"
+              class="step-result"
+            >
+              <h3>
+                Latest step result ·
+                {{ selectedAttempt.result?.outcome ?? "error" }}
+              </h3>
+              <MarkdownView
+                :content="
+                  selectedAttempt.error ?? selectedAttempt.result?.summary ?? ''
+                "
+              />
+              <button class="quiet" @click="tab = 'results'">
+                View results & artifacts
+              </button>
+            </div>
+            <div class="detail-row">
+              <span>Execution</span
+              ><strong>{{
+                bundle.definition.executor
+                  ? executionLabel(bundle.definition.executor)
+                  : (agent?.model ?? "Project model")
+              }}</strong>
+            </div>
+            <div class="detail-row">
+              <span>Visits</span
+              ><strong
+                >{{ run.visits[node.id] ?? 0 }} / {{ node.maxVisits }}</strong
+              >
+            </div>
+            <h3>Context received</h3>
+            <template v-if="node.inputs.length"
+              ><div
+                v-for="(input, index) in node.inputs"
+                :key="index"
+                class="handoff-label"
+              >
+                {{ input.node }} / {{ input.artifact
+                }}<small
+                  >{{ input.as ?? input.artifact }} ·
+                  {{ input.required ? "required" : "optional" }}</small
+                >
+              </div></template
+            >
+            <p v-else class="muted">Task and attachments only.</p>
+            <button @click="tab = 'activity'">
+              <Icon name="log" :size="15" />View step activity
+            </button>
+            <details>
+              <summary>Instructions & tools</summary>
+              <pre>{{ bundle.prompt }}</pre>
+              <p v-if="!bundle.definition.executor">
+                Full file access, Bash, Git and enabled MCP servers. Step
+                instructions define the work to perform.
+              </p>
+              <h3>Host checks</h3>
+              <pre>{{ JSON.stringify(bundle.definition.checks, null, 2) }}</pre>
+            </details>
+          </aside>
+        </div>
+        <ActivityFeed
+          v-if="tab === 'activity'"
+          :key="run.id"
+          :events="events"
+          :nodes="plan.nodes"
+          :selected="selected"
+          :running="running"
+          :live-text="!selected || selected === run.cursor ? liveText : ''"
+          @select="selected = $event"
+        />
+        <div v-if="tab === 'artifacts'" class="artifact-list">
+          <p class="muted">
+            Each step receives only the context selected in the workflow.
+          </p>
+          <details
+            v-for="artifact in artifacts"
+            :key="`${artifact.nodeId}-${artifact.name}`"
+          >
+            <summary>
+              <Icon name="file" :size="16" />{{ artifact.nodeId }} /
+              {{ artifact.name }}
+            </summary>
             <MarkdownActions
               :content="artifact.content"
               :filename="`${artifact.nodeId}-${artifact.name}.md`"
             />
-          </div>
-          <MarkdownView :content="artifact.content" />
-        </article>
-      </div>
-      <div
-        v-if="tab === 'workflow'"
-        class="workflow-canvas"
-        :class="{ inspecting: node }"
-      >
-        <div class="graph-panel">
-          <WorkflowGraph
-            :key="run.id"
-            :run="{ ...run, plan }"
-            @select="selectStep"
-          />
-          <div class="graph-legend">
-            <strong v-if="draft.dirty && draft.validPlan"
-              >Unsaved preview</strong
-            ><span>― pass</span><span>┄ retry with feedback</span
-            ><span>― fail</span>
-          </div>
-        </div>
-        <aside v-if="node && bundle" class="step-inspector">
-          <div class="card-title">
-            <span class="eyebrow">STEP DETAILS</span
-            ><button
-              class="icon-button"
-              aria-label="Close step details"
-              @click="selected = undefined"
-            >
-              <Icon name="close" />
-            </button>
-          </div>
-          <h2>{{ node.label }}</h2>
-          <p>{{ node.goal }}</p>
-          <div
-            v-if="selectedAttempt?.result || selectedAttempt?.error"
-            class="step-result"
-          >
-            <h3>
-              Latest step result ·
-              {{ selectedAttempt.result?.outcome ?? "error" }}
-            </h3>
-            <MarkdownView
-              :content="
-                selectedAttempt.error ?? selectedAttempt.result?.summary ?? ''
-              "
-            />
-            <button class="quiet" @click="tab = 'results'">
-              View results & artifacts
-            </button>
-          </div>
-          <div class="detail-row">
-            <span>Execution</span
-            ><strong>{{
-              bundle.definition.executor
-                ? executionLabel(bundle.definition.executor)
-                : (agent?.model ?? "Project model")
-            }}</strong>
-          </div>
-          <div class="detail-row">
-            <span>Visits</span
-            ><strong
-              >{{ run.visits[node.id] ?? 0 }} / {{ node.maxVisits }}</strong
-            >
-          </div>
-          <h3>Context received</h3>
-          <template v-if="node.inputs.length"
-            ><div
-              v-for="(input, index) in node.inputs"
-              :key="index"
-              class="handoff-label"
-            >
-              {{ input.node }} / {{ input.artifact
-              }}<small
-                >{{ input.as ?? input.artifact }} ·
-                {{ input.required ? "required" : "optional" }}</small
-              >
-            </div></template
-          >
-          <p v-else class="muted">Task and attachments only.</p>
-          <button @click="tab = 'activity'">
-            <Icon name="log" :size="15" />View step activity
-          </button>
-          <details>
-            <summary>Instructions & tools</summary>
-            <pre>{{ bundle.prompt }}</pre>
-            <p v-if="!bundle.definition.executor">
-              Full file access, Bash, Git and enabled MCP servers. Step
-              instructions define the work to perform.
-            </p>
-            <h3>Host checks</h3>
-            <pre>{{ JSON.stringify(bundle.definition.checks, null, 2) }}</pre>
+            <MarkdownView :content="artifact.content" />
           </details>
-        </aside>
-      </div>
-      <ActivityFeed
-        v-if="tab === 'activity'"
-        :key="run.id"
-        :events="events"
-        :nodes="plan.nodes"
-        :selected="selected"
-        :running="running"
-        :live-text="!selected || selected === run.cursor ? liveText : ''"
-        @select="selected = $event"
-      />
-      <div v-if="tab === 'artifacts'" class="artifact-list">
-        <p class="muted">
-          Each step receives only the context selected in the workflow.
-        </p>
-        <details
-          v-for="artifact in artifacts"
-          :key="`${artifact.nodeId}-${artifact.name}`"
-        >
-          <summary>
-            <Icon name="file" :size="16" />{{ artifact.nodeId }} /
-            {{ artifact.name }}
-          </summary>
-          <MarkdownActions
-            :content="artifact.content"
-            :filename="`${artifact.nodeId}-${artifact.name}.md`"
-          />
-          <MarkdownView :content="artifact.content" />
-        </details>
-        <div v-if="!artifacts.length" class="panel-empty">
-          <Icon name="folder" :size="26" />
-          <p>No artifacts yet.</p>
+          <div v-if="!artifacts.length" class="panel-empty">
+            <Icon name="folder" :size="26" />
+            <p>No artifacts yet.</p>
+          </div>
         </div>
-      </div>
-      <PlanEditor
-        v-if="tab === 'edit'"
-        :run="run"
-        :draft="draft"
-        :busy="busy"
-        :live="live"
-        :coordinator-activity="coordinatorActivity"
-        :coordinator-text="coordinatorText"
-        :refining="refining"
-        @cancel-refinement="emit('cancelRefinement')"
-        @save="emit('save')"
-        @refine="emit('refine', $event)"
-        @setup="emit('settings')"
-      />
-    </section>
+        <PlanEditor
+          v-if="tab === 'edit'"
+          :run="run"
+          :draft="draft"
+          :busy="busy"
+          :live="live"
+          :coordinator-activity="coordinatorActivity"
+          :coordinator-text="coordinatorText"
+          :refining="refining"
+          @cancel-refinement="emit('cancelRefinement')"
+          @save="emit('save')"
+          @refine="emit('refine', $event)"
+          @setup="emit('settings')"
+        />
+      </section>
+    </Teleport>
     <details class="run-metrics">
       <summary>
         <Icon name="clock" :size="14" />Execution details ·

@@ -18,7 +18,27 @@ import "@vue-flow/core/dist/theme-default.css";
 import "@vue-flow/controls/dist/style.css";
 const props = defineProps<{ run: WorkflowRun }>();
 const emit = defineEmits<{ select: [id: string] }>();
-const { fitView } = useVueFlow();
+const { fitView, dimensions } = useVueFlow();
+const motionDuration = () =>
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 250;
+let focusedNode: string | undefined;
+function fitViewport() {
+  if (!dimensions.value.width || !dimensions.value.height) return;
+  void fitView({
+    nodes: focusedNode ? [focusedNode] : undefined,
+    padding: focusedNode ? 0.6 : 0.18,
+    maxZoom: 1.1,
+    duration: motionDuration(),
+  });
+}
+function fit() {
+  focusedNode = undefined;
+  fitViewport();
+}
+defineExpose({ fit });
+// Vue Flow measures the canvas through ResizeObserver. Fit only after those
+// dimensions update, including when the inspector or expanded view opens.
+watch(() => [dimensions.value.width, dimensions.value.height], fitViewport);
 const positions = ref<Record<string, { x: number; y: number }>>({});
 const storageKey = () => `workflow:graph:${props.run.id}`;
 watch(
@@ -66,16 +86,13 @@ async function resetLayout() {
     /* Optional storage. */
   }
   await nextTick();
-  await fitView({ padding: 0.2, duration: 250 });
+  fit();
 }
-function focusActive() {
+async function focusActive() {
+  focusedNode = props.run.cursor;
   emit("select", props.run.cursor);
-  void fitView({
-    nodes: [props.run.cursor],
-    maxZoom: 1.1,
-    padding: 0.6,
-    duration: 250,
-  });
+  await nextTick();
+  fitViewport();
 }
 const nodes = computed<Node[]>(() => [
   ...props.run.plan.nodes.map((node, index) => {
@@ -201,6 +218,7 @@ const edges = computed<Edge[]>(() =>
       >
         Focus active step
       </button>
+      <button @click="fit">Fit workflow</button>
       <button @click="resetLayout">Reset layout</button>
     </div>
   </VueFlow>

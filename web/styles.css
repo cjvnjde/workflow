@@ -648,6 +648,33 @@ button.danger, button.danger-quiet { color: var(--ctp-red); background: color-mi
 .graph-toolbar { position: absolute; top: 12px; right: 12px; display: flex; gap: 8px; align-items: center; z-index: 5; }
 .graph-toolbar span { font-size: 11px; color: var(--ctp-subtext0); background: var(--ctp-base); padding: 4px; }
 .graph-toolbar button { font-size: 11px; padding: 6px 9px; }
+.graph-toolbar { max-width: calc(100% - 24px); flex-wrap: wrap; justify-content: flex-end; }
+.tabs .expand-workspace { padding: 7px 9px; margin-left: auto; border: 1px solid var(--ctp-surface1); border-radius: 7px; color: var(--ctp-subtext1); }
+.workflow-dialog { position: fixed; inset: 16px; margin: 0; width: calc(100vw - 32px); height: calc(100dvh - 32px); max-width: none; max-height: none; padding: 0; border: 1px solid var(--ctp-surface1); border-radius: 14px; color: var(--ctp-text); background: var(--ctp-base); box-shadow: 0 24px 100px #11111bb3; }
+.workflow-dialog::backdrop { background: #11111bd4; backdrop-filter: blur(5px); }
+.workflow-dialog .details-panel { height: 100%; display: flex; flex-direction: column; border: 0; border-radius: 0; }
+.expanded-heading { display: flex; justify-content: space-between; gap: 20px; align-items: center; flex-shrink: 0; padding: 18px 22px 6px; }
+.expanded-heading .eyebrow { margin-bottom: 5px; font-size: 9px; }
+.expanded-heading h2 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
+.workflow-dialog .tabs { flex-shrink: 0; }
+.workflow-dialog .workflow-canvas { flex: 1; min-height: 0; }
+.workflow-dialog .graph-panel { height: 100%; min-height: 0; }
+.workflow-dialog .step-inspector { max-height: 100%; overflow: auto; }
+.workflow-dialog .activity, .workflow-dialog .artifact-list, .workflow-dialog .results-panel, .workflow-dialog .plan-editor { flex: 1; min-height: 0; max-height: none; }
+.workflow-dialog .artifact-list, .workflow-dialog .results-panel, .workflow-dialog .plan-editor { overflow: auto; }
+@media (max-width: 1000px) {
+  .workflow-dialog .workflow-canvas.inspecting { grid-template-rows: minmax(220px, 1fr) minmax(0, 40%); }
+}
+@media (max-width: 780px) {
+  .workflow-dialog { inset: 6px; width: calc(100vw - 12px); height: calc(100dvh - 12px); border-radius: 10px; }
+  .expanded-heading { padding: 14px 14px 6px; gap: 12px; }
+  .expanded-heading h2 { font-size: 15px; }
+  .tabs .expand-workspace > span { display: none; }
+}
+@media (max-width: 480px) {
+  .tabs { gap: 12px; }
+  .tabs > button:not(.expand-workspace) > svg { display: none; }
+}
 .vue-flow__node.workflow-node { cursor: grab; }
 .vue-flow__node.workflow-node.dragging { cursor: grabbing; }
 .vue-flow__node.workflow-node.active { border: 2px solid var(--ctp-mauve); background: color-mix(in srgb, var(--ctp-mauve) 12%, var(--ctp-base)); box-shadow: 0 0 0 5px #cba6f722; animation: active-block 2s ease-in-out infinite; }

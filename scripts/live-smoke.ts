@@ -534,7 +534,39 @@ async function checkWorkflows() {
     exact: true,
   });
   if (await allSteps.isVisible()) await allSteps.click();
-  await expect(page.locator(".activity")).toContainText("bash");
+  await page
+    .getByRole("button", { name: "Expand workspace", exact: true })
+    .click();
+  const workspace = page.getByRole("dialog", {
+    name: "Expanded workflow workspace",
+    exact: true,
+  });
+  await expect(workspace).toBeVisible();
+  await workspace.getByLabel("Search activity", { exact: true }).fill("bash");
+  await expect(workspace.locator(".event").first()).toBeVisible();
+  await page.screenshot({
+    path: path.join(directory, "expanded-activity.png"),
+    fullPage: true,
+  });
+  await page.keyboard.press("Escape");
+  await expect(workspace).not.toBeVisible();
+  await expect(page.getByLabel("Search activity", { exact: true })).toHaveValue(
+    "bash",
+  );
+  await page.getByRole("button", { name: "Workflow", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Expand workspace", exact: true })
+    .click();
+  await workspace
+    .getByRole("button", { name: "Fit workflow", exact: true })
+    .click();
+  await page.screenshot({
+    path: path.join(directory, "expanded-workflow.png"),
+    fullPage: true,
+  });
+  await workspace
+    .getByRole("button", { name: "Close expanded view", exact: true })
+    .click();
   await page.getByRole("button", { name: /View full results/ }).click();
   const artifact = page.locator(".result-artifact").first();
   await expect(artifact.locator(".markdown-body")).toBeVisible();

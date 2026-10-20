@@ -1,6 +1,7 @@
 export const paths = {
   chart: "M4 20V10M12 20V4M20 20v-7",
   alert: "m12 3 10 18H2L12 3Zm0 6v5m0 3v.01",
+  expand: "M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5",
   copy: "M8 8h13v13H8zM16 8V3H3v13h5",
   download: "M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5",
   trash: "M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7",

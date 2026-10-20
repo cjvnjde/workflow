@@ -58,6 +58,8 @@ Open **http://127.0.0.1:4310**.
 
 The **Activity** view and **Planning activity** drawer let you search messages, commands, files and error output, then filter AI updates, tools, checks or usage. Execution activity can also be scoped to a step. Tool arguments and full command diagnostics are preserved under **View details**; usage is presented as a readable summary instead of raw JSON.
 
+Use **Expand** beside the workflow tabs for a larger workspace with the graph, step details, results, activity and editor. **Fit workflow** centers the graph without resetting dragged positions. Press **Esc** or **Close** to return; the selected step, open tab, search filters and unsaved editor changes are retained.
+
 Attachments support PNG, JPEG, WebP and GIF (up to 6 MB each), and UTF-8 text/code (up to 256 KB each); up to eight files and 20 MB per request. PDF and other binary document extraction are not implemented. Image requests need an image-capable planning model. The coordinator records relevant visual observations for steps that use text-only models. Attached content is passed to the selected model providers. Uploaded files are private project files under `.workflow/attachments/`, checked by hash before use.
 
 Use `workflow --port 4320` for another port, or `--port 0` to select a free port and print its address.

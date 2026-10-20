@@ -843,6 +843,67 @@ test("activity is searchable, filters tools and checks, and retains raw failure 
   await page.screenshot({ path: "/tmp/workflow-activity-mobile.png", fullPage: true });
 });
 
+test("expanded workspaces keep graph context, search and draft edits with keyboard and mobile support", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/"); await newTask(page, "Fix the expanded workspace fixture bug");
+  const normalGraph = page.locator(".graph-panel");
+  await expect(normalGraph.locator(".vue-flow__node[data-id='work']")).toBeVisible();
+  const originalHeight = (await normalGraph.boundingBox())!.height;
+  await page.getByRole("button", { name: "Expand workspace", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Expanded workflow workspace", exact: true });
+  await expect(dialog).toBeVisible();
+  expect((await dialog.boundingBox())!.width).toBeGreaterThan(1380);
+  expect((await dialog.locator(".graph-panel").boundingBox())!.height).toBeGreaterThan(originalHeight + 150);
+  await dialog.getByRole("button", { name: "Fit workflow", exact: true }).click();
+  await dialog.locator(".vue-flow__node[data-id='work']").click();
+  await expect(dialog.locator(".step-inspector")).toBeVisible();
+  await expect.poll(async () => {
+    const panel = (await dialog.locator(".graph-panel").boundingBox())!;
+    const terminal = (await dialog.locator(".vue-flow__node[data-id='$failed']").boundingBox())!;
+    return terminal.x >= panel.x && terminal.x + terminal.width <= panel.x + panel.width;
+  }).toBe(true);
+  await page.screenshot({ path: "/tmp/workflow-expanded-desktop.png", fullPage: true });
+  await dialog.getByRole("button", { name: "Activity", exact: true }).click();
+  await dialog.getByLabel("Search activity", { exact: true }).fill("Keep my search");
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByLabel("Search activity", { exact: true })).toHaveValue("Keep my search");
+  await expect(page.getByLabel("Activity step", { exact: true })).toHaveValue("work");
+  await expect(page.getByRole("button", { name: "Expand workspace", exact: true })).toBeFocused();
+
+  await page.getByRole("button", { name: "Expand workspace", exact: true }).click();
+  await expect(dialog.getByLabel("Search activity", { exact: true })).toHaveValue("Keep my search");
+  for (let i = 0; i < 8; i++) {
+    await page.keyboard.press("Tab");
+    expect(await dialog.evaluate(el => el.contains(document.activeElement))).toBe(true);
+  }
+  await dialog.getByRole("button", { name: "Editor", exact: true }).click();
+  await dialog.getByRole("button", { name: "JSON", exact: true }).click();
+  const editor = dialog.getByLabel("Workflow graph JSON", { exact: true });
+  const edited = JSON.parse(await editor.inputValue()) as { title: string };
+  edited.title = "Retained expanded graph edit";
+  await editor.fill(JSON.stringify(edited, null, 2));
+  await dialog.getByRole("button", { name: "Close expanded view", exact: true }).click();
+  await expect(page.getByLabel("Workflow graph JSON", { exact: true })).toHaveValue(JSON.stringify(edited, null, 2));
+  await page.getByRole("button", { name: "Discard graph edits", exact: true }).click();
+
+  await page.getByRole("button", { name: "Workflow", exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileExpand = (await page.getByRole("button", { name: "Expand workspace", exact: true }).boundingBox())!;
+  expect(mobileExpand.x + mobileExpand.width).toBeLessThanOrEqual(390);
+  await page.getByRole("button", { name: "Expand workspace", exact: true }).click();
+  await expect(dialog.locator(".step-inspector")).toBeVisible();
+  await dialog.getByRole("button", { name: "Fit workflow", exact: true }).click();
+  expect((await dialog.boundingBox())!.width).toBeLessThanOrEqual(390);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  expect((await dialog.getByRole("button", { name: "Results", exact: true }).boundingBox())!.x).toBeGreaterThan(0);
+  await page.screenshot({ path: "/tmp/workflow-expanded-mobile.png", fullPage: true });
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  expect(await page.evaluate(() => document.body.style.overflow)).not.toBe("hidden");
+});
+
 test("deleting a workflow removes its task from history and stale responses cannot restore it", async ({ page }) => {
   await page.goto("/"); await newTask(page, "Delete this draft from history");
   const originalHash = new URL(page.url()).hash;
