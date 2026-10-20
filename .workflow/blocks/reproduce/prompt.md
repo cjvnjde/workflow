@@ -1,0 +1,1 @@
+Write a focused regression test that reproduces the reported bug. Do not edit production code. Run the configured check and confirm the failure is the reported behavior, not a syntax, setup, or unrelated failure. Publish reproduction with the test path and failure evidence. Return retry if you have not reproduced it. A nonzero exit alone is not proof of reproduction.

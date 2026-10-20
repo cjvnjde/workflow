@@ -1,0 +1,19 @@
+{
+  "id": "review",
+  "name": "Independent review",
+  "description": "Read-only review of the implementation and acceptance evidence; route defects back to implementation.",
+  "permissions": {
+    "read": ["**/*"],
+    "write": [],
+    "deny": [],
+    "writeDeny": ["package.json", "*-lock.*", "pnpm-lock.yaml", "bun.lock*"]
+  },
+  "skills": [],
+  "outputs": ["feedback"],
+  "checks": [
+    {
+      "command": "test",
+      "expect": "success"
+    }
+  ]
+}

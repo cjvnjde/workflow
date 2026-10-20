@@ -1,0 +1,1 @@
+Independently inspect the relevant code, tests, and supplied artifacts. Do not modify files. Report concrete correctness defects with file locations and evidence in feedback. Return retry for actionable defects, fail for a blocker, and pass only when requirements are met and checks pass. Do not invent issues to satisfy a quota.

@@ -1,0 +1,85 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { initializeProject } from "../../src/library.js";
+import { WorkflowEngine } from "../../src/engine.js";
+import { runDemoBlock } from "../../src/block-runner.js";
+import { createServer } from "../../src/server.js";
+import { BrowserAuth } from "../../src/browser-auth.js";
+import { authRuntime } from "../auth-fixture.js";
+
+const project = await mkdtemp(path.join(os.tmpdir(), "workflow-e2e-"));
+process.env.WORKFLOW_HOME = path.join(project, ".workflow-user");
+await initializeProject(project);
+process.env.WORKFLOW_DEMO_DELAY_MS = "400";
+const engine = new WorkflowEngine(project, "demo", async execution => {
+  if (execution.task.includes("[result-fixture]") && execution.node.id === "review") {
+    return {
+      outcome: "fail",
+      summary: "Branch review blocked: this fixture has no comparison base. Passing checks do not complete the review.",
+      artifacts: Object.fromEntries(execution.bundle.definition.outputs.map(name => [name, [
+        "## Review status: blocked", "", "**Comparison base unavailable.**", "", "- No source files were changed.", "- Supply the intended base.", "",
+        "| Check | Result |", "| --- | --- |", "| Unit tests | Passed |", "",
+        "```ts", "const reviewed = false;", "```", "",
+        '<img src=\"https://example.invalid/track\" onerror=\"window.markdownInjected = true\">',
+        '<script>window.markdownInjected = true</script>', "[Unsafe link](javascript:alert(1))",
+      ].join("\n")])),
+    };
+  }
+  return await runDemoBlock(execution);
+});
+await engine.initialize();
+const connections = new Map<string, "oauth" | "api_key">();
+const runtime = authRuntime(async (provider, method, interaction) => {
+  if (method === "oauth") {
+    interaction.notify({ type: "auth_url", url: "https://auth.openai.com/test-sign-in", instructions: "Complete sign-in, then return here." });
+    await interaction.prompt({ type: "manual_code", message: "Paste test callback" });
+  } else {
+    await interaction.prompt({ type: "secret", message: "Enter test API key" });
+  }
+  connections.set(provider, method);
+  return { type: "api_key", key: "test-only" };
+});
+runtime.logout = async (provider?: string) => { if (provider) { connections.delete(provider); } };
+const server = await createServer(engine, 4311, {
+  design: async (options) => {
+    options.emit("tool_start", "Inspecting project settings…");
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    options.signal.throwIfAborted();
+    const message = options.messages.at(-1)!.content;
+    if (/explain/i.test(message)) { return { message: "The proposal uses your connected catalog and preserves the other settings sections." }; }
+    if (options.scope === "profiles") {
+      const one = /one profile/i.test(message);
+      if (one && !options.previous) { throw new Error("Expected the earlier proposal during refinement"); }
+      const profiles = (one ? ["Project lead"] : ["Deliberate review", "Routine helper"]).map((name, index) => ({ id: name.toLowerCase().replaceAll(" ", "-"), name, description: `Use for ${index ? "routine summaries and straightforward changes" : "planning, difficult implementation and independent review"}.`, enabled: true, agent: { provider: "openai", model: "test-model", thinking: index ? "off" as const : "high" as const } }));
+      return { message: one ? "Refined the earlier proposal into one project lead profile." : "I drafted roles from the available catalog. You can refine them before applying.", proposal: { scope: "profiles", summary: one ? "One profile for project leadership" : "A focused pair of model roles", profiles, coordinatorProfile: profiles[0]!.id } };
+    }
+    if (options.scope === "blocks") {
+      const bundle = structuredClone(options.library.blocks.review!);
+      bundle.prompt = message;
+      bundle.definition.agent = { provider: "openai", model: "test-model", thinking: "high" };
+      return { message: "Updated the review instructions while preserving outputs and permissions.", proposal: { scope: "blocks", summary: "Focused independent review", changes: { summary: "Focused independent review", blocks: [{ bundle, rationale: "Review should cite independent acceptance evidence" }] } } };
+    }
+    if (options.scope === "cases") { return { message: "Added release readiness instructions.", proposal: { scope: "cases", summary: "Release readiness case", cases: [...options.settings.cases.filter((item) => item.id !== "release-ai"), { id: "release-ai", name: "Release readiness", description: "Prepare a release", instructions: message, enabled: true }], instructions: options.settings.instructions, suggestBlocks: options.settings.suggestBlocks } }; }
+    if (options.scope === "capabilities") { return { message: "Added a project skill.", proposal: { scope: "capabilities", summary: "Coding conventions", capabilities: { ...options.settings.capabilities, skills: [...options.settings.capabilities.skills.filter((item) => item.id !== "conventions-ai"), { id: "conventions-ai", name: "AI coding conventions", description: "Project coding style", content: message, enabled: true }] } } }; }
+    const { instructions, commands, budget } = options.library.config;
+    return { message: "Reduced the workflow limit.", proposal: { scope: "execution", summary: "Maximum 15 steps", settings: { instructions, commands, budget, maxSteps: 15 } } };
+  },
+  auth: new BrowserAuth(async () => runtime),
+  providers: async () => [...connections].map(([id, method]) => ({ id, name: id === "openai" ? "OpenAI" : "Test provider", method, source: "stored" as const })),
+  catalog: async () => ({ warnings: [], models: [...connections.keys()].map((provider) => ({ provider, id: "test-model", name: "Test model", reasoning: true, thinkingLevels: ["off", "medium", "high"], contextWindow: 128000, maxTokens: 8000, cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 } })) }),
+});
+await server.listen({ port: 4311, host: "127.0.0.1" });
+
+const shutdown = async () => {
+  await server.close();
+  await rm(project, { recursive: true, force: true });
+};
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(signal, () => {
+    void shutdown().catch((error: unknown) => {
+      console.error(error);
+      process.exitCode = 1;
+    });
+  });
+}

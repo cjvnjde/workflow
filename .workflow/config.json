@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "instructions": "Use TypeScript and project test conventions. Keep workflow execution explicit and bounded. Use Bun for installation, builds, scripts, and tests. Run the tests with bun run test.",
+  "agent": {
+    "thinking": "medium",
+    "timeoutMs": 600000,
+    "maxToolCalls": 100
+  },
+  "commands": {
+    "test": {
+      "argv": ["bun", "run", "test"],
+      "timeoutMs": 120000
+    }
+  },
+  "maxSteps": 30
+}

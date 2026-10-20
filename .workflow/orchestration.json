@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "instructions": "",
+  "approval": "review",
+  "suggestBlocks": true,
+  "coordinatorProfile": "",
+  "profiles": [
+    {
+      "id": "simple-code",
+      "name": "Simple coding",
+      "description": "Handle straightforward tasks and routine code changes with focused reasoning. Keep work narrowly scoped and follow existing TypeScript conventions; use Bun for scripts and tests.",
+      "agent": {
+        "provider": "openai",
+        "model": "gpt-6-luna",
+        "thinking": "low"
+      },
+      "enabled": true
+    },
+    {
+      "id": "code-generation",
+      "name": "High-volume code generation",
+      "description": "Generate substantial amounts of straightforward, repetitive code. Use maximum available thinking to maintain consistency across generated code; follow project TypeScript conventions and use Bun for scripts and tests.",
+      "agent": {
+        "provider": "openai",
+        "model": "gpt-6-luna",
+        "thinking": "xhigh"
+      },
+      "enabled": true
+    },
+    {
+      "id": "serious-code",
+      "name": "Serious code generation",
+      "description": "Implement complex or consequential changes with careful reasoning, preserving project conventions and validating with focused checks or bun run test when appropriate.",
+      "agent": {
+        "provider": "openai",
+        "model": "gpt-6.1-sol",
+        "thinking": "high"
+      },
+      "enabled": true
+    },
+    {
+      "id": "code-review",
+      "name": "Code review",
+      "description": "Independently review code for correctness, regressions, edge cases, and test gaps. Prioritize actionable findings with evidence; do not implement fixes as part of review.",
+      "agent": {
+        "provider": "openai",
+        "model": "gpt-6-astra",
+        "thinking": "high"
+      },
+      "enabled": true
+    }
+  ],
+  "cases": [
+    {
+      "id": "bug",
+      "name": "Bug fix",
+      "description": "Something is broken, incorrect, regressed, or produces an error.",
+      "instructions": "Establish the failing behavior and acceptance criteria. Reproduce it with a focused check when useful. Keep implementation separate from independent testing and review. Failed tests should return diagnostic artifacts to implementation, never silently weaken tests. Build the smallest appropriate graph for the actual request; there is no fixed sequence.",
+      "enabled": true
+    },
+    {
+      "id": "feature",
+      "name": "Feature",
+      "description": "Add or change user-facing behavior or a capability.",
+      "instructions": "Extract observable acceptance criteria from the request and attachments. Inspect existing conventions. Compose implementation, independent verification and review as the task warrants. Route failed verification back to implementation with focused feedback. Avoid unnecessary steps for small changes.",
+      "enabled": true
+    },
+    {
+      "id": "maintenance",
+      "name": "Maintenance",
+      "description": "Refactoring, documentation, dependency updates, cleanup, or developer tooling.",
+      "instructions": "Preserve existing behavior unless the request asks otherwise. Define appropriate validation for the change. Use a cheaper model for mechanical work and stronger reasoning for consequential migrations or review. Compose only the blocks needed.",
+      "enabled": true
+    },
+    {
+      "id": "investigation",
+      "name": "Investigation",
+      "description": "Understand, inspect, compare, diagnose, or explain something before making changes.",
+      "instructions": "Prefer read-only inspection. Produce evidence-backed findings and useful next actions. Do not implement changes unless the request calls for them. Ask a question only when a missing answer prevents meaningful progress.",
+      "enabled": true
+    }
+  ],
+  "capabilities": {
+    "skills": [],
+    "mcpServers": []
+  }
+}

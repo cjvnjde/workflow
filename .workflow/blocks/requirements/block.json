@@ -1,0 +1,14 @@
+{
+  "id": "requirements",
+  "name": "Define requirements",
+  "description": "For a new feature or unclear task, produce observable acceptance criteria before implementation.",
+  "permissions": {
+    "read": ["**/*"],
+    "write": [],
+    "deny": [],
+    "writeDeny": ["package.json", "*-lock.*", "pnpm-lock.yaml", "bun.lock*"]
+  },
+  "skills": [],
+  "outputs": ["requirements"],
+  "checks": []
+}

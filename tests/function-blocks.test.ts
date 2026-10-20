@@ -1,0 +1,179 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { mkdir, writeFile, readFile, stat } from "node:fs/promises";
+import path from "node:path";
+import { fixture, passingResult } from "./helpers.js";
+import { runFunctionBlock } from "../src/function-blocks.js";
+import { budgetSchema, bundleSchema, nodeSchema, validatePlan } from "../src/domain.js";
+import { validatePlanModels } from "../src/library-proposals.js";
+import { validateLibraryResources } from "../src/library.js";
+import { emptyUsage, estimateBudget } from "../src/budget.js";
+import { WorkflowEngine } from "../src/engine.js";
+import type { BlockExecution } from "../src/block-runner.js";
+
+const exec = promisify(execFile);
+async function git(project: string, ...args: string[]) {
+  return (await exec("git", ["-C", project, ...args], { env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } })).stdout.trim();
+}
+async function repository(project: string) {
+  await git(project, "init", "-b", "feature/publish");
+  await git(project, "config", "user.name", "Workflow Test");
+  await git(project, "config", "user.email", "workflow@example.invalid");
+  await git(project, "config", "commit.gpgsign", "false");
+  await git(project, "config", "core.hooksPath", "/dev/null");
+  const remote = path.join(project, "remote.git");
+  await mkdir(remote);
+  await git(remote, "init", "--bare");
+  await git(project, "remote", "add", "origin", remote);
+  return remote;
+}
+async function commit(project: string, content = "first") {
+  await writeFile(path.join(project, "source.txt"), content);
+  await git(project, "add", "--", "source.txt");
+  await git(project, "commit", "-m", content);
+  return await git(project, "rev-parse", "HEAD");
+}
+function execution(project: string, library: Awaited<ReturnType<typeof fixture>>["library"]): BlockExecution {
+  return {
+    project, config: library.config, bundle: library.blocks.push!,
+    node: nodeSchema.parse({ id: "push", block: "push", label: "Publish commits", goal: "Push current branch",
+      maxVisits: 1, on: { pass: "$complete", retry: "$failed", fail: "$failed" } }),
+    task: "Push current branch", settings: library.config.agent,
+    inputs: {}, visit: 1, signal: new AbortController().signal, emit: () => {},
+  };
+}
+
+test("function push creates a remote branch/upstream, updates it, and never stages or commits", async (t) => {
+  const { project, library } = await fixture(t);
+  const remote = await repository(project);
+  const first = await commit(project);
+  await writeFile(path.join(project, "private-untracked.txt"), "leave alone");
+  const step = execution(project, library);
+  validateLibraryResources(library.blocks, {});
+  const plan = validatePlan({ title: "Push", task: step.task, entry: "push", nodes: [step.node] }, library);
+  validatePlanModels(plan, library, []);
+  assert.equal(estimateBudget(plan, library, "live").expectedCostUsd, 0);
+  const created = await runFunctionBlock(step);
+  assert.equal(created.outcome, "pass", created.summary);
+  assert.equal(await git(remote, "rev-parse", "refs/heads/feature/publish"), first);
+  assert.equal(await git(project, "rev-parse", "--abbrev-ref", "@{upstream}"), "origin/feature/publish");
+  const second = await commit(project, "second");
+  await git(project, "config", "remote.origin.mirror", "true");
+  await git(project, "branch", "unrelated");
+  const updated = await runFunctionBlock(step);
+  assert.equal(updated.outcome, "pass", updated.summary);
+  assert.equal(await git(remote, "rev-parse", "refs/heads/feature/publish"), second);
+  assert.equal(await git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/"), "refs/heads/feature/publish");
+  assert.equal(await git(project, "diff", "--cached", "--name-only"), "");
+  assert.equal(await git(project, "rev-list", "--count", "HEAD"), "2");
+  assert.equal(await readFile(path.join(project, "private-untracked.txt"), "utf8"), "leave alone");
+  assert.match(updated.artifacts.publication!, /Git activity/);
+  assert.equal((await runFunctionBlock(step)).outcome, "pass", "Repeating a push is safe");
+});
+
+test("function push respects an existing differently named upstream and rejects divergence without forcing", async (t) => {
+  const { project, library } = await fixture(t);
+  const remote = await repository(project);
+  await commit(project);
+  await git(project, "push", "--set-upstream", "origin", "HEAD:refs/heads/release");
+  const second = await commit(project, "second");
+  const step = execution(project, library);
+  assert.equal((await runFunctionBlock(step)).outcome, "pass");
+  assert.equal(await git(remote, "rev-parse", "refs/heads/release"), second);
+  await git(project, "reset", "--hard", "HEAD~1");
+  await commit(project, "divergent");
+  const result = await runFunctionBlock(step);
+  assert.equal(result.outcome, "retry");
+  assert.match(result.summary, /reject|non-fast-forward/i);
+  assert.equal(await git(remote, "rev-parse", "refs/heads/release"), second);
+});
+
+test("function push uses an explicit configured remote and reports missing commits/remotes/detached HEAD", async (t) => {
+  const { project, library } = await fixture(t);
+  const remote = await repository(project);
+  const step = execution(project, library);
+  assert.equal((await runFunctionBlock(step)).outcome, "retry", "Unborn HEAD cannot be pushed");
+  const head = await commit(project);
+  step.bundle = bundleSchema.parse({ ...step.bundle, definition: { ...step.bundle.definition,
+    executor: { kind: "function", function: "git-push", remote: "absent" } } });
+  assert.match((await runFunctionBlock(step)).summary, /not configured/);
+  await git(project, "remote", "rename", "origin", "published");
+  step.bundle.definition.executor = { kind: "function", function: "git-push", remote: "published" };
+  assert.equal((await runFunctionBlock(step)).outcome, "pass");
+  assert.equal(await git(remote, "rev-parse", "refs/heads/feature/publish"), head);
+  await git(project, "checkout", "--detach");
+  assert.match((await runFunctionBlock(step)).summary, /detached/);
+  await assert.rejects(runFunctionBlock({ ...step, signal: AbortSignal.abort(new Error("Stop")) }), /Stop/);
+});
+
+test("cancelling a push terminates the Git process group before its hook can publish late effects", async (t) => {
+  const { project, library } = await fixture(t);
+  const remote = await repository(project);
+  await commit(project);
+  await mkdir(path.join(project, ".hooks"));
+  await writeFile(path.join(project, ".hooks/pre-push"),
+    "#!/bin/sh\nprintf ready > hook-ready\nsleep 2\nprintf late > hook-late\n", { mode: 0o755 });
+  await git(project, "config", "core.hooksPath", ".hooks");
+  const controller = new AbortController();
+  const operation = runFunctionBlock({ ...execution(project, library), signal: controller.signal });
+  const stopped = assert.rejects(operation, /Cancelled push/);
+  let ready = false;
+  for (let i = 0; i < 100 && !ready; i++) {
+    ready = await stat(path.join(project, "hook-ready")).then(() => true, () => false);
+    if (!ready) await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  controller.abort(new Error("Cancelled push"));
+  await stopped;
+  assert.equal(ready, true);
+  await new Promise(resolve => setTimeout(resolve, 2100));
+  await assert.rejects(stat(path.join(project, "hook-late")), /ENOENT/);
+  assert.equal(await git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/"), "");
+});
+
+test("an approved function workflow publishes using no AI runner or provider credentials", async (t) => {
+  const { project, library, cleanup } = await fixture(t);
+  const remote = await repository(project);
+  const head = await commit(project);
+  const engine = new WorkflowEngine(project, "live", async () => { throw new Error("A function must never call AI"); });
+  cleanup(() => engine.shutdown());
+  await engine.initialize();
+  const step = execution(project, library);
+  const plan = validatePlan({ title: "Publish", task: step.task, entry: "push", nodes: [step.node] }, library);
+  const draft = await engine.create(plan, library);
+  assert.equal(await git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/"), "");
+  await engine.approve(draft.id);
+  await engine.waitForIdle();
+  const completed = engine.get(draft.id);
+  assert.equal(completed.status, "completed", completed.error);
+  assert.equal(completed.usage?.requests ?? 0, 0);
+  assert.equal(await git(remote, "rev-parse", "refs/heads/feature/publish"), head);
+  assert.match(completed.attempts[0]!.result!.summary, /Pushed/);
+});
+
+test("a function can finish publication after the preceding AI step exhausts the model budget", async (t) => {
+  const { project, library, cleanup } = await fixture(t);
+  const remote = await repository(project);
+  const head = await commit(project);
+  library.config.budget = budgetSchema.parse({ maxCostUsd: 0.1 });
+  const calls: string[] = [];
+  const engine = new WorkflowEngine(project, "live", async (step) => {
+    calls.push(step.node.id);
+    await step.onUsage?.({ ...emptyUsage(), costUsd: 0.1, requests: 1 });
+    return passingResult(step);
+  });
+  cleanup(() => engine.shutdown());
+  await engine.initialize();
+  const push = execution(project, library).node;
+  const review = nodeSchema.parse({ id: "review", block: "review", label: "Review",
+    goal: "Review before publishing", on: { pass: "push", retry: "$failed", fail: "$failed" } });
+  const draft = await engine.create(validatePlan({ title: "Review and push", task: "Review and push", entry: "review", nodes: [review, push] }, library), library);
+  await engine.approve(draft.id);
+  await engine.waitForIdle();
+  const completed = engine.get(draft.id);
+  assert.equal(completed.status, "completed", completed.error);
+  assert.deepEqual(calls, ["review"]);
+  assert.equal(completed.usage?.costUsd, 0.1);
+  assert.equal(await git(remote, "rev-parse", "refs/heads/feature/publish"), head);
+});

@@ -1,0 +1,299 @@
+import { z } from "zod";
+
+export const identifierSchema = z
+  .string()
+  .regex(/^[a-z][a-z0-9-]{0,63}$/)
+  .refine(
+    (value) => value !== "constructor" && value !== "prototype",
+    "Reserved identifier",
+  );
+export const outcomeSchema = z.enum(["pass", "retry", "fail"]);
+const agentFields = {
+  provider: z.string().min(1).optional(),
+  model: z.string().min(1).optional(),
+  thinking: z.enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"]),
+  timeoutMs: z.number().int().min(1000).max(3_600_000),
+  maxToolCalls: z.number().int().min(1).max(1000),
+};
+export const agentOverrideSchema = z.object(agentFields).partial().strict();
+export const agentSchema = z
+  .object({
+    ...agentFields,
+    thinking: agentFields.thinking.default("medium"),
+    timeoutMs: agentFields.timeoutMs.default(600_000),
+    maxToolCalls: agentFields.maxToolCalls.default(100),
+  })
+  .strict();
+export const commandSchema = z
+  .object({
+    argv: z
+      .array(z.string())
+      .min(1)
+      .refine(
+        (argv) => !!argv[0]?.trim(),
+        "Command executable must not be empty",
+      ),
+    timeoutMs: z.number().int().min(100).max(600_000).default(120_000),
+  })
+  .strict();
+export const configSchema = z
+  .object({
+    version: z.literal(1),
+    instructions: z.string().default(""),
+    agent: agentSchema.default(() => agentSchema.parse({})),
+    coordinator: agentOverrideSchema.optional(),
+    commands: z.record(identifierSchema, commandSchema).default({}),
+    maxSteps: z.number().int().min(1).max(500).default(30),
+  })
+  .strict();
+export const blockSchema = z
+  .object({
+    id: identifierSchema,
+    name: z.string().min(1).max(120),
+    description: z.string().min(1).max(4000),
+    permissions: z
+      .object({
+        read: z.array(z.string()).default(["**/*"]),
+        write: z.array(z.string()).default([]),
+        deny: z.array(z.string()).default([]),
+        writeDeny: z.array(z.string()).default([]),
+      })
+      .strict(),
+    skills: z.array(z.string()).default([]),
+    outputs: z
+      .array(identifierSchema)
+      .refine(
+        (outputs) =>
+          new Set(outputs).size === outputs.length &&
+          !outputs.includes("summary"),
+        "Outputs must be unique; summary is host-owned",
+      )
+      .default([]),
+    checks: z
+      .array(
+        z
+          .object({
+            command: identifierSchema,
+            expect: z.enum(["success", "failure"]),
+          })
+          .strict(),
+      )
+      .default([]),
+    agent: agentOverrideSchema.optional(),
+  })
+  .strict();
+export const bundleSchema = z
+  .object({
+    definition: blockSchema,
+    prompt: z.string().min(1),
+    skills: z.array(
+      z.object({ path: z.string(), content: z.string() }).strict(),
+    ),
+  })
+  .strict();
+const inputSchema = z
+  .object({
+    node: identifierSchema,
+    artifact: identifierSchema,
+    as: identifierSchema.optional(),
+    required: z.boolean().default(false),
+  })
+  .strict();
+export const nodeSchema = z
+  .object({
+    id: identifierSchema,
+    block: identifierSchema,
+    label: z.string().min(1).max(120),
+    goal: z.string().min(1).max(8000),
+    inputs: z.array(inputSchema).default([]),
+    maxVisits: z.number().int().min(1).max(30).default(3),
+    agent: agentOverrideSchema.optional(),
+    on: z
+      .object({ pass: z.string(), retry: z.string(), fail: z.string() })
+      .strict(),
+  })
+  .strict();
+export const planSchema = z
+  .object({
+    title: z.string().min(1).max(200),
+    task: z.string().min(1).max(32_000),
+    entry: identifierSchema,
+    nodes: z.array(nodeSchema).min(1).max(50),
+  })
+  .strict();
+export const resultSchema = z
+  .object({
+    outcome: outcomeSchema,
+    summary: z.string().min(1).max(16_000),
+    artifacts: z.record(identifierSchema, z.string().max(64_000)).default({}),
+  })
+  .strict();
+export const checkResultSchema = z
+  .object({
+    command: z.string(),
+    expected: z.enum(["success", "failure"]),
+    exitCode: z.number().nullable(),
+    matched: z.boolean(),
+    output: z.string(),
+  })
+  .strict();
+export const eventSchema = z
+  .object({
+    id: z.string(),
+    runId: z.string(),
+    time: z.string(),
+    kind: z.string(),
+    nodeId: z.string().optional(),
+    message: z.string(),
+  })
+  .strict();
+export const runSchema = z
+  .object({
+    id: z.string().uuid(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+    revision: z.number().int().nonnegative().default(0),
+    temporalWorkflowId: z.string().optional(),
+    approvedAt: z.string().optional(),
+    mode: z.enum(["demo", "live"]),
+    status: z.enum([
+      "draft",
+      "running",
+      "pausing",
+      "paused",
+      "completed",
+      "failed",
+      "cancelled",
+      "rejected",
+      "interrupted",
+    ]),
+    plan: planSchema,
+    config: configSchema,
+    blocks: z.record(identifierSchema, bundleSchema),
+    cursor: z.string(),
+    visits: z.record(z.string(), z.number()),
+    artifacts: z.record(z.string(), z.record(z.string(), z.string())),
+    attempts: z.array(
+      z
+        .object({
+          nodeId: z.string(),
+          visit: z.number(),
+          startedAt: z.string(),
+          finishedAt: z.string().optional(),
+          error: z.string().optional(),
+          result: resultSchema.optional(),
+          checks: z.array(checkResultSchema).default([]),
+        })
+        .strict(),
+    ),
+    error: z.string().optional(),
+  })
+  .strict();
+
+export type AgentSettings = z.infer<typeof agentSchema>;
+export function resolveAgentSettings(
+  base: z.infer<typeof agentOverrideSchema>,
+  ...overrides: (z.infer<typeof agentOverrideSchema> | undefined)[]
+) {
+  let settings = { ...base };
+  for (const override of overrides) {
+    if (!override) { continue; }
+    if (override.provider && override.provider !== settings.provider) {
+      delete settings.model;
+    }
+    settings = { ...settings, ...override };
+  }
+  return agentSchema.parse(settings);
+}
+export type ProjectConfig = z.infer<typeof configSchema>;
+export type Block = z.infer<typeof blockSchema>;
+export type BlockBundle = z.infer<typeof bundleSchema>;
+export type WorkflowNode = z.infer<typeof nodeSchema>;
+export type WorkflowPlan = z.infer<typeof planSchema>;
+export type BlockResult = z.infer<typeof resultSchema>;
+export type CheckResult = z.infer<typeof checkResultSchema>;
+export type RunEvent = z.infer<typeof eventSchema>;
+export type WorkflowRun = z.infer<typeof runSchema>;
+export type Library = {
+  config: ProjectConfig;
+  blocks: Record<string, BlockBundle>;
+};
+
+export function validatePlan(value: unknown, library: Library) {
+  const plan = planSchema.parse(value);
+  const nodes = new Map(plan.nodes.map((node) => [node.id, node]));
+  if (nodes.size !== plan.nodes.length || !nodes.has(plan.entry)) {
+    throw new Error("Node IDs must be unique and the entry must exist");
+  }
+
+  for (const node of plan.nodes) {
+    const bundle = library.blocks[node.block];
+    if (!bundle) {
+      throw new Error(`Unknown block: ${node.block}`);
+    }
+    for (const target of Object.values(node.on)) {
+      if (
+        target !== "$complete" &&
+        target !== "$failed" &&
+        !nodes.has(target)
+      ) {
+        throw new Error(`Unknown transition target: ${target}`);
+      }
+    }
+    const aliases = new Set<string>();
+    for (const input of node.inputs) {
+      const source = nodes.get(input.node);
+      const outputs =
+        source && library.blocks[source.block]?.definition.outputs;
+      const alias = input.as ?? input.artifact;
+      if (
+        !source ||
+        (input.artifact !== "summary" && !outputs?.includes(input.artifact))
+      ) {
+        throw new Error(`Invalid handoff: ${input.node}.${input.artifact}`);
+      }
+      if (aliases.has(alias)) {
+        throw new Error(`Duplicate input alias: ${alias}`);
+      }
+      aliases.add(alias);
+    }
+  }
+
+  const reachable = new Set<string>();
+  const visit = (id: string) => {
+    if (reachable.has(id)) {
+      return;
+    }
+    reachable.add(id);
+    const node = nodes.get(id);
+    if (node) {
+      Object.values(node.on).forEach(visit);
+    }
+  };
+  visit(plan.entry);
+  if (plan.nodes.some((node) => !reachable.has(node.id))) {
+    throw new Error("All nodes must be reachable from the entry");
+  }
+  if (!reachable.has("$complete")) {
+    throw new Error("The graph must contain a reachable completion route");
+  }
+
+  return plan;
+}
+
+export function resolveInputs(node: WorkflowNode, run: WorkflowRun) {
+  const inputs: Record<string, string> = {};
+  for (const input of node.inputs) {
+    const value = run.artifacts[input.node]?.[input.artifact];
+    if (value === undefined && input.required) {
+      throw new Error(
+        `Missing required artifact: ${input.node}.${input.artifact}`,
+      );
+    }
+    if (value !== undefined) {
+      inputs[input.as ?? input.artifact] = value;
+    }
+  }
+
+  return inputs;
+}

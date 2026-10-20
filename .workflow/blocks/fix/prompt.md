@@ -1,0 +1,1 @@
+Fix the bug described by the reproduction and any review feedback. Never change tests to obtain a pass. Read tests and modify production code only. Run the allowed check. Publish implementation describing the root cause, fix, and evidence. Return retry if the checks still fail.

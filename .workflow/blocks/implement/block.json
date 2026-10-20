@@ -1,0 +1,29 @@
+{
+  "id": "implement",
+  "name": "Implement feature",
+  "description": "Implement a feature against agreed requirements. Production code only; send verification issues back here.",
+  "permissions": {
+    "read": ["**/*"],
+    "write": ["**/*"],
+    "deny": [],
+    "writeDeny": [
+      "tests/**",
+      "test/**",
+      "**/__tests__/**",
+      "**/*.test.*",
+      "**/*.spec.*",
+      "package.json",
+      "*-lock.*",
+      "pnpm-lock.yaml",
+      "bun.lock*"
+    ]
+  },
+  "skills": [],
+  "outputs": ["implementation"],
+  "checks": [
+    {
+      "command": "test",
+      "expect": "success"
+    }
+  ]
+}

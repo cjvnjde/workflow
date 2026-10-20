@@ -1,0 +1,32 @@
+export const paths = {
+  copy: "M8 8h13v13H8zM16 8V3H3v13h5",
+  download: "M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5",
+  trash: "M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7",
+  bell: "M5 17h14l-2-3V9a5 5 0 0 0-10 0v5l-2 3ZM10 21h4",
+  move: "M12 2v20M2 12h20M8 6l4-4 4 4M8 18l4 4 4-4M6 8l-4 4 4 4M18 8l4 4-4 4",
+  minus: "M5 12h14",
+  plus: "M12 5v14M5 12h14",
+  arrow: "M12 19V5m-6 6 6-6 6 6",
+  chevron: "m9 5 7 7-7 7",
+  settings:
+    "m9 3-1 3-3 1 1 3-2 2 2 2-1 3 3 1 1 3h6l1-3 3-1-1-3 2-2-2-2 1-3-3-1-1-3H9ZM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z",
+  workflow:
+    "M8 5h8M8 19h8M5 8v8M19 8v8M3 3h4v4H3zM17 3h4v4h-4zM3 17h4v4H3zM17 17h4v4h-4z",
+  check: "m5 12 4 4L19 6",
+  close: "m6 6 12 12M6 18 18 6",
+  pause: "M8 5v14M16 5v14",
+  play: "m8 5 11 7-11 7V5Z",
+  clock: "M12 8v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z",
+  file: "M14 2H5v20h14V7l-5-5Zm0 0v6h5M8 13h8M8 17h6",
+  image: "M3 3h18v18H3zM3 17l6-6 4 4 3-3 5 5M15 7h.01",
+  search: "M16 16l5 5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z",
+  code: "m8 6-6 6 6 6m8-12 6 6-6 6M14 3l-4 18",
+  spark: "m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4L12 3Z",
+  menu: "M4 6h16M4 12h16M4 18h16",
+  folder: "M3 6h6l2 3h10v11H3V6Z",
+  shield: "m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Zm-4 9 3 3 5-6",
+  terminal: "m4 6 6 6-6 6m8 0h8",
+  log: "M8 5h13M8 12h13M8 19h13M3 5h.01M3 12h.01M3 19h.01",
+} as const;
+
+export type IconName = keyof typeof paths;

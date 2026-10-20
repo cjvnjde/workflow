@@ -1,0 +1,25 @@
+{
+  "id": "reproduce",
+  "name": "Reproduce bug",
+  "description": "For a bug, add a focused regression test that fails for the reported behavior. Tests only, never production code.",
+  "permissions": {
+    "read": ["**/*"],
+    "write": [
+      "tests/**",
+      "test/**",
+      "**/__tests__/**",
+      "**/*.test.*",
+      "**/*.spec.*"
+    ],
+    "deny": [],
+    "writeDeny": ["package.json", "*-lock.*", "pnpm-lock.yaml", "bun.lock*"]
+  },
+  "skills": [],
+  "outputs": ["reproduction"],
+  "checks": [
+    {
+      "command": "test",
+      "expect": "failure"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "verify",
+  "name": "Write independent tests",
+  "description": "Independently verify a feature by adding tests. Tests only; return retry with feedback if implementation is wrong.",
+  "permissions": {
+    "read": ["**/*"],
+    "write": [
+      "tests/**",
+      "test/**",
+      "**/__tests__/**",
+      "**/*.test.*",
+      "**/*.spec.*"
+    ],
+    "deny": [],
+    "writeDeny": ["package.json", "*-lock.*", "pnpm-lock.yaml", "bun.lock*"]
+  },
+  "skills": [],
+  "outputs": ["feedback"],
+  "checks": [
+    {
+      "command": "test",
+      "expect": "success"
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+Implement the agreed requirements. Read any verification/review feedback and correct it. Do not change tests, dependency manifests, or workflow policy. Use the smallest coherent change. Run the allowed check. Publish implementation with what changed and how each acceptance criterion is met. Return retry if unfinished.
