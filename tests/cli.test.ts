@@ -141,12 +141,15 @@ test("the package ships a Bun executable and UI, not project state or a developm
   );
   assert.ok(files.includes("dist/cli.js"));
   assert.ok(files.includes("dist/workflow-bundle.js"));
+  assert.ok(files.includes("dist/program-runtime.js"));
+  assert.ok(files.includes("dist/workflow-sdk.d.ts"));
+  assert.ok(files.includes("examples/implement-reviewed.ts"));
   assert.ok(files.includes("dist/web/index.html"));
   assert.ok(files.some((file) => file.startsWith("dist/web/assets/")));
   assert.ok(
     !files.some((file) => /^(src|tests|node_modules|\.workflow)\//.test(file)),
   );
-  assert.ok(!files.some((file) => file.endsWith(".ts")));
+  assert.ok(!files.some((file) => file.endsWith(".ts") && file !== "dist/workflow-sdk.d.ts" && !file.startsWith("examples/")));
 });
 
 test("workflow serves the bundled UI from the install location while using the caller's project", async (t) => {

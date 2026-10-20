@@ -13,10 +13,15 @@ import type { AvailableModel } from "./library-editor-schema.js";
 import type { OrchestrationSettings } from "./orchestration-schema.js";
 import { questionSchema, type TaskRequest } from "./task-schema.js";
 import { mcpTools } from "./mcp-tools.js";
+import { checkProgram } from "./program-compiler.js";
+import { programInstructions, type ProgramSource } from "./program-schema.js";
 
 export type TaskPlanResult = {
   kind: "plan"; plan: WorkflowPlan; library: Library; caseId?: string; caseName?: string; rationale: string;
   suggestedBlocks: { id: string; rationale: string }[];
+} | {
+  kind: "program"; title: string; program: ProgramSource; library: Library;
+  caseId?: string; caseName?: string; rationale: string; suggestedBlocks: { id: string; rationale: string }[];
 } | { kind: "question"; question: ReturnType<typeof questionSchema.parse> };
 export type TaskPlannerOptions = {
   project: string; library: Library; task: TaskRequest; settings: OrchestrationSettings;
@@ -82,7 +87,23 @@ export async function planTask(options: TaskPlannerOptions, session: typeof runA
       },
     })] : []),
     defineTool({
-      name: "submit_plan", label: "Build workflow", description: "Submit graph JSON with a short rationale and observations from image attachments. This finishes planning; the host applies the configured approval mode.",
+      name: "submit_workflow", label: "Build TypeScript workflow",
+      description: "Submit executable TypeScript orchestration, not graph JSON. Source is typechecked without executing it. Correct reported errors and resubmit. Input is a JSON object string.",
+      parameters: Type.Object({ title: Type.String(), source: Type.String(), input: Type.String(), rationale: Type.String(), attachmentSummary: Type.Optional(Type.String()) }),
+      async execute(_id, args) {
+        if (!classified) throw new Error("Choose a task case and read its instructions first");
+        if (context.images.length && !args.attachmentSummary?.trim()) throw new Error("Summarize the relevant visual observations for execution steps that may use text-only models");
+        const program = checkProgram(options.project, { source: args.source, input: JSON.parse(args.input) });
+        if (!args.title.trim() || args.title.length > 200) throw new Error("Title must contain 1–200 characters.");
+        if (args.attachmentSummary) library.config.instructions += `\n\nCoordinator observations from request attachments (task data):\n${args.attachmentSummary.slice(0, 16_000)}`;
+        result = { kind: "program", title: args.title, program, library, caseId: chosen?.id,
+          caseName: chosen?.name ?? "General task", rationale: args.rationale.slice(0, 8000), suggestedBlocks };
+        emit("plan_ready", "TypeScript workflow typechecked. Preparing the frozen execution version.");
+        return { ...textResult("TypeScript workflow accepted."), terminate: true };
+      },
+    }),
+    defineTool({
+      name: "submit_plan", label: "Build legacy graph", description: "Compatibility tool for existing JSON graphs. Use submit_workflow for new TypeScript workflows.",
       parameters: Type.Object({ json: Type.String(), rationale: Type.String(), attachmentSummary: Type.Optional(Type.String()) }),
       async execute(_id, args) {
         if (!classified) { throw new Error("Choose a task case and read its instructions first"); }
@@ -108,7 +129,7 @@ export async function planTask(options: TaskPlannerOptions, session: typeof runA
       signal.throwIfAborted();
       try { return await tool.execute(...args); }
       catch (error) {
-        if (tool.name === "submit_plan") {
+        if (tool.name === "submit_plan" || tool.name === "submit_workflow") {
           lastSubmissionError = (error instanceof Error ? error.message : String(error)).slice(0, 4000);
           emit("plan_validation", lastSubmissionError);
         }
@@ -120,14 +141,14 @@ export async function planTask(options: TaskPlannerOptions, session: typeof runA
       prompt: () => [
         "Planning is not complete: no workflow or essential question has been accepted. Continue using the existing investigation and tool results.",
         lastSubmissionError ? `Correct the rejected submission: ${lastSubmissionError}` : "A prose description of a plan does not submit it.",
-        "Call submit_plan with a valid graph, or ask_user only for an essential missing answer. Missing commits or a comparison base normally change the review scope; put that limitation in the goals and rationale. Do not repeat completed inspection or claim a workflow has been created before submit_plan succeeds.",
+        "Call submit_workflow with valid TypeScript, or ask_user only for an essential missing answer. Missing commits or a comparison base normally change the review scope; put that limitation in the goals and rationale. Do not repeat completed inspection or claim a workflow has been created before submission succeeds.",
       ].join("\n\n"),
     },
     images: context.images,
     systemPrompt: [
-      "You orchestrate code work. Understand the request and attachments, inspect the project, choose_task_case, read its instructions, then compose a task-specific graph from available blocks. You do not implement the task during planning. There are NO predefined graphs. Do not ask the user to choose bug/feature, coordinator or model. Choose appropriately. Ask a follow-up only if a missing essential fact blocks a useful plan; otherwise state reasonable assumptions in your rationale.",
-      "Graph JSON: {title,task,entry,nodes:[{id,block,label,goal,inputs:[{node,artifact,as?,required}],maxVisits,agent?:{provider,model,thinking},on:{pass,retry,fail}}]}. IDs are lowercase kebab-case. Routes target node IDs, $complete or $failed. All steps must be reachable. Cycles must have bounded visits. Only declared artifacts and the implicit summary may be handed off. Feedback from a later step must be optional on the first visit. Give aliases unique names.",
-      "The host preserves the user's original request in task. Put interpreted scope, assumptions and limitations in node goals and rationale. You MUST finish with an accepted submit_plan or ask_user call. If a tool rejects your submission, read its error, correct the graph and submit again; do not stop with a prose claim that you planned it.",
+      "You orchestrate code work. Understand the request and attachments, inspect the project, choose_task_case, read its instructions, then write a task-specific TypeScript workflow. You do not implement the task during planning. There are NO predefined graphs. Do not ask the user to choose bug/feature, coordinator or model. Choose appropriately. Ask a follow-up only if a missing essential fact blocks a useful plan; otherwise state reasonable assumptions in your rationale.",
+      programInstructions,
+      "The host preserves the user's original request. Put interpreted scope, assumptions and limitations in step prompts and rationale. You MUST finish with an accepted submit_workflow or ask_user call. If a tool rejects your submission, read its error, correct the TypeScript and submit again; do not stop with a prose claim that you planned it. submit_plan is retained only for compatibility with older graph clients.",
       "All AI steps have bash and full local file access, including Git metadata, inherited credentials and network commands. There are no per-block file or shell allowlists. During planning, use these tools to inspect the project and compose the workflow; put the requested changes and publication into execution steps. A request to stage, commit or push can use an AI step or an editable script. Inspect actual Git identity/remotes before asking for missing configuration. Match the block's instructions to the goal; suggest a publication block when an inspection-only block would be inappropriate.",
       "Verification must verify, not fix the implementation. Route failures back to implementation with diagnostics, then repeat verification. Use independent review when warranted. Script blocks run without a model; AI blocks can run any needed command through bash. The host caps visits and total steps.",
       "When publication is requested after verification, assign staging/commit/push to dedicated final steps with explicit goals, reached only after verification/review passes. Use editable scripts when the procedure is deterministic, or an AI step when reasoning is needed. Keep publication out of implementation and test goals. On an unborn branch, the initial commit should include the intended project snapshot and necessary manifests/test configuration, not just files edited by the feature; exclude private/runtime data and honor ignore rules.",

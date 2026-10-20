@@ -1,4 +1,5 @@
 import { expect, test, type Page, type APIRequestContext } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 async function newTask(page: Page, prompt: string) {
   await page.getByRole("button", { name: "New task", exact: true }).click();
@@ -10,6 +11,69 @@ async function settings(page: Page, section = "Providers & models") {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("button", { name: section, exact: true }).click();
 }
+
+test("TypeScript workflow import, typecheck, editable inputs, discard, download and live trace", async ({ page }) => {
+  await page.goto("/");
+  await page.getByText("Use a TypeScript workflow", { exact: true }).click();
+  const source = `import { workflow, z } from "workflow";
+export default workflow({name:"Code review",input:z.object({request:z.string()}),async run(ctx){
+  await ctx.step("review","review",{prompt:ctx.input.request});
+  return "Reviewed: " + ctx.input.request;
+}});`;
+  await page.getByLabel("Import TypeScript file", { exact: true }).setInputFiles({
+    name: "review.ts", mimeType: "text/typescript", buffer: Buffer.from(source),
+  });
+  await page.getByLabel("Workflow name", { exact: true }).fill("TypeScript browser workflow");
+  await page.getByLabel("New workflow inputs (JSON)", { exact: true }).fill('{"request":"working files"}');
+  await page.getByRole("button", { name: "Create workflow draft", exact: true }).click();
+  await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
+  const code = page.getByLabel("Workflow TypeScript", { exact: true });
+  await expect(code).toHaveValue(source);
+  await code.fill(source.replace("ctx.input.request", "ctx.input.missing"));
+  await page.getByRole("button", { name: "Typecheck & save draft", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: /Property 'missing'/ })).toBeVisible();
+  await page.getByRole("button", { name: "Discard code edits", exact: true }).click();
+  await expect(code).toHaveValue(source);
+  await page.getByLabel("Workflow inputs (JSON)", { exact: true }).fill('{"request":"updated working files"}');
+  await page.getByRole("button", { name: "Typecheck & save draft", exact: true }).click();
+  await expect(page.getByText("Typechecked · source and imports frozen", { exact: true })).toBeVisible();
+  const downloading = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download .ts", exact: true }).click();
+  const downloaded = await downloading;
+  expect(downloaded.suggestedFilename()).toBe("review.ts");
+  expect(await readFile((await downloaded.path())!, "utf8")).toBe(source);
+  await page.screenshot({ path: "/tmp/workflow-typescript-editor.png", fullPage: true });
+  await page.getByRole("button", { name: "Approve & start", exact: true }).click();
+  await expect(page.locator(".status-pill")).toHaveText("Completed");
+  await expect(page.getByRole("button", { name: "Workflow", exact: true })).toHaveClass(/active/);
+  await expect(page.locator(".vue-flow__node").filter({ hasText: "Independent review" })).toBeVisible();
+  await page.getByRole("button", { name: "Results", exact: true }).click();
+  await expect(page.getByText("Reviewed: updated working files", { exact: true }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Workflow", exact: true }).click();
+  await expect(page.locator(".vue-flow__node").filter({ hasText: "Independent review" })).toBeVisible();
+  await page.getByRole("button", { name: "Editor", exact: true }).click();
+  await expect(code).toHaveAttribute("readonly", "");
+});
+
+test("TypeScript draft creation can be cancelled while preserving the source", async ({ page }) => {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/api/programs", async route => {
+    await gate;
+    await route.abort().catch(() => {});
+  });
+  await page.goto("/");
+  await page.getByText("Use a TypeScript workflow", { exact: true }).click();
+  const source = await page.getByLabel("New workflow TypeScript", { exact: true }).inputValue();
+  await page.getByRole("button", { name: "Create workflow draft", exact: true }).click();
+  await page.getByRole("button", { name: "Cancel workflow creation", exact: true }).click();
+  release();
+  await expect(page.getByText("Workflow creation cancelled.", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("New workflow TypeScript", { exact: true })).toHaveValue(source);
+  await expect(page.getByRole("button", { name: "Create workflow draft", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Discard TypeScript draft", exact: true }).click();
+  await expect(page.getByLabel("New workflow TypeScript", { exact: true })).toHaveCount(0);
+});
 
 test("a user reviews a bug graph, approves it and sees review feedback return to the fix step", async ({
   page,

@@ -15,6 +15,7 @@ import ActivityFeed from "./ActivityFeed.vue";
 import { describeActivity } from "../activity.js";
 const WorkflowGraph = defineAsyncComponent(() => import("./WorkflowGraph.vue"));
 const PlanEditor = defineAsyncComponent(() => import("./PlanEditor.vue"));
+const ProgramEditor = defineAsyncComponent(() => import("./ProgramEditor.vue"));
 const props = defineProps<{
   run: WorkflowRun;
   draft: PlanDraft;
@@ -33,7 +34,7 @@ const emit = defineEmits<{
   cancelRefinement: [];
   settings: [];
 }>();
-const tab = ref("workflow");
+const tab = ref(props.run.program && props.run.status === "draft" ? "edit" : "workflow");
 const selected = ref<string>();
 const expanded = ref(false);
 const focusDialog = ref<HTMLDialogElement>();
@@ -86,12 +87,15 @@ watch(
   () => {
     if (expanded.value) closeWorkspace();
     selected.value = undefined;
-    tab.value = "workflow";
+    tab.value = props.run.program && props.run.status === "draft" ? "edit" : "workflow";
   },
 );
 watch(
   () => props.run.status,
-  (status, _previous, onCleanup) => {
+  (status, previous, onCleanup) => {
+    if (props.run.program && previous === "draft" && props.run.approvedAt && tab.value === "edit") {
+      tab.value = "workflow";
+    }
     if (!["running", "pausing"].includes(status)) {
       return;
     }
@@ -174,6 +178,7 @@ const lastAttempt = computed(() => props.run.attempts.at(-1));
 const resultSummary = computed(
   () =>
     props.run.error ??
+    props.run.output ??
     lastAttempt.value?.error ??
     lastAttempt.value?.result?.summary ??
     (props.run.status === "completed"
@@ -454,7 +459,9 @@ function selectStep(id: string) {
           ><span>{{
             running
               ? "Live"
-              : `${completed}/${run.plan.nodes.length} blocks passed`
+              : run.program && !run.plan.nodes.length
+                ? "Steps appear during execution"
+                : `${completed}/${run.plan.nodes.length} blocks passed`
           }}</span>
           <button
             ref="expandButton"
@@ -543,7 +550,8 @@ function selectStep(id: string) {
           :class="{ inspecting: node }"
         >
           <div class="graph-panel">
-            <WorkflowGraph
+            <div v-if="!plan.nodes.length" class="panel-empty"><Icon name="code" :size="28" /><p>The graph appears as the TypeScript workflow reaches each step.</p><button @click="tab = 'edit'">View TypeScript</button></div>
+            <WorkflowGraph v-else
               ref="graph"
               :key="run.id"
               :run="{ ...run, plan }"
@@ -614,6 +622,9 @@ function selectStep(id: string) {
                 >
               </div></template
             >
+            <template v-else-if="node.context && Object.keys(node.context).length">
+              <details v-for="(value, name) in node.context" :key="name"><summary>{{ name }}</summary><pre>{{ value }}</pre></details>
+            </template>
             <p v-else class="muted">Task and attachments only.</p>
             <button @click="tab = 'activity'">
               <Icon name="log" :size="15" />View step activity
@@ -663,8 +674,11 @@ function selectStep(id: string) {
             <p>No artifacts yet.</p>
           </div>
         </div>
+        <ProgramEditor v-if="tab === 'edit' && run.program" :run="run" :draft="draft" :busy="busy" :live="live"
+          :refining="refining" :activity="coordinatorActivity" @save="emit('save')" @refine="emit('refine', $event)"
+          @cancel-refinement="emit('cancelRefinement')" />
         <PlanEditor
-          v-if="tab === 'edit'"
+          v-else-if="tab === 'edit'"
           :run="run"
           :draft="draft"
           :busy="busy"

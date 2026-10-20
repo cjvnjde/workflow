@@ -33,6 +33,7 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
   const { project, library } = await fixture(t);
   const requests: z.infer<typeof requestSchema>[] = [];
   let requestCount = 0;
+  let structuredContinuation = -1;
   const server = createServer((request, response) => {
     const chunks: Buffer[] = [];
     request.on("data", (chunk: Buffer) => {
@@ -50,7 +51,7 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
         );
         const isLibrary = received.tools.some((tool) => tool.function.name === "submit_library");
         const isDesigner = received.tools.some((tool) => tool.function.name === "propose_settings");
-        const call = isDesigner ? {
+        let call = isDesigner ? {
           name: "propose_settings",
           arguments: JSON.stringify({ message: "Created a project inspection profile.", json: JSON.stringify({ scope: "profiles", summary: "Inspect with the available model", coordinatorProfile: "inspector", profiles: [{ id: "inspector", name: "Inspector", description: "Use for read-only analysis and planning.", enabled: true, agent: { provider: "loopback", model: "local-test", thinking: "off" } }] }) }),
         } : isLibrary ? {
@@ -97,6 +98,17 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
                   artifacts: { implementation: "Regression updated" },
                 }),
               };
+        const continuation = structuredContinuation < 0 ? -1 : structuredContinuation++;
+        const prose = continuation === 0 || continuation === 2;
+        if (continuation >= 0) {
+          call = {
+            name: "submit_result",
+            arguments: JSON.stringify({
+              outcome: "pass", summary: "Review completed",
+              artifacts: { data: JSON.stringify({ approved: continuation === 1 ? "yes" : true }) },
+            }),
+          };
+        }
         response.writeHead(200, { "content-type": "text/event-stream" });
         const chunk = {
           id: `completion-${requestCount}`,
@@ -108,14 +120,14 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
               index: 0,
               delta: {
                 role: "assistant",
-                tool_calls: [
+                ...(prose ? { content: "The review is complete." } : { tool_calls: [
                   {
                     index: 0,
                     id: `call-${requestCount}`,
                     type: "function",
                     function: call,
                   },
-                ],
+                ] }),
               },
               finish_reason: null,
             },
@@ -123,7 +135,7 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
         };
         response.write(`data: ${JSON.stringify(chunk)}\n\n`);
         response.write(
-          `data: ${JSON.stringify({ ...chunk, choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }], usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 } })}\n\n`,
+          `data: ${JSON.stringify({ ...chunk, choices: [{ index: 0, delta: {}, finish_reason: prose ? "stop" : "tool_calls" }], usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 } })}\n\n`,
         );
         response.end("data: [DONE]\n\n");
       } catch (error) {
@@ -322,4 +334,21 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
   assert.ok(JSON.stringify(requests[6]).includes("read-only inspection role"));
   assert.ok(!JSON.stringify(requests[6]).includes("FIRST_SESSION_ONLY"));
 
+  structuredContinuation = 0;
+  const events: { kind: string; message: string }[] = [];
+  const corrected = await runPiBlock({
+    project, config: library.config,
+    bundle: { ...customAudit, definition: { ...customAudit.definition, outputs: ["data"],
+      outputSchema: z.toJSONSchema(z.object({ approved: z.boolean() })) } },
+    node, task: "Review without editing", inputs: {}, visit: 1,
+    settings, signal: AbortSignal.timeout(10_000),
+    emit: (kind, message) => { events.push({ kind, message }); },
+  });
+  assert.deepEqual(JSON.parse(corrected.artifacts.data!), { approved: true });
+  assert.equal(structuredContinuation, 4);
+  assert.equal(events.filter(event => event.kind === "agent_continuation").length, 2);
+  assert.equal(events.filter(event => event.kind === "tool_start").length, 2);
+  assert.ok(events.some(event => event.kind === "result_validation" && /boolean/.test(event.message)));
+  assert.match(JSON.stringify(requests.at(-1)), /Correct the rejected result/);
+  assert.match(JSON.stringify(requests.at(-1)), /Do not repeat completed edits/);
 });

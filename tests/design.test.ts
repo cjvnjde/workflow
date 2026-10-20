@@ -86,9 +86,13 @@ test("design sessions receive the conversation and draft, have local file and ba
     assert.deepEqual(JSON.parse(session.prompt).previousDraft, proposal);
     assert.equal(JSON.parse(session.prompt).conversation[0].content, "Use careful review");
     assert.deepEqual(session.tools.map((tool) => tool.name), ["bash", "git_changes", "list_files", "read_file", "write_file", "edit_file", "reply_to_user", "propose_settings"]);
+    assert.equal(session.completion?.isComplete(), false);
+    assert.match(session.completion!.prompt(), /prose does not create/);
     const submit = session.tools.find((tool) => tool.name === "propose_settings")!;
     await assert.rejects(submit.execute("invalid", { json: JSON.stringify({ ...proposal, scope: "cases" }), message: "Wrong scope" }, options.signal, undefined, toolContext));
+    assert.match(session.completion!.prompt(), /Correct the rejected submission/);
     await submit.execute("valid", { json: JSON.stringify(proposal), message: "Careful review is covered." }, options.signal, undefined, toolContext);
+    assert.equal(session.completion?.isComplete(), true);
     await assert.rejects(session.tools[0]!.execute("late", {}, options.signal, undefined, toolContext), /already finished/);
   });
   assert.deepEqual(result.proposal, proposal);
@@ -97,7 +101,7 @@ test("design sessions receive the conversation and draft, have local file and ba
     await session.tools.find((tool) => tool.name === "reply_to_user")!.execute("reply", { message: "A profile describes when to choose a model." }, options.signal, undefined, toolContext);
   });
   assert.equal(reply.proposal, undefined);
-  await assert.rejects(designSettings(options, async () => {}), /without a reply/);
+  await assert.rejects(designSettings(options, async () => {}), /after automatic correction/);
 });
 
 test("design chat refines a reviewed draft, preserves unrelated settings, persists, and starts fresh after apply", async (t) => {

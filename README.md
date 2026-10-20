@@ -1,8 +1,8 @@
 # Workflow
 
-**Project-local building blocks for predictable AI work, with an explicit graph and a live web UI.**
+**TypeScript workflows for AI and scripts, with durable execution and a live web UI.**
 
-Describe a task, attach context, and let the orchestrator classify it using your editable task instructions. It inspects the project, chooses blocks and model profiles, and builds a workflow for that request. Review it or enable automatic execution. Temporal follows its routes, context handoffs and bounded feedback loops durably. Pi is an embedded model/session adapter; Workflow owns setup, tasks, settings and the web interface.
+Describe a task, attach context, and let the orchestrator classify it using your editable task instructions. It inspects the project, chooses blocks and model profiles, and writes a TypeScript workflow. Review it or enable automatic execution. Ordinary async functions, conditions and loops compose agent and script steps; Temporal persists their progress. The graph shows the executed path. Pi is an embedded model/session adapter; Workflow owns setup, tasks, settings and the web interface.
 
 This is a single-user desktop tool with a real Temporal backend, not a production sandbox or hosted multi-user service.
 
@@ -50,8 +50,8 @@ Open **http://127.0.0.1:4310**.
 
 1. Open **Settings → Providers & models**, connect ChatGPT (or a provider API key). In **Model profiles → Generate with AI**, describe your preferences, send the request and apply the proposed profiles. The AI selects a planning model. You can also choose a project default manually.
 2. Return to **New task**. Write the goal in the central input; attach images or text/code files, paste a screenshot, or drop files onto the composer. Press Enter to start; Shift+Enter adds a line.
-3. The orchestrator classifies the request, reads the matching task instructions and proposes a graph. It asks a follow-up only when an essential detail is missing. There is no task-type or coordinator selector.
-4. Review the graph and **Approve & start**, or select automatic execution in **Settings → Execution**. Click a step to inspect its goal, model, instructions and context handoffs. **Edit workflow** provides structured controls and optional JSON.
+3. The orchestrator classifies the request, reads the matching task instructions and submits typechecked TypeScript. It asks a follow-up only when an essential detail is missing. There is no task-type or coordinator selector.
+4. Review the source and inputs and **Approve & start**, or select automatic execution in **Settings → Execution**. The editor supports saving, discarding, downloading `.ts`, and AI refinement. Existing JSON workflows retain their structured editor and execution history.
 5. Watch the highlighted active step and live activity. Drag blocks to arrange the graph; positions survive updates and reloads, and **Reset layout** restores the original arrangement. **Focus active step** brings running work into view.
 6. The outcome appears above the graph, including failures and blockers. Open **Results** for rendered Markdown, verification checks and artifacts; use **Copy Markdown** or **Download** on any artifact, or export the whole report. The notification bell records completions, pauses and failures received while the app is open.
 7. Active and previous tasks stay in the sidebar; reloading restores the selected task. Pause, resume or stop execution there. **Delete workflow** (also available beside a sidebar entry) removes settled tasks and drafts from history. Stop active work first. Deletion does not undo project files or erase recovery journals, attachments or Temporal execution history from disk.
@@ -63,6 +63,54 @@ Use **Expand** beside the workflow tabs for a larger workspace with the graph, s
 Attachments support PNG, JPEG, WebP and GIF (up to 6 MB each), and UTF-8 text/code (up to 256 KB each); up to eight files and 20 MB per request. PDF and other binary document extraction are not implemented. Image requests need an image-capable planning model. The coordinator records relevant visual observations for steps that use text-only models. Attached content is passed to the selected model providers. Uploaded files are private project files under `.workflow/attachments/`, checked by hash before use.
 
 Use `workflow --port 4320` for another port, or `--port 0` to select a free port and print its address.
+
+## Workflows as TypeScript
+
+The API takes inspiration from [Smithers v0.35.0](https://github.com/smithersai/smithers/tree/v0.35.0): typed blocks, persisted outputs, and code deciding what runs next. Workflow uses ordinary functions and `await`, with its existing Temporal engine and Vue interface. No React or JSX is involved.
+
+```ts
+import { workflow, agent, z } from "workflow";
+
+const reviewer = agent({
+  instructions: "Review independently. Report defects; do not edit files.",
+  output: z.object({ approved: z.boolean(), feedback: z.string() }),
+});
+
+export default workflow({
+  name: "Implement and review",
+  input: z.object({ request: z.string() }),
+  async run(ctx) {
+    let feedback = "";
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const work = await ctx.step("implement", "implement", {
+        prompt: ctx.input.request, inputs: { feedback }, maxVisits: 3,
+      });
+      if (work.outcome !== "pass") { feedback = work.summary; continue; }
+      const review = await ctx.step("review", reviewer, {
+        prompt: ctx.input.request, maxVisits: 3,
+      });
+      if (review.outcome === "pass" && review.data?.approved) return review.data.feedback;
+      feedback = review.data?.feedback ?? review.summary;
+    }
+    throw new Error(`Review did not pass: ${feedback}`);
+  },
+});
+```
+
+`ctx.step(id, block, options)` accepts an inline `agent(...)`, a `script(...)`, or a Settings block ID. It returns `{outcome, summary, artifacts, data?}`. An `output: z.object(...)` schema gives typed `data` and validates the JSON artifact before a passing result is accepted. Pass selected values through `inputs`; they are visible in step details. Reuse IDs for repeated visits. Await steps sequentially; one executor owns the project.
+
+Set `model: {provider, model, thinking}` in `agent(...)` or override it per `ctx.step`. A model ID string inherits the configured provider. Models can come from workflow inputs or `ctx.models[profileId]`; profiles and the reusable library are frozen with the draft. See [the implementation/review example](examples/implement-reviewed.ts) and [the script-only example](examples/scripts-only.ts).
+
+On **New task → Use a TypeScript workflow**, import or paste a `.ts` file and supply its JSON inputs. With the local server running, the CLI also accepts:
+
+```sh
+workflow run examples/implement-reviewed.ts --input '{"request":"Fix the empty-input bug"}'
+workflow run examples/scripts-only.ts --input '{"message":"hello","runtime":"bun"}' --approve
+```
+
+Without `--approve`, the CLI creates a draft for browser review. The compiler checks source types without evaluating the module. Saving a draft bundles its pure helper imports and runtime into a version archive. Editing project helpers later does not alter that saved version. Approval starts execution; input schemas are checked before the first step.
+
+Orchestration code must be replayable: use agent/script steps for files, processes, network calls and other side effects. Script source can run arbitrary Bash, JavaScript or TypeScript in the project, call project scripts and import packages. Called project scripts are read at execution time; pure orchestration imports are frozen. Completed steps are replayed from Temporal history after restart; interrupted steps retain the explicit retry/recovery behavior. The global step limit also bounds loops. Model spending is measured as steps run; arbitrary code does not have a static graph cost estimate.
 
 Open **Settings → Providers & models** in the browser. Choose **Continue with ChatGPT**, open the sign-in link, and complete the account authorization. Alternatively, expand **Use an API key** and select a provider. ChatGPT is the only account sign-in offered; other providers use API keys. Choose an available model and thinking level, then **Save project model**. No terminal setup is required.
 
@@ -118,7 +166,7 @@ workflow profiles --instructions "Prioritize careful review; use fast models for
 Ordinary server startup does not regenerate profiles or make background setup requests. Planning and settings design use the account/model configuration independently of execution spending limits.
 
 
-- **Model profiles:** add multiple models with descriptions such as “careful reviewer for complex changes” or “fast helper for summaries.” The planner receives those descriptions and selects a model for each AI step. Enabled profiles restrict execution choices to their available models; with no profiles it uses the connected catalog. A planning-model override is optional.
+- **Model profiles:** add multiple models with descriptions such as “careful reviewer for complex changes” or “fast helper for summaries.” The planner uses these descriptions and the connected catalog to choose models. TypeScript can also accept a model as input or override one per step. A planning-model override is optional.
 - **Task instructions:** add, edit, disable or remove cases such as bug, feature, maintenance and investigation. Each case contains a description and instructions, not a predefined graph. Add shared instructions and choose whether the planner may suggest new blocks.
 - **Blocks:** add, edit or remove reusable AI and script blocks using form controls. Configure instructions, declared outputs and checks. **Design with AI** supports conversational proposals for adding, updating and removing blocks. New blocks suggested while planning remain local to that workflow until you explicitly save them to the library.
 - **Skills & MCP:** add skill instructions, enable/disable them, and configure stdio or Streamable HTTP MCP servers. Enabling a server makes all its discovered tools available during planning and execution. Connect to preview the tools; there is no separate planning allowlist.
@@ -132,7 +180,7 @@ The starter **Push current branch** block is an editable JavaScript script. It s
 
 MCP HTTP credentials reference a server-process environment variable containing a bearer token; plaintext tokens are not entered into settings. Local stdio servers inherit the application's environment, as Bash commands do. This is explicit project MCP configuration, not automatic discovery of Pi resources or support for every MCP authentication mechanism.
 
-Command blocks call the configured command directly with no model request. A failed condition returns `retry` and a diagnostic artifact. Route that outcome back to an implementation block, give that block the diagnostic handoff, and route its success back to verification. Both node visits and total workflow steps bound the cycle. Bash, Git, check-command and MCP side effects are outside file-tool rollback.
+Script blocks run without a model request. A failed condition returns `retry` and diagnostics. Pass them to implementation, then repeat verification. Both node visits and total workflow steps bound the cycle. Bash, Git, check-command and MCP side effects are outside file-tool rollback.
 
 Settings are stored in `.workflow/orchestration.json` and `.workflow/config.json`. Concurrent stale edits are rejected. The reusable block library is published atomically as `.workflow/library.json`, with prior snapshots under `.workflow/libraries/`; once present, it takes precedence over the starter block directories. Removing a reusable block leaves existing workflow snapshots intact. Existing drafts/runs retain their prompts, capabilities, model settings and command definitions.
 
@@ -143,7 +191,7 @@ For an existing draft, **Edit workflow → Tell AI what to change in this draft*
 | Mode | Planning | Execution |
 | --- | --- | --- |
 | `workflow --demo` | Explicit simulation using example graphs | Simulated agents and checks; real Temporal history |
-| `workflow` / `workflow serve` | AI composes a graph from task instructions, profiles and blocks | Real model sessions, Bash, configured checks and enabled MCP servers |
+| `workflow` / `workflow serve` | AI writes TypeScript from task instructions, profiles and blocks | Real model sessions, scripts, configured checks and enabled MCP servers |
 
 Review is the default. Automatic mode starts the generated graph, including any task-local suggested blocks, without a review click. Only one workflow can execute in a project at a time. If automatic start cannot acquire the project, the task stays available for manual approval with an explanation. A demo draft cannot be executed in live mode; create a fresh task.
 

@@ -89,7 +89,9 @@ export class Tasks {
         controller.signal.throwIfAborted();
         if (result.kind === "question") { task.status = "needs_input"; task.question = result.question; }
         else {
-          const run = await this.engine.create(result.plan, result.library);
+          const run = result.kind === "program"
+            ? await this.engine.createProgram(result.title, task.prompt, result.program, result.library)
+            : await this.engine.create(result.plan, result.library);
           unpublishedRunId = run.id;
           controller.signal.throwIfAborted();
           task.runId = run.id; task.status = "ready"; task.rationale = result.rationale;

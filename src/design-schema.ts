@@ -9,7 +9,7 @@ export type DesignScope = z.infer<typeof designScopeSchema>;
 export const designScopes: Record<DesignScope, { title: string; description: string; placeholder: string }> = {
   profiles: { title: "Model profiles", description: "Choose models and describe when the orchestrator should use each one.", placeholder: "Use a strong reviewer and a fast model for routine changes…" },
   cases: { title: "Task instructions", description: "Shape how different kinds of requests should be handled.", placeholder: "Add a release-readiness case that checks tests and the changelog…" },
-  blocks: { title: "Blocks", description: "Design reusable steps, their instructions, outputs and checks.", placeholder: "Add a test-only command block that returns diagnostics to implementation…" },
+  blocks: { title: "Blocks", description: "Design reusable steps, their instructions, outputs and checks.", placeholder: "Add a test script block that returns diagnostics to implementation…" },
   capabilities: { title: "Skills & MCP", description: "Write project skills and connect MCP servers.", placeholder: "Write a skill for our coding conventions…" },
   execution: { title: "Execution settings", description: "Configure project instructions, commands and execution limits.", placeholder: "Add a lint command and cap workflows at 20 steps…" },
 };

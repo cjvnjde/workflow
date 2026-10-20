@@ -9,9 +9,11 @@ import {
   proxyActivities,
   setHandler,
 } from "@temporalio/workflow";
-import { executionTimeoutMs, resolveInputs, runSchema, type BlockResult, type CheckResult, type WorkflowRun, type RecoveryResult, type UsageTotals } from "./domain.js";
+import { executionTimeoutMs, resolveInputs, runSchema, type BlockResult, type CheckResult, type WorkflowRun, type WorkflowNode, type RecoveryResult, type UsageTotals } from "./domain.js";
 import { addUsage, emptyUsage } from "./budget.js";
 import { failureMessage } from "./failure-message.js";
+import { programStep } from "./program-steps.js";
+import type { Block, StepOptions, StepResult, WorkflowDefinition } from "./workflow-sdk.js";
 
 export type WorkflowActivities = {
   saveProjection(run: WorkflowRun, event?: { kind: string; message: string; nodeId?: string }): Promise<void>;
@@ -27,7 +29,7 @@ const { saveProjection, settleAttempt } = proxyActivities<WorkflowActivities>({
   retry: { maximumAttempts: 5 },
 });
 
-export async function executeWorkflow(input: WorkflowRun) {
+export async function executeWorkflow(input: WorkflowRun, loadProgram?: () => WorkflowDefinition) {
   const parsed = runSchema.safeParse(input);
   if (!parsed.success) {
     throw ApplicationFailure.nonRetryable("Invalid workflow execution snapshot", "InvalidSnapshot");
@@ -61,9 +63,8 @@ export async function executeWorkflow(input: WorkflowRun) {
     await saveProjection(run, { kind, message, nodeId });
   };
 
-  try {
-    await checkpoint("approved", run.mode === "demo" ? "Approved for DEMO simulation only." : "Approved. Temporal is executing the frozen workflow.");
-    while (run.cursor !== "$complete" && run.cursor !== "$failed") {
+  const executeNode = async (node: WorkflowNode): Promise<BlockResult> => {
+    while (true) {
       if (paused) {
         run.status = "paused";
         await checkpoint("paused", "Paused at a safe step boundary. Resume continues without replaying completed steps.");
@@ -72,9 +73,8 @@ export async function executeWorkflow(input: WorkflowRun) {
         await checkpoint("resumed", "Workflow resumed.");
       }
       resumeRequested = false;
-      const node = run.plan.nodes.find((candidate) => candidate.id === run.cursor);
-      const bundle = node && run.blocks[node.block];
-      if (!node || !bundle) {
+      const bundle = run.blocks[node.block];
+      if (!bundle) {
         throw new Error(`Unknown execution node or block: ${run.cursor}`);
       }
       const visit = (run.visits[node.id] ?? 0) + 1;
@@ -156,14 +156,73 @@ export async function executeWorkflow(input: WorkflowRun) {
       };
       run.cursor = node.on[completion.result.outcome];
       await checkpoint("node_end", `${completion.result.outcome.toUpperCase()} → ${run.cursor}\n${completion.result.summary}`, node.id);
+      return completion.result;
+    }
+  };
+  try {
+    await checkpoint("approved", run.mode === "demo" ? "Approved for DEMO simulation only." : "Approved. Temporal is executing the frozen workflow.");
+    if (run.program) {
+      const program = loadProgram?.();
+      if (!program || typeof program.run !== "function") throw new Error("Export default workflow({name, input, async run(ctx) {…}}).");
+      // User code can keep and customize local state. Never expose the frozen
+      // approval snapshot itself: mutating a model option or an input must not
+      // invalidate later checkpoints.
+      const inputValue = JSON.parse(JSON.stringify(run.program.input));
+      const input = program.input ? program.input.parse(inputValue) : inputValue;
+      const models = JSON.parse(JSON.stringify(run.program.models)) as typeof run.program.models;
+      let pending: Promise<StepResult> | undefined;
+      const scope = new CancellationScope();
+      const step = <T>(id: string, block: Block<T> | string, options?: StepOptions): Promise<StepResult<T>> => {
+        if (pending) return Promise.reject(new Error("Await each ctx.step before starting another; this project executes one step at a time."));
+        const operation = (async () => {
+          const node = programStep(run, id, block, options);
+          const result = await executeNode(node);
+          let data: T | undefined;
+          if (result.artifacts.data) {
+            try { data = JSON.parse(result.artifacts.data) as T; }
+            catch { /* Nonpassing steps may return diagnostics instead of typed data. */ }
+          }
+          return { ...result, artifacts: { ...result.artifacts, summary: run.artifacts[node.id]?.summary ?? result.summary }, data };
+        })();
+        pending = operation;
+        void operation.finally(() => { if (pending === operation) pending = undefined; }).catch(() => {});
+        return operation;
+      };
+      let output: unknown;
+      try {
+        output = await scope.run(() => program.run({ input, request: run.plan.task, models, step }));
+        if (pending) throw new Error("The workflow returned before its step finished. Await every ctx.step call.");
+      } catch (error) {
+        scope.cancel();
+        if (pending) await pending.catch(() => {});
+        throw error;
+      }
+      if (output !== undefined) {
+        run.output = (typeof output === "string" ? output : `\`\`\`json\n${JSON.stringify(output, null, 2)}\n\`\`\``).slice(0, 64_000);
+      }
+      run.cursor = "$complete";
+    } else {
+      while (run.cursor !== "$complete" && run.cursor !== "$failed") {
+        const node = run.plan.nodes.find(candidate => candidate.id === run.cursor);
+        if (!node) throw new Error(`Unknown execution node: ${run.cursor}`);
+        await executeNode(node);
+      }
     }
     run.status = run.cursor === "$complete" ? "completed" : "failed";
   } catch (error) {
     cancelled = isCancellation(error) || CancellationScope.current().consideredCancelled;
     run.status = cancelled ? "cancelled" : "failed";
     run.error = failureMessage(error);
+    run.cursor = "$failed";
   }
   await CancellationScope.nonCancellable(async () => {
+    if (run.program) {
+      const last = run.attempts.at(-1);
+      if (last) (run.transitions ??= []).push({
+        from: last.nodeId, to: run.status === "completed" ? "$complete" : "$failed",
+        outcome: run.status === "completed" ? "pass" : "fail",
+      });
+    }
     await checkpoint("run_end", `${run.status.toUpperCase()}${run.error ? `: ${run.error}` : ""}`);
   });
 

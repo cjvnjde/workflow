@@ -157,6 +157,32 @@ test("adapted review scope preserves the host request and rejected graphs expose
   }), /Last submission error:/);
 });
 
+test("coordinator submits TypeScript and receives type errors for automatic correction", async t => {
+  const { project, library } = await fixture(t);
+  library.config.agent = { ...library.config.agent, provider: "test", model: "careful", thinking: "off" };
+  const task = newRequest("Review changes with no commits");
+  const source = `import {workflow,z} from "workflow";export default workflow({name:"Working files",input:z.object({request:z.string()}),async run(ctx){
+    const review = await ctx.step("review","review",{prompt:ctx.input.request});
+    if(review.outcome !== "pass") throw new Error(review.summary);
+    return review.summary;
+  }});`;
+  const result = await planTask({ project, library, task, settings: orchestrationSchema.parse({}), models,
+    signal: new AbortController().signal, emit: () => {} }, async session => {
+    assert.match(session.systemPrompt, /ordinary await/);
+    await call(session, "choose_task_case", { id: "investigation", reason: "Review working files" });
+    const submission = { title: "Review working files", source, input: JSON.stringify({ request: task.prompt }), rationale: "No base; inspect current files" };
+    await assert.rejects(call(session, "submit_workflow", { ...submission, source: source.replace("ctx.input.request", "ctx.input.missing") }), /missing/);
+    assert.equal(session.completion?.isComplete(), false);
+    assert.match(session.completion!.prompt(), /missing/);
+    await call(session, "submit_workflow", submission);
+    assert.equal(session.completion?.isComplete(), true);
+  });
+  assert.equal(result.kind, "program");
+  if (result.kind !== "program") return;
+  assert.equal(result.program.source, source);
+  assert.equal(result.program.input.request, task.prompt);
+});
+
 test("enabled MCP servers expose every discovered tool, regardless of legacy selections", async (t) => {
   const { project } = await fixture(t);
   const calls: string[] = [];

@@ -32,6 +32,9 @@ import { FileJournal } from "./recovery.js";
 import { Workspace } from "./workspace.js";
 import { getModelRuntime } from "./model-runtime.js";
 import { acquireProjectLock } from "./project-lock.js";
+import { compileProgram } from "./program-compiler.js";
+import { programSourceSchema } from "./program-schema.js";
+import { loadOrchestration } from "./orchestration-settings.js";
 
 const activeStatuses = new Set<WorkflowRun["status"]>(["running", "pausing", "paused", "interrupted"]);
 
@@ -111,6 +114,15 @@ export class WorkflowEngine {
     const key = version ?? "legacy";
     if (this.workers.has(key)) { return; }
     if (!this.environment) { throw new Error("Temporal is not connected"); }
+    // Each code program has its own frozen version. Retain workers only while
+    // a run needs them, otherwise a long-lived UI would accumulate one per task.
+    for (const [other, entry] of this.workers) {
+      if (other === this.currentVersion?.id || [...this.runs.values()].some(run =>
+        activeStatuses.has(run.status) && (run.executionVersion ?? "legacy") === other)) continue;
+      if (entry.worker.getState() === "RUNNING") entry.worker.shutdown();
+      await entry.done;
+      this.workers.delete(other);
+    }
     const codePath = version ? (await this.versions.load(version)).codePath : fileURLToPath(new URL("../dist/workflow-v1-bundle.js", import.meta.url));
     const worker = await Worker.create({
       connection: this.environment.nativeConnection,
@@ -132,9 +144,12 @@ export class WorkflowEngine {
 
   private queueFor(version?: string) { return version ? `${this.taskQueue}-${version}` : this.taskQueue; }
 
-  private async priceSnapshot(plan: WorkflowPlan, library: Library) {
+  private async priceSnapshot(plan: { nodes: { block?: string; agent?: WorkflowPlan["nodes"][number]["agent"] }[] }, library: Library) {
     if (this.mode === "demo") { return; }
-    const settings = plan.nodes.filter((node) => !library.blocks[node.block]?.definition.executor).map((node) => resolveAgentSettings(library.config.agent, library.blocks[node.block]?.definition.agent, node.agent));
+    const settings = plan.nodes.flatMap(node => {
+      const bundle = node.block ? library.blocks[node.block] : undefined;
+      return bundle?.definition.executor ? [] : [resolveAgentSettings(library.config.agent, bundle?.definition.agent, node.agent)];
+    });
     for (const setting of settings) {
       if (!setting.provider || !setting.model) { continue; }
       const key = `${setting.provider}/${setting.model}`;
@@ -247,7 +262,11 @@ export class WorkflowEngine {
   private assertSnapshot(run: WorkflowRun) {
     const approved = this.runs.get(run.id);
     const policy = (value: WorkflowRun) => JSON.parse(JSON.stringify({
-      plan: value.plan, config: value.config, blocks: value.blocks,
+      // Code-derived steps are authorized by the frozen program/version/catalog.
+      // Graph workflows still compare their complete immutable plan and blocks.
+      program: value.program,
+      plan: value.program ? { title: value.plan.title, task: value.plan.task } : value.plan,
+      config: value.config, blocks: value.program ? undefined : value.blocks,
       executionVersion: value.executionVersion, executionProtocol: value.executionProtocol,
       estimate: value.estimate, mode: value.mode, temporalWorkflowId: value.temporalWorkflowId, approvedAt: value.approvedAt,
     }));
@@ -320,12 +339,82 @@ export class WorkflowEngine {
     });
   }
 
+  async createProgram(title: string, task: string, value: unknown, library: Library, signal?: AbortSignal) {
+    return await this.mutate(async () => {
+      signal?.throwIfAborted();
+      const snapshot = structuredClone(library);
+      const prepared = await this.prepareProgram(value, snapshot);
+      signal?.throwIfAborted();
+      const now = new Date().toISOString(), id = randomUUID();
+      const run = runSchema.parse({
+        id, temporalWorkflowId: `workflow-${id}`, revision: 0,
+        executionVersion: prepared.version.id, executionProtocol: 2,
+        createdAt: now, updatedAt: now, mode: this.mode, status: "draft",
+        plan: { title, task, entry: "start", nodes: [] }, program: prepared.program,
+        config: snapshot.config, blocks: {}, cursor: "start", visits: {}, artifacts: {}, attempts: [],
+      });
+      this.checkSnapshotSize(run);
+      await this.store.save(run);
+      this.runs.set(id, run);
+      this.emit(run, "draft", "TypeScript workflow typechecked and frozen. Review the source and inputs before approval.");
+      await this.store.flush();
+      if (signal?.aborted) {
+        run.deletedAt = new Date().toISOString(); run.updatedAt = run.deletedAt; run.revision++;
+        await this.store.save(run); this.runs.set(id, run);
+        this.emit(run, "run_deleted", "Source compilation was cancelled; the unpublished draft was removed.");
+        await this.store.flush();
+        signal.throwIfAborted();
+      }
+      return this.get(id);
+    });
+  }
+
+  private checkSnapshotSize(run: WorkflowRun) {
+    if (Buffer.byteLength(JSON.stringify(run)) > 1_000_000) throw new Error("Workflow snapshot is too large. Reduce source, inputs or block resources.");
+  }
+
+  private async prepareProgram(value: unknown, library: Library) {
+    const source = programSourceSchema.parse(value);
+    const { settings } = await loadOrchestration(this.project);
+    const models = Object.fromEntries(settings.profiles.filter(profile => profile.enabled).map(profile => [profile.id, profile.agent]));
+    // Freeze known model prices up front; unknown choices with a spending cap
+    // are rejected before their first model request, not silently underpriced.
+    const priceNodes = [
+      ...Object.values(library.blocks).filter(bundle => !bundle.definition.executor).map(bundle => ({ block: bundle.definition.id })),
+      ...Object.values(models).map(agent => ({ agent })),
+    ];
+    await this.priceSnapshot({ nodes: priceNodes }, library);
+    const { version } = await compileProgram(this.project, source, this.versions);
+    return { version, program: { ...source, catalog: structuredClone(library.blocks), models } };
+  }
+
+  async updateProgram(id: string, value: unknown, expectedRevision?: number, signal?: AbortSignal) {
+    return await this.mutate(async () => {
+      const run = structuredClone(this.requireRun(id));
+      if (run.status !== "draft" || !run.program) throw new Error("Only a draft TypeScript workflow can be edited.");
+      this.assertRevision(run, expectedRevision);
+      const prepared = await this.prepareProgram(value, { config: run.config, blocks: run.program.catalog });
+      signal?.throwIfAborted();
+      run.program = prepared.program;
+      run.executionVersion = prepared.version.id;
+      run.revision++;
+      run.updatedAt = new Date().toISOString();
+      this.checkSnapshotSize(run);
+      await this.store.save(run);
+      this.runs.set(id, run);
+      this.emit(run, "draft", "TypeScript source and inputs updated. Execution still requires approval.");
+      await this.store.flush();
+      return this.get(id);
+    });
+  }
+
   async update(id: string, value: unknown, expectedRevision?: number) {
     return await this.mutate(async () => {
       const run = structuredClone(this.requireRun(id));
       if (run.status !== "draft") {
         throw new Error("Only draft workflows can be edited");
       }
+      if (run.program) throw new Error("Edit this workflow's TypeScript source instead of its execution trace.");
       this.assertRevision(run, expectedRevision);
       const plan = validatePlan(value, { config: run.config, blocks: run.blocks });
       if (Buffer.byteLength(JSON.stringify({ ...run, plan })) > 1_000_000) {
@@ -417,12 +506,12 @@ export class WorkflowEngine {
       if (!this.environment || !run.temporalWorkflowId) {
         throw new Error("Temporal is not connected");
       }
-      validatePlan(run.plan, { config: run.config, blocks: run.blocks });
+      if (!run.program) validatePlan(run.plan, { config: run.config, blocks: run.blocks });
       const approved = structuredClone(run);
       approved.executionVersion ??= this.currentVersion?.id;
       approved.executionProtocol = 2;
-      approved.estimate = estimateBudget(approved.plan, { config: approved.config, blocks: approved.blocks }, approved.mode);
-      if (approved.config.budget?.maxCostUsd !== undefined && approved.estimate.unpricedNodes.length) {
+      if (!run.program) approved.estimate = estimateBudget(approved.plan, { config: approved.config, blocks: approved.blocks }, approved.mode);
+      if (approved.config.budget?.maxCostUsd !== undefined && approved.estimate?.unpricedNodes.length) {
         throw new Error("A spending limit requires explicit provider/model selections and pricing for every node");
       }
       await this.startWorker(approved.executionVersion);
@@ -597,6 +686,10 @@ export class WorkflowEngine {
     const journal = run.executionProtocol === 2 ? await FileJournal.open(directory) : undefined;
     const remainingCost = run.config.budget?.maxCostUsd === undefined ? undefined : run.config.budget.maxCostUsd - (run.usage?.costUsd ?? 0);
     if (!bundle.definition.executor && remainingCost !== undefined && remainingCost <= 0) { throw new Error("Workflow spending limit reached"); }
+    if (run.program && !bundle.definition.executor && remainingCost !== undefined &&
+        !run.config.budget?.prices[`${settings.provider}/${settings.model}`]) {
+      throw new Error(`A spending limit requires a saved price for ${settings.provider}/${settings.model}. Configure pricing before running this model.`);
+    }
     const heartbeat = setInterval(() => { context.heartbeat({ nodeId: node.id }); }, 1000);
     context.heartbeat({ nodeId: node.id });
     try {

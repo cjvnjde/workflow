@@ -156,14 +156,17 @@ const nodes = computed<Node[]>(() => [
   },
 ]);
 const edges = computed<Edge[]>(() =>
-  props.run.plan.nodes.flatMap((node) =>
-    Object.entries(node.on).map(([outcome, target]) => ({
-      id: `${node.id}-${outcome}`,
-      source: node.id,
+  (props.run.program
+    ? [...new Map((props.run.transitions ?? []).map(edge => [`${edge.from}-${edge.to}-${edge.outcome}`, edge])).values()]
+        .map(edge => ({ from: edge.from, target: edge.to, outcome: edge.outcome }))
+    : props.run.plan.nodes.flatMap(node => Object.entries(node.on).map(([outcome, target]) => ({ from: node.id, target, outcome }))))
+    .map(({ from, target, outcome }) => ({
+      id: props.run.program ? `${from}-${target}-${outcome}` : `${from}-${outcome}`,
+      source: from,
       target,
-      type: node.id === target ? "default" : "smoothstep",
-      label: outcome,
-      animated: props.run.status === "running" && props.run.cursor === node.id,
+      type: from === target ? "default" : "smoothstep",
+      label: props.run.program && outcome === "pass" ? "next" : outcome,
+      animated: props.run.status === "running" && props.run.cursor === from,
       markerEnd: { type: MarkerType.ArrowClosed },
       style: {
         stroke:
@@ -178,7 +181,6 @@ const edges = computed<Edge[]>(() =>
       labelStyle: { fill: "var(--ctp-subtext1)", fontSize: 10 },
       labelBgStyle: { fill: "var(--ctp-mantle)" },
     })),
-  ),
 );
 </script>
 

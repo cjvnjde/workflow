@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { attachmentSchema, capabilitiesSchema } from "./capability-schema.js";
 import { scriptExecutorSchema } from "./script-schema.js";
+import { programSourceSchema } from "./program-schema.js";
 
 export const identifierSchema = z
   .string()
@@ -127,6 +128,7 @@ export const blockSchema = z
       )
       .default([]),
     agent: agentOverrideSchema.optional(),
+    outputSchema: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();
 export const bundleSchema = z
@@ -155,6 +157,7 @@ export const nodeSchema = z
     inputs: z.array(inputSchema).default([]),
     maxVisits: z.number().int().min(1).max(30).default(3),
     agent: agentOverrideSchema.optional(),
+    context: z.record(z.string().min(1).max(120), z.string().max(64_000)).optional(),
     on: z
       .object({ pass: z.string(), retry: z.string(), fail: z.string() })
       .strict(),
@@ -221,7 +224,15 @@ export const runSchema = z
       "rejected",
       "interrupted",
     ]),
-    plan: planSchema,
+    plan: planSchema.extend({ nodes: z.array(nodeSchema).max(500) }),
+    program: programSourceSchema.extend({
+      catalog: z.record(identifierSchema, bundleSchema),
+      models: z.record(z.string(), agentOverrideSchema),
+    }).optional(),
+    output: z.string().max(64_000).optional(),
+    transitions: z.array(z.object({
+      from: identifierSchema, to: z.string(), outcome: outcomeSchema,
+    }).strict()).max(501).optional(),
     config: configSchema,
     blocks: z.record(identifierSchema, bundleSchema),
     cursor: z.string(),
@@ -358,7 +369,7 @@ export function validatePlan(value: unknown, library: Library) {
 }
 
 export function resolveInputs(node: WorkflowNode, run: WorkflowRun) {
-  const inputs: Record<string, string> = {};
+  const inputs: Record<string, string> = { ...node.context };
   for (const input of node.inputs) {
     const value = run.artifacts[input.node]?.[input.artifact];
     if (value === undefined && input.required) {

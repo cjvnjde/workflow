@@ -225,13 +225,18 @@ async function taskFromComposer(prompt: string, attachment?: string) {
 }
 async function finish(task: TaskRequest, publicationStep?: string) {
   let reachedPublication = false;
+  const publicationReached = (run: WorkflowRun) => run.attempts.some(attempt => {
+    if (publicationStep !== "$program-publication") return attempt.nodeId === publicationStep;
+    const node = run.plan.nodes.find(node => node.id === attempt.nodeId);
+    return node && /publish|commit|push/i.test(`${node.id} ${node.label}`);
+  });
   const run = await until(
     "Execution",
     async () => {
       const run = runSchema.parse(await api(`/api/runs/${task.runId}`));
       reachedPublication ||=
         run.cursor === publicationStep ||
-        run.attempts.some((attempt) => attempt.nodeId === publicationStep);
+        publicationReached(run);
       if (publicationStep && !reachedPublication) {
         const pushed = (
           await execute("git", ["--git-dir", remote, "rev-list", "--all"])
@@ -240,9 +245,7 @@ async function finish(task: TaskRequest, publicationStep?: string) {
         if (pushed || committed) {
           // A step can transition while the read-only Git checks are in flight.
           const latest = runSchema.parse(await api(`/api/runs/${task.runId}`));
-          reachedPublication = latest.attempts.some(
-            (attempt) => attempt.nodeId === publicationStep,
-          );
+          reachedPublication = publicationReached(latest);
           assert.ok(
             reachedPublication,
             "Implementation/verification must not commit or push ahead of the publication step",
@@ -279,12 +282,12 @@ async function approveAndFinish(
   const draft = runSchema.parse(await api(`/api/runs/${task.runId}`));
   assert.equal(draft.status, "draft", "Review mode must wait for approval");
   assert.equal(draft.attempts.length, 0);
-  const publicationStep = checkPublicationOrder
+  const publicationStep = checkPublicationOrder && !draft.program
     ? draft.plan.nodes.find((node) =>
         /publish|commit|push/i.test(`${node.id} ${node.label}`),
       )
     : undefined;
-  if (checkPublicationOrder)
+  if (checkPublicationOrder && !draft.program)
     assert.ok(
       publicationStep,
       "The plan must include a dedicated publication step",
@@ -295,7 +298,11 @@ async function approveAndFinish(
   await page
     .getByRole("button", { name: "Approve & start", exact: true })
     .click();
-  return await finish(task, publicationStep?.id);
+  if (draft.program) {
+    assert.ok(draft.program.source.includes("workflow"), "New plans must contain executable TypeScript");
+    await writeFile(path.join(directory, `${task.id}.ts`), draft.program.source);
+  }
+  return await finish(task, draft.program && checkPublicationOrder ? "$program-publication" : publicationStep?.id);
 }
 
 async function checkCancellation() {
@@ -476,7 +483,7 @@ async function checkWorkflows() {
   const implemented = await approveAndFinish(feature, true);
   const pushNode = implemented.plan.nodes.find(
     (node) =>
-      implemented.blocks[node.block]?.definition.executor?.kind === "script",
+      implemented.blocks[node.block]?.definition.executor?.kind === "script" && /push|publish/i.test(`${node.id} ${node.label}`),
   );
   assert.ok(
     pushNode,

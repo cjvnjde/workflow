@@ -12,6 +12,8 @@ import { useTasks } from "./composables/use-tasks.js";
 import { statusLabel } from "./workflow-status.js";
 import type { DesignRequest } from "./design-types.js";
 import TaskComposer from "./components/TaskComposer.vue";
+import ProgramComposer from "./components/ProgramComposer.vue";
+import type { ProgramSource } from "../src/program-schema.js";
 import TaskPlanning from "./components/TaskPlanning.vue";
 import RunWorkspace from "./components/RunWorkspace.vue";
 import Icon from "./components/Icon.vue";
@@ -304,6 +306,13 @@ async function submitTask(prompt: string, attachments: string[]) {
   applyTask(created);
   selectRun(undefined);
 }
+async function submitProgram(value: ProgramSource & { title: string; task: string }, signal: AbortSignal) {
+  const created = await request("/api/programs", runSchema, { method: "POST", body: value, signal });
+  selectedTask.value = undefined;
+  applyRun(created);
+  selectRun(created.id);
+  await refreshRuns();
+}
 function taskAction(action: "answer" | "cancel" | "retry", answer?: string) {
   const current = task.value;
   if (!current) {
@@ -341,9 +350,9 @@ function savePlan() {
     return;
   }
   void perform(async () => {
-    const saved = await request(`/api/runs/${current.id}/plan`, runSchema, {
+    const saved = await request(`/api/runs/${current.id}/${current.program ? "program" : "plan"}`, runSchema, {
       method: "PUT",
-      body: JSON.parse(edit.text),
+      body: current.program ? edit.validProgram : JSON.parse(edit.text),
       revision: edit.revision,
     });
     applyRun(saved);
@@ -400,7 +409,7 @@ function saveSuggestedBlocks() {
           changes: {
             summary: "Save task-specific blocks for reuse",
             blocks: currentTask.suggestedBlocks.map((item) => ({
-              bundle: currentRun.blocks[item.id],
+              bundle: currentRun.program?.catalog[item.id] ?? currentRun.blocks[item.id],
               rationale: item.rationale,
             })),
           },
@@ -631,6 +640,7 @@ async function designApplied() {
             :on-submit="submitTask"
             @settings="navigate('settings')"
           />
+          <ProgramComposer :on-submit="submitProgram" />
           <p v-if="project?.mode === 'demo'" class="demo-note">
             Demo mode simulates planning, agents and checks. Task files stay
             unchanged.
@@ -717,9 +727,9 @@ async function designApplied() {
               suggested for this task
             </summary>
             <article v-for="item in task.suggestedBlocks" :key="item.id">
-              <h3>{{ run.blocks[item.id]?.definition.name ?? item.id }}</h3>
+              <h3>{{ (run.program?.catalog[item.id] ?? run.blocks[item.id])?.definition.name ?? item.id }}</h3>
               <p>{{ item.rationale }}</p>
-              <pre>{{ JSON.stringify(run.blocks[item.id], null, 2) }}</pre>
+              <pre>{{ JSON.stringify(run.program?.catalog[item.id] ?? run.blocks[item.id], null, 2) }}</pre>
             </article>
             <button :disabled="busy" @click="saveSuggestedBlocks">
               Save these blocks to the reusable library

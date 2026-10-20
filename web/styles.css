@@ -754,3 +754,13 @@ button.danger, button.danger-quiet { color: var(--ctp-red); background: color-mi
 .progress-step.fail .step-number, .progress-step.failed .step-number { color: var(--ctp-red); border-color: var(--ctp-red); }
 .result-checks { padding: 16px 0; }.result-checks > details, .result-checks details { margin: 12px 0; }
 @media (max-width: 700px) { .request-heading { align-items: flex-start; }.request-heading .eyebrow { white-space: nowrap; margin-top: 10px; }.request-actions { justify-content: flex-end; } }
+.program-source { font-family: var(--font-mono, monospace); font-size: 13px; line-height: 1.65; tab-size: 2; white-space: pre; }
+.program-language { color: var(--accent); font-family: monospace; font-size: 12px; }
+.program-import { margin-top: 20px; text-align: left; width: 100%; }
+.program-import > summary { color: var(--muted); cursor: pointer; text-align: center; padding: 12px; }
+.program-import[open] { border: 1px solid var(--border); border-radius: 14px; padding: 20px; background: var(--surface); }
+.program-import fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.program-import .editor-field { margin-top: 16px; }
+.program-editor > label, .program-import label { display: block; color: var(--ctp-subtext1); font-size: 12px; margin-top: 20px; }
+.program-editor label textarea, .program-import label textarea, .program-import label input { display: block; margin-top: 8px; }
+.program-editor .editor-actions small { flex-basis: auto; margin-left: auto; }

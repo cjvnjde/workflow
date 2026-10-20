@@ -1,5 +1,6 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { Type } from "@earendil-works/pi-ai";
+import { z } from "zod";
 import {
   defineTool,
   createBashToolDefinition,
@@ -144,6 +145,7 @@ export const runPiBlock: BlockRunner = async (execution) => {
     signal,
   });
   let result: BlockResult | undefined;
+  let lastResultError = "";
   const tools: ToolDefinition[] = workspaceTools(workspace);
   if (Object.keys(config.commands).length) {
     tools.push(
@@ -170,7 +172,7 @@ export const runPiBlock: BlockRunner = async (execution) => {
     defineTool({
       name: "submit_result",
       label: "Submit block result",
-      description: `Finish this block with an outcome, summary and named artifacts. Declared artifacts: ${bundle.definition.outputs.join(", ") || "none"}. Pass means your goal is met; retry follows the approved retry route; fail follows the failure route.`,
+      description: `Finish this block with an outcome, summary and named artifacts. Declared artifacts: ${bundle.definition.outputs.join(", ") || "none"}. Pass means this step completed its role; retry/fail return diagnostics to the workflow.${bundle.definition.outputSchema ? ` Publish artifacts.data as a JSON string matching this schema: ${JSON.stringify(bundle.definition.outputSchema)}. For a review, completing the inspection is pass; approval or requested changes belong in the typed data.` : ""}`,
       parameters: Type.Object({
         outcome: Type.Union([
           Type.Literal("pass"),
@@ -212,11 +214,26 @@ export const runPiBlock: BlockRunner = async (execution) => {
           }
           signal.throwIfAborted();
 
-          return await tool.execute(...args);
+          try { return await tool.execute(...args); }
+          catch (error) {
+            if (tool.name === "submit_result") {
+              lastResultError = (error instanceof Error ? error.message : String(error)).slice(0, 4000);
+              emit("result_validation", lastResultError);
+            }
+            throw error;
+          }
         },
       })),
       signal,
       emit,
+      completion: {
+        isComplete: () => !!result,
+        prompt: () => [
+          "Call submit_result to finish this step with an outcome, summary and declared artifacts. A prose response alone does not publish a result.",
+          lastResultError ? `Correct the rejected result: ${lastResultError}` : "Use the work and tool results already in this conversation.",
+          "Do not repeat completed edits, commands, checks or publication. Submit the evidence you already collected.",
+        ].join("\n\n"),
+      },
       images: attachments.images,
       requireVision: false,
       onUsage: execution.onUsage,
@@ -319,6 +336,9 @@ export function validateBlockResult(value: unknown, bundle: BlockBundle) {
       if (!result.artifacts[name]?.trim()) {
         throw new Error(`A passing block must publish ${name}`);
       }
+    }
+    if (bundle.definition.outputSchema) {
+      z.fromJSONSchema(bundle.definition.outputSchema).parse(JSON.parse(result.artifacts.data ?? "null"));
     }
   }
 

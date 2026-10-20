@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { initializeProject } from "../../src/library.js";
@@ -7,9 +7,16 @@ import { runDemoBlock } from "../../src/block-runner.js";
 import { createServer } from "../../src/server.js";
 import { BrowserAuth } from "../../src/browser-auth.js";
 import { authRuntime } from "../auth-fixture.js";
+import { userPaths } from "../../src/user-settings.js";
 
 const project = await mkdtemp(path.join(os.tmpdir(), "workflow-e2e-"));
+const temporalCache = path.join(userPaths().directory, "cache", "temporal");
 process.env.WORKFLOW_HOME = path.join(project, ".workflow-user");
+// Keep credentials isolated, while avoiding a fresh executable download for
+// every browser test fixture. Only the public Temporal binary cache is copied.
+await cp(temporalCache, path.join(process.env.WORKFLOW_HOME, "cache", "temporal"), { recursive: true }).catch(error => {
+  if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+});
 await initializeProject(project);
 process.env.WORKFLOW_DEMO_DELAY_MS = "400";
 const engine = new WorkflowEngine(project, "demo", async execution => {

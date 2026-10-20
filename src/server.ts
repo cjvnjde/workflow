@@ -25,6 +25,8 @@ import { Tasks } from "./tasks.js";
 import { planTask } from "./task-planner.js";
 import { mcpServerSchema } from "./capability-schema.js";
 import { inspectMcp } from "./mcp-tools.js";
+import { programSourceSchema } from "./program-schema.js";
+import { refineProgram } from "./program-refiner.js";
 
 const proposalSchema = z
   .object({
@@ -208,6 +210,19 @@ export async function createServer(engine: WorkflowEngine, port = 4310, services
   }));
   server.post<{ Params: { id: string } }>("/api/library/proposals/:id/reject", async (request) => await planningJob(async () => await proposals.reject(request.params.id)));
   server.get("/api/runs", async () => engine.list(true));
+  server.post("/api/programs", async (request, reply) => {
+    const { title, task, ...program } = programSourceSchema.extend({
+      title: z.string().trim().min(1).max(200), task: z.string().trim().min(1).max(32_000),
+    }).parse(request.body);
+    const cancelled = new AbortController();
+    const close = () => { if (!reply.raw.writableEnded) cancelled.abort(new Error("Workflow creation cancelled")); };
+    reply.raw.once("close", close);
+    try { return await engine.createProgram(title, task, program, await loadLibrary(engine.project),
+      AbortSignal.any([planning.signal, cancelled.signal])); }
+    finally { reply.raw.removeListener("close", close); }
+  });
+  server.put<{ Params: { id: string } }>("/api/runs/:id/program", async request =>
+    await engine.updateProgram(request.params.id, request.body, expectedRevision(request.headers)));
   server.delete<{ Params: { id: string } }>("/api/runs/:id", async request => await tasks.removeRun(request.params.id));
   server.get<{ Params: { id: string } }>("/api/runs/:id", async (request, reply) => {
     const run = engine.get(request.params.id);
@@ -271,6 +286,12 @@ export async function createServer(engine: WorkflowEngine, port = 4310, services
       if (run.status !== "draft") { throw new Error("Only draft workflows can be refined"); }
       const revision = expectedRevision(request.headers);
       if (revision !== undefined && run.revision !== revision) { throw new Error("Draft changed since you loaded it. Review the latest draft and try again."); }
+      if (run.program) {
+        const program = await refineProgram({ project: engine.project, run, instructions: input.instructions,
+          models: (await catalog(signal)).models, signal, emit });
+        signal.throwIfAborted();
+        return await engine.updateProgram(run.id, program, run.revision, signal);
+      }
       const plan = await planWithAi({
         project: engine.project, library: { config: run.config, blocks: run.blocks }, task: run.plan.task,
         previousPlan: run.plan, instructions: input.instructions, signal, emit,
