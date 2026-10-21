@@ -88,7 +88,9 @@ export async function planTask(options: TaskPlannerOptions, session: typeof runA
     })] : []),
     defineTool({
       name: "submit_plan", label: "Compose workflow graph", description: "Submit the complete graph of blocks, goals, model defaults, handoffs and routes for review before execution. Correct validation errors and resubmit.",
-      parameters: Type.Object({ json: Type.String(), rationale: Type.String(), attachmentSummary: Type.Optional(Type.String()) }),
+      parameters: Type.Object({ json: Type.String(), rationale: Type.String(), attachmentSummary: context.images.length
+        ? Type.String({ minLength: 1, description: "Required: summarize what the screenshots show and the visual acceptance criteria for text-only execution models. Put this in attachmentSummary, outside the graph JSON." })
+        : Type.Optional(Type.String()) }),
       async execute(_id, args) {
         if (!classified) { throw new Error("Choose a task case and read its instructions first"); }
         const proposal = JSON.parse(args.json);

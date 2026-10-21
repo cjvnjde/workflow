@@ -88,6 +88,7 @@ test("the coordinator classifies dynamically, reads case instructions, selects p
     assert.match(session.systemPrompt, /Careful independent review/);
     assert.match(session.systemPrompt, /Cite a file/);
     assert.equal(session.images?.length, 1);
+    assert.ok((session.tools.find(tool => tool.name === "submit_plan")!.parameters as { required?: string[] }).required?.includes("attachmentSummary"));
     assert.deepEqual(session.tools.map(tool => tool.name).sort(), ["ask_user", "choose_task_case", "submit_plan", "suggest_block"]);
     const plan = createTemplate(task.prompt, "bug", library);
     plan.nodes.forEach((node) => { node.agent = { provider: "test", model: "careful", thinking: "off" }; });
@@ -169,6 +170,7 @@ test("graph composition uses only supplied context and never connects enabled MC
     assert.deepEqual(session.tools.map(tool=>tool.name).sort(),["ask_user","choose_task_case","submit_plan","suggest_block"]);
     assert.match(session.systemPrompt,/Put all investigation and configuration checks into execution blocks/);
     assert.match(session.systemPrompt,/ctx.ai/);
+    assert.ok(!(session.tools.find(tool => tool.name === "submit_plan")!.parameters as { required?: string[] }).required?.includes("attachmentSummary"));
     assert.ok(session.systemPrompt.includes(JSON.stringify(library.blocks.review!.prompt)));
     await call(session,"choose_task_case",{id:"investigation",reason:"Review"});
     await call(session,"submit_plan",{json:JSON.stringify({title:"Review changes",entry:"review",nodes:[{
