@@ -3,34 +3,12 @@
   "instructions": "",
   "approval": "review",
   "suggestBlocks": true,
-  "coordinatorProfile": "",
+  "coordinatorProfile": "planner",
   "profiles": [
     {
-      "id": "simple-code",
-      "name": "Simple coding",
-      "description": "Handle straightforward tasks and routine code changes with focused reasoning. Keep work narrowly scoped and follow existing TypeScript conventions; use Bun for scripts and tests.",
-      "agent": {
-        "provider": "openai",
-        "model": "gpt-6-luna",
-        "thinking": "low"
-      },
-      "enabled": true
-    },
-    {
-      "id": "code-generation",
-      "name": "High-volume code generation",
-      "description": "Generate substantial amounts of straightforward, repetitive code. Use maximum available thinking to maintain consistency across generated code; follow project TypeScript conventions and use Bun for scripts and tests.",
-      "agent": {
-        "provider": "openai",
-        "model": "gpt-6-luna",
-        "thinking": "xhigh"
-      },
-      "enabled": true
-    },
-    {
-      "id": "serious-code",
-      "name": "Serious code generation",
-      "description": "Implement complex or consequential changes with careful reasoning, preserving project conventions and validating with focused checks or bun run test when appropriate.",
+      "id": "planner",
+      "name": "Workflow Planner",
+      "description": "Compose task-appropriate workflow graphs from the request, project conventions, available blocks, and acceptance criteria. For image attachments, extract relevant visual observations; preserve review/verification independence and avoid needless steps.",
       "agent": {
         "provider": "openai",
         "model": "gpt-6.1-sol",
@@ -39,9 +17,31 @@
       "enabled": true
     },
     {
-      "id": "code-review",
-      "name": "Code review",
-      "description": "Independently review code for correctness, regressions, edge cases, and test gaps. Prioritize actionable findings with evidence; do not implement fixes as part of review.",
+      "id": "implementer",
+      "name": "Implementation",
+      "description": "Implement scoped TypeScript/Vue workflow-tool changes and address focused verification feedback. Inspect existing conventions, make the smallest appropriate change, and run relevant checks without weakening tests.",
+      "agent": {
+        "provider": "openai",
+        "model": "gpt-6-luna",
+        "thinking": "medium"
+      },
+      "enabled": true
+    },
+    {
+      "id": "verifier",
+      "name": "Verification",
+      "description": "Independently validate behavior against acceptance criteria using focused tests and the configured bun run test check; report reproducible failures and diagnostics without modifying implementation.",
+      "agent": {
+        "provider": "openai",
+        "model": "gpt-6.1-sol",
+        "thinking": "xhigh"
+      },
+      "enabled": true
+    },
+    {
+      "id": "reviewer",
+      "name": "Independent Reviewer",
+      "description": "Read-only review of implementation, regressions, security-sensitive effects, and evidence against requirements. Prioritize concrete actionable defects; do not edit files or duplicate routine verification.",
       "agent": {
         "provider": "openai",
         "model": "gpt-6-astra",

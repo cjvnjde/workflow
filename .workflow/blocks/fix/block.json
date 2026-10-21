@@ -1,29 +1,16 @@
 {
   "id": "fix",
   "name": "Fix bug without changing tests",
-  "description": "Fix a reproduced bug until regression tests pass. Test files are protected from writes.",
-  "permissions": {
-    "read": ["**/*"],
-    "write": ["**/*"],
-    "deny": [],
-    "writeDeny": [
-      "tests/**",
-      "test/**",
-      "**/__tests__/**",
-      "**/*.test.*",
-      "**/*.spec.*",
-      "package.json",
-      "*-lock.*",
-      "pnpm-lock.yaml",
-      "bun.lock*"
-    ]
+  "description": "Fix a reproduced bug until regression tests pass, preserving the regression test's expectations.",
+  "executor": {
+    "kind": "code",
+    "timeoutMs": 722000,
+    "maxOperations": 100,
+    "file": "block.ts"
   },
   "skills": [],
-  "outputs": ["implementation"],
-  "checks": [
-    {
-      "command": "test",
-      "expect": "success"
-    }
-  ]
+  "outputs": [
+    "implementation"
+  ],
+  "checks": []
 }

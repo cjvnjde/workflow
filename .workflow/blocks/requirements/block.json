@@ -2,13 +2,15 @@
   "id": "requirements",
   "name": "Define requirements",
   "description": "For a new feature or unclear task, produce observable acceptance criteria before implementation.",
-  "permissions": {
-    "read": ["**/*"],
-    "write": [],
-    "deny": [],
-    "writeDeny": ["package.json", "*-lock.*", "pnpm-lock.yaml", "bun.lock*"]
+  "executor": {
+    "kind": "code",
+    "timeoutMs": 600000,
+    "maxOperations": 100,
+    "file": "block.ts"
   },
   "skills": [],
-  "outputs": ["requirements"],
+  "outputs": [
+    "requirements"
+  ],
   "checks": []
 }

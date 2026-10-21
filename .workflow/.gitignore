@@ -1,4 +1,10 @@
 runs/
+tasks/
+attachments/
+design-chats/
 temporal/
+versions/
+library-proposals/
+libraries/
 server-lease/
 lock
