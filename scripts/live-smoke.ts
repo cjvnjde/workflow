@@ -491,9 +491,9 @@ async function checkWorkflows() {
         const state = await api("/api/design/profiles/latest");
         return state ? designSessionSchema.parse(state) : undefined;
       },
-      (item) => !!item && ["ready", "failed"].includes(item.status),
+      (item) => !!item && (item.status === "failed" || (["ready", "idle"].includes(item.status) && item.messages.at(-1)?.role === "assistant")),
     );
-    assert.equal(design?.status, "ready", design?.error);
+    assert.equal(design?.status, "ready", design?.error ?? `Expected a reviewable proposal, received: ${design?.messages.at(-1)?.content}`);
     await chat
       .getByRole("button", { name: "Apply changes", exact: true })
       .click();
