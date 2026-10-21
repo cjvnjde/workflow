@@ -13,18 +13,23 @@ const props = defineProps<{
 }>();
 const title = ref("My workflow");
 const filename = ref("workflow.ts");
-const template = `import { workflow, script, z } from "workflow";
+const template = `import { workflow, block, z } from "workflow";
+
+const inspect = block({
+  output: z.object({ output: z.string(), exitCode: z.number().nullable() }),
+  async run(ctx) {
+    const result = await ctx.exec("git status --short");
+    ctx.summary(result.output || "Working tree is clean.");
+    return { output: result.output, exitCode: result.exitCode };
+  },
+});
 
 export default workflow({
   name: "Project check",
-  input: z.object({ request: z.string() }),
   async run(ctx) {
-    const result = await ctx.step("check", script({
-      language: "bash",
-      code: "git status --short",
-    }), { prompt: ctx.input.request });
-    if (result.outcome !== "pass") throw new Error(result.summary);
-    return result.summary;
+    const result = await ctx.step("inspect", inspect);
+    if (result.exitCode !== 0) throw new Error(result.output);
+    return result.output || "Working tree is clean.";
   },
 });
 `;
@@ -68,16 +73,23 @@ async function submit() {
       filename: filename.value,
       input: JSON.parse(input.value),
     });
-    await props.onSubmit({
-      ...program,
-      title: title.value,
-      task:
-        typeof program.input.request === "string"
-          ? program.input.request
-          : title.value,
-    }, current.signal);
+    await props.onSubmit(
+      {
+        ...program,
+        title: title.value,
+        task:
+          typeof program.input.request === "string"
+            ? program.input.request
+            : title.value,
+      },
+      current.signal,
+    );
   } catch (failure) {
-    error.value = current.signal.aborted ? "Workflow creation cancelled." : failure instanceof Error ? failure.message : String(failure);
+    error.value = current.signal.aborted
+      ? "Workflow creation cancelled."
+      : failure instanceof Error
+        ? failure.message
+        : String(failure);
   } finally {
     busy.value = false;
     if (controller === current) controller = undefined;
@@ -112,11 +124,22 @@ async function submit() {
       </div>
       <div class="editor-field">
         <span>New workflow TypeScript</span>
-        <CodeEditor v-model="source" label="New workflow TypeScript" :readonly="busy" />
+        <CodeEditor
+          v-model="source"
+          label="New workflow TypeScript"
+          :readonly="busy"
+        />
       </div>
       <div class="editor-field">
         <span>New workflow inputs (JSON)</span>
-        <CodeEditor v-model="input" label="New workflow inputs (JSON)" language="json" :min-lines="3" :max-lines="12" :readonly="busy" />
+        <CodeEditor
+          v-model="input"
+          label="New workflow inputs (JSON)"
+          language="json"
+          :min-lines="3"
+          :max-lines="12"
+          :readonly="busy"
+        />
       </div>
       <div class="editor-actions">
         <button class="primary" @click="submit">
@@ -124,7 +147,9 @@ async function submit() {
         ><button @click="discard">Discard TypeScript draft</button>
       </div>
     </fieldset>
-    <button v-if="busy" @click="controller?.abort()">Cancel workflow creation</button>
+    <button v-if="busy" @click="controller?.abort()">
+      Cancel workflow creation
+    </button>
     <pre v-if="error" class="validation-error" role="alert">{{ error }}</pre>
   </details>
 </template>

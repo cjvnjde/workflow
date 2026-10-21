@@ -75,13 +75,28 @@ function download() {
     </div>
     <div class="editor-field">
       <span>Workflow TypeScript</span>
-      <CodeEditor :key="run.id" label="Workflow TypeScript" :model-value="draft.text" :readonly="locked"
-        @update:model-value="draft.edit($event); copied = false" />
+      <CodeEditor
+        :key="run.id"
+        label="Workflow TypeScript"
+        :model-value="draft.text"
+        :readonly="locked"
+        @update:model-value="
+          draft.edit($event);
+          copied = false;
+        "
+      />
     </div>
     <div class="editor-field">
       <span>Workflow inputs (JSON)</span>
-      <CodeEditor label="Workflow inputs (JSON)" language="json" :min-lines="3" :max-lines="12"
-        :model-value="draft.inputText" :readonly="locked" @update:model-value="draft.editInput($event)" />
+      <CodeEditor
+        label="Workflow inputs (JSON)"
+        language="json"
+        :min-lines="3"
+        :max-lines="12"
+        :model-value="draft.inputText"
+        :readonly="locked"
+        @update:model-value="draft.editInput($event)"
+      />
     </div>
     <div class="editor-actions">
       <button
@@ -104,21 +119,25 @@ function download() {
     <details class="script-contract">
       <summary>Workflow API</summary>
       <p>
-        Import <code>workflow, agent, script, z</code> from
-        <code>"workflow"</code>. Use
-        <code>await ctx.step(id, block, options)</code> with a Settings block ID
-        or an inline definition.
+        Import <code>workflow, block, z</code> from <code>"workflow"</code>.
+        Define a block with
+        <code>block({ input, output, async run(ctx) { … } })</code>, then call
+        <code>await ctx.step(id, block, { inputs })</code> to receive its typed
+        return value.
       </p>
       <p>
-        Step options include <code>prompt</code>, <code>inputs</code>,
-        <code>model</code> and <code>maxVisits</code>. Typed agent results are
-        in <code>result.data</code>; feedback and artifacts can be passed to the
-        next step.
+        Inside a block, <code>ctx.ai({ prompt, model, output })</code> calls a
+        model, <code>ctx.exec(command)</code> runs Bash, and
+        <code>ctx.readFile/writeFile</code> handles files. Use
+        <code>ctx.summary(markdown)</code>,
+        <code>ctx.artifact(name, text)</code> and
+        <code>await ctx.log(message)</code> for visible results.
       </p>
       <p>
-        Use ordinary loops and conditions. Put file access, shell commands and
-        network work inside agent or script steps so restarts can resume
-        completed work. The graph follows the executed path.
+        Use ordinary loops and conditions to route feedback. Settings blocks can
+        be referenced by ID; <code>ctx.models[profileId]</code> selects a saved
+        profile. Await operations sequentially so the engine can record their
+        results and resume after a restart.
       </p>
     </details>
     <details v-if="live && run.status === 'draft'" class="refinement-editor">

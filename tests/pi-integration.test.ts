@@ -34,6 +34,7 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
   const requests: z.infer<typeof requestSchema>[] = [];
   let requestCount = 0;
   let structuredContinuation = -1;
+  let valueSubmission: unknown;
   const server = createServer((request, response) => {
     const chunks: Buffer[] = [];
     request.on("data", (chunk: Buffer) => {
@@ -108,6 +109,9 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
               artifacts: { data: JSON.stringify({ approved: continuation === 1 ? "yes" : true }) },
             }),
           };
+        }
+        if (valueSubmission !== undefined) {
+          call = { name: "submit_result", arguments: JSON.stringify({ value: valueSubmission }) };
         }
         response.writeHead(200, { "content-type": "text/event-stream" });
         const chunk = {
@@ -351,4 +355,26 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
   assert.ok(events.some(event => event.kind === "result_validation" && /boolean/.test(event.message)));
   assert.match(JSON.stringify(requests.at(-1)), /Correct the rejected result/);
   assert.match(JSON.stringify(requests.at(-1)), /Do not repeat completed edits/);
+
+  structuredContinuation = -1;
+  valueSubmission = { outcome: "retry", feedback: "Add the missing boundary tests." };
+  const valueResult = await runPiBlock({
+    project, config: library.config,
+    bundle: { ...customAudit, definition: { ...customAudit.definition, outputs: ["data"],
+      outputSchema: z.toJSONSchema(z.object({ outcome: z.enum(["pass", "retry", "fail"]), feedback: z.string() })) } },
+    node, task: "Inspect tests and return feedback to TypeScript", inputs: {}, visit: 1,
+    settings, signal: AbortSignal.timeout(10_000), emit: () => {}, resultMode: "value",
+  });
+  assert.equal(valueResult.outcome, "pass", "The call succeeded; nested retry belongs to workflow code");
+  assert.deepEqual(JSON.parse(valueResult.artifacts.data!), valueSubmission);
+  const valueTool = requests.at(-1)!.tools.find(tool => tool.function.name === "submit_result")!;
+  assert.deepEqual((valueTool.function.parameters as { required: string[] }).required, ["value"]);
+
+  valueSubmission = "# Finished\n\nFocused tests added and passing.";
+  const markdown = await runPiBlock({
+    project, config: library.config, bundle: customAudit, node, task: "Return Markdown",
+    inputs: {}, visit: 1, settings, signal: AbortSignal.timeout(10_000), emit: () => {}, resultMode: "value",
+  });
+  assert.equal(markdown.summary, valueSubmission);
+  assert.deepEqual(markdown.artifacts, {});
 });

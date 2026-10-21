@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 import { atomicWrite } from "./atomic-file.js";
 import { resolveAgentSettings, type Library, type WorkflowPlan } from "./domain.js";
 import { loadLibrary, validateLibraryResources } from "./library.js";
+import { validateCodeBlocks } from "./program-compiler.js";
 import { scriptBundle } from "./script-migration.js";
 import {
   approvedLibrarySchema, libraryChangesSchema, libraryProposalSchema, modelKey,
@@ -94,7 +95,8 @@ export class LibraryProposals {
   }
   async get(id: string) { return libraryProposalSchema.parse(JSON.parse(await readFile(this.filename(id), "utf8"))); }
   async create(library: Library, kind: LibraryProposal["kind"], value: unknown, models: AvailableModel[]) {
-    const { changes } = validateLibraryChanges(value, library, kind, models);
+    const { changes, blocks } = validateLibraryChanges(value, library, kind, models);
+    await validateCodeBlocks(this.project, blocks);
     const proposal: LibraryProposal = { id: randomUUID(), createdAt: new Date().toISOString(), status: "draft", kind, baseHash: libraryHash(library), changes, allowedModels: models.map(modelKey) };
     await this.save(proposal);
     return proposal;
@@ -111,6 +113,7 @@ export class LibraryProposals {
       if (libraryHash(current) !== proposal.baseHash) { throw new Error("The library or project defaults changed. Generate a new proposal to preserve those edits."); }
       const allowed = proposal.kind === "manual" ? models : models.filter((model) => proposal.allowedModels.includes(modelKey(model)));
       const { blocks } = validateLibraryChanges(proposal.changes, current, proposal.kind, allowed);
+      await validateCodeBlocks(this.project, blocks);
       proposal.appliedHash = libraryHash({ config: current.config, blocks });
       // Persist the intended final fingerprint so a retry can recognize an interrupted publication.
       await this.save(proposal);

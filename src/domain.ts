@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { attachmentSchema, capabilitiesSchema } from "./capability-schema.js";
+import { codeExecutorSchema } from "./code-schema.js";
 import { scriptExecutorSchema } from "./script-schema.js";
 import { programSourceSchema } from "./program-schema.js";
 
@@ -10,6 +11,8 @@ export const identifierSchema = z
     (value) => value !== "constructor" && value !== "prototype",
     "Reserved identifier",
   );
+export const artifactNameSchema = z.string().regex(/^[a-z][a-z0-9._-]{0,63}$/)
+  .refine(value => !value.includes("..") && !["constructor", "prototype"].includes(value), "Use a simple artifact name or filename without path segments");
 export const outcomeSchema = z.enum(["pass", "retry", "fail"]);
 const agentFields = {
   provider: z.string().min(1).optional(),
@@ -87,8 +90,9 @@ export const blockSchema = z
     name: z.string().min(1).max(120),
     description: z.string().min(1).max(4000),
     executor: z.discriminatedUnion("kind", [
+      codeExecutorSchema,
       scriptExecutorSchema,
-      // Compatibility for existing snapshots; current libraries expose scripts.
+      // Compatibility for existing snapshots; new authoring uses TypeScript.
       z.object({ kind: z.literal("command"), command: identifierSchema, expect: z.enum(["success", "failure"]).default("success") }).strict(),
       z.object({
         kind: z.literal("function"),
@@ -109,7 +113,7 @@ export const blockSchema = z
       .strict().optional(),
     skills: z.array(z.string()).default([]),
     outputs: z
-      .array(identifierSchema)
+      .array(artifactNameSchema)
       .refine(
         (outputs) =>
           new Set(outputs).size === outputs.length &&
@@ -134,7 +138,7 @@ export const blockSchema = z
 export const bundleSchema = z
   .object({
     definition: blockSchema,
-    prompt: z.string().min(1),
+    prompt: z.string().min(1).default("Behavior, models, inputs and outputs are defined in TypeScript."),
     skills: z.array(
       z.object({ path: z.string(), content: z.string() }).strict(),
     ),
@@ -143,7 +147,7 @@ export const bundleSchema = z
 const inputSchema = z
   .object({
     node: identifierSchema,
-    artifact: identifierSchema,
+    artifact: artifactNameSchema,
     as: identifierSchema.optional(),
     required: z.boolean().default(false),
   })
@@ -175,7 +179,7 @@ export const resultSchema = z
   .object({
     outcome: outcomeSchema,
     summary: z.string().min(1).max(16_000),
-    artifacts: z.record(identifierSchema, z.string().max(64_000)).default({}),
+    artifacts: z.record(artifactNameSchema, z.string().max(64_000)).default({}),
   })
   .strict();
 export const checkResultSchema = z
@@ -285,6 +289,7 @@ export type CheckResult = z.infer<typeof checkResultSchema>;
 export type RunEvent = z.infer<typeof eventSchema>;
 export type WorkflowRun = z.infer<typeof runSchema>;
 export function executionTimeoutMs(config: ProjectConfig, bundle: BlockBundle, node: WorkflowNode) {
+  if (bundle.definition.executor?.kind === "code") return bundle.definition.executor.timeoutMs;
   if (bundle.definition.executor?.kind === "script") {
     // Leave time for process termination and any host checks after the script.
     return bundle.definition.executor.timeoutMs + 2000 + bundle.definition.checks.reduce(

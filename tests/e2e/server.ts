@@ -17,7 +17,7 @@ process.env.WORKFLOW_HOME = path.join(project, ".workflow-user");
 await cp(temporalCache, path.join(process.env.WORKFLOW_HOME, "cache", "temporal"), { recursive: true }).catch(error => {
   if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
 });
-await initializeProject(project);
+await initializeProject(project, "", "legacy");
 process.env.WORKFLOW_DEMO_DELAY_MS = "400";
 const engine = new WorkflowEngine(project, "demo", async execution => {
   if (execution.task.includes("[activity-fixture]") && execution.node.id === "work" && execution.visit === 1) {

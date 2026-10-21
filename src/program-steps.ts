@@ -1,12 +1,12 @@
 import { z } from "zod";
 import { bundleSchema, nodeSchema, type WorkflowRun } from "./domain.js";
-import type { AgentOptions, Block, Model, ScriptOptions, StepOptions } from "./workflow-sdk.js";
+import type { AgentOptions, Block, CodeBlock, Model, ScriptOptions, StepOptions } from "./workflow-sdk.js";
 
 export const modelOverride = (model: Model | string | undefined) =>
   typeof model === "string" ? { model } : model;
 
 /** Materialize a step only when its TypeScript call is reached. */
-export function programStep(run: WorkflowRun, id: string, block: Block | string, options: StepOptions = {}) {
+export function programStep(run: WorkflowRun, id: string, block: Block | CodeBlock<any, any> | string, options: StepOptions = {}) {
   if (!run.program) throw new Error("Missing TypeScript workflow snapshot");
   let bundle;
   if (typeof block === "string") {
@@ -15,25 +15,26 @@ export function programStep(run: WorkflowRun, id: string, block: Block | string,
     bundle = bundleSchema.parse(saved);
   } else {
     const definition = block.options;
-    const outputSchema = definition.output ? z.toJSONSchema(definition.output) : undefined;
+    const outputSchema = block.kind !== "code" && definition.output ? z.toJSONSchema(definition.output) : undefined;
     // Summary is already published for every step. Accept the natural spelling
     // in code without duplicating the host-owned artifact contract.
-    const outputs = [...new Set([...(definition.outputs ?? []).filter(name => name !== "summary"), ...(outputSchema ? ["data"] : [])])];
+    const outputs = [...new Set([...(("outputs" in definition ? definition.outputs : []) ?? []).filter(name => name !== "summary"), ...(outputSchema ? ["data"] : [])])];
+    const code = block.kind === "code" ? block.options : undefined;
     const agent = block.kind === "agent" ? definition as AgentOptions : undefined;
     const script = block.kind === "script" ? definition as ScriptOptions : undefined;
     bundle = bundleSchema.parse({
       definition: {
         id, name: definition.name ?? options.label ?? id,
-        description: definition.description ?? options.prompt?.slice(0, 4000) ?? (agent ? "AI task" : "Script task"),
+        description: definition.description ?? options.prompt?.slice(0, 4000) ?? (code ? "TypeScript block" : agent ? "AI task" : "Script task"),
         outputs, outputSchema, agent: agent && modelOverride(agent.model),
-        executor: script && {
+        executor: code ? { kind: "code", source: code.run.toString(), timeoutMs: code.timeoutMs, maxOperations: code.maxOperations } : script && {
           kind: "script", language: script.language,
           runtime: script.runtime ?? (script.language === "bash" ? "bash" : "bun"),
           code: script.code, timeoutMs: script.timeoutMs, expect: script.expect,
         },
       },
-      prompt: (agent?.instructions ?? "Execute the script and return its result.") +
-        (definition.outputs?.includes("summary") ? "\nPublish the requested summary in the result's summary field; it is also exposed as artifacts.summary." : ""),
+      prompt: (agent?.instructions ?? (code ? "Behavior is defined in TypeScript." : "Execute the script and return its result.")) +
+        (("outputs" in definition && definition.outputs?.includes("summary")) ? "\nPublish the requested summary in the result's summary field; it is also exposed as artifacts.summary." : ""),
       skills: [],
     });
   }
@@ -61,16 +62,21 @@ export function programStep(run: WorkflowRun, id: string, block: Block | string,
   else plan.nodes.push(node);
   const blocks = { ...run.blocks, [id]: bundle };
   const candidate = JSON.stringify({ ...run, plan, blocks, transitions, cursor: id });
-  // Count UTF-8 without host APIs: this code also runs in Temporal's VM.
-  let bytes = 0;
-  for (const character of candidate) {
-    const point = character.codePointAt(0)!;
-    bytes += point < 0x80 ? 1 : point < 0x800 ? 2 : point < 0x10000 ? 3 : 4;
-  }
+  const bytes = utf8Bytes(candidate);
   if (bytes > 1_300_000) throw new Error("Workflow context is too large. Pass concise handoffs or split this workflow.");
   run.plan = plan;
   run.blocks = blocks;
   run.transitions = transitions;
   run.cursor = id;
   return node;
+}
+
+/** UTF-8 sizing shared with code running in Temporal's VM (no host APIs). */
+export function utf8Bytes(value: string) {
+  let bytes = 0;
+  for (const character of value) {
+    const point = character.codePointAt(0)!;
+    bytes += point < 0x80 ? 1 : point < 0x800 ? 2 : point < 0x10000 ? 3 : 4;
+  }
+  return bytes;
 }

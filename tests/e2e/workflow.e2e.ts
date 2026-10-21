@@ -274,19 +274,28 @@ test("manual block editing is reviewed before applying and preserves existing wo
   const originalPrompt = oldRun.blocks.review.prompt;
   await settings(page, "Blocks");
   await page.getByRole("button", { name: /Independent review/ }).click();
-  const instructions = "Read each acceptance criterion and inspect independent evidence. Report concrete defects.";
-  await page.getByLabel("Block instructions", { exact: true }).fill(instructions);
+  const original = (await (await request.get("/api/library")).json()).blocks.review;
+  const code = page.getByLabel("Block TypeScript", { exact: true });
+  const source = (await readCode(code)) + "\n// Review acceptance evidence carefully.\n";
+  await fillCode(code, source);
   expect((await (await request.get("/api/project")).json()).blocks.review.prompt).toBe(originalPrompt);
-  await page.getByRole("button", { name: "Save block", exact: true }).click();
-  await expect(page.getByText(/Block saved. New workflows/)).toBeVisible();
-  expect((await (await request.get("/api/project")).json()).blocks.review.prompt).toBe(instructions);
-  expect((await (await request.get(`/api/runs/${id}`)).json()).blocks.review.prompt).toBe(originalPrompt);
-  await page.reload();
-  await newTask(page, "Updated library consumer");
-  await expect(page.locator(".task-request > p")).toHaveText("Updated library consumer");
-  const updatedRuns = await (await request.get("/api/runs")).json();
-  const newId = updatedRuns.find((run: { task: string }) => run.task === "Updated library consumer").id;
-  expect((await (await request.get(`/api/runs/${newId}`)).json()).blocks.review.prompt).toBe(instructions);
+  try {
+    await page.getByRole("button", { name: "Save block", exact: true }).click();
+    await expect(page.getByText(/Block saved. New workflows/)).toBeVisible();
+    expect((await (await request.get("/api/project")).json()).blocks.review.definition.executor.source).toBe(source);
+    expect((await (await request.get(`/api/runs/${id}`)).json()).blocks.review).toEqual(oldRun.blocks.review);
+    await page.reload();
+    await newTask(page, "Updated library consumer");
+    const updatedRuns = await (await request.get("/api/runs")).json();
+    const newId = updatedRuns.find((run: { task: string }) => run.task === "Updated library consumer").id;
+    expect((await (await request.get(`/api/runs/${newId}`)).json()).program.catalog.review.definition.executor.source).toBe(source);
+  } finally {
+    const library = await (await request.get("/api/library")).json();
+    const headers = { "x-workflow-client": "1" };
+    const proposal = await request.post("/api/library/proposals", { headers, data: {kind:"manual",baseHash:library.revision,changes:{summary:"Restore legacy test fixture",blocks:[{bundle:original,rationale:"Isolate the test"}]}} });
+    expect(proposal.ok()).toBe(true);
+    expect((await request.post(`/api/library/proposals/${(await proposal.json()).id}/apply`, {headers})).ok()).toBe(true);
+  }
 });
 
 test("unsaved graph edits block approval and survive switching between runs", async ({ page }) => {
@@ -560,10 +569,9 @@ test("block form preserves multiline edits and warns before discarding them", as
   await settings(page, "Blocks");
   await page.getByRole("button", { name: "Add block", exact: true }).click();
   await page.getByLabel("Block name", { exact: true }).fill("Read-only audit");
-  const outputs = page.getByLabel("Output artifacts", { exact: true });
-  await outputs.fill("findings,");
-  await outputs.pressSequentially("evidence");
-  await expect(outputs).toHaveValue("findings, evidence");
+  const source = page.getByLabel("Block TypeScript", { exact: true });
+  const original = await readCode(source);
+  await fillCode(source, original + "\n// findings and evidence\n");
   page.once("dialog", (dialog) => { void dialog.dismiss(); });
   await page.getByRole("button", { name: "Execution", exact: true }).click();
   await expect(page.getByLabel("Block name", { exact: true })).toHaveValue("Read-only audit");
@@ -571,17 +579,17 @@ test("block form preserves multiline edits and warns before discarding them", as
   await expect(page.getByText(/Block saved. New workflows/)).toBeVisible();
   // Vue's mutable edit buffer must stay separate from the saved baseline.
   const blockId = await page.getByLabel("Block ID", { exact: true }).inputValue();
-  const instructions = page.getByLabel("Block instructions", { exact: true });
-  const savedInstructions = await instructions.inputValue();
-  await instructions.fill("A second edit after saving");
+  const instructions = source;
+  const savedInstructions = await readCode(instructions);
+  await fillCode(instructions, savedInstructions + "\n// A second edit after saving\n");
   await expect(page.getByRole("button", { name: "Save block", exact: true })).toBeEnabled();
-  expect((await (await request.get("/api/library")).json()).blocks[blockId].prompt).toBe(savedInstructions);
+  expect((await (await request.get("/api/library")).json()).blocks[blockId].definition.executor.source).toBe(savedInstructions);
   page.once("dialog", (dialog) => { void dialog.dismiss(); });
   await page.getByRole("button", { name: "Execution", exact: true }).click();
-  await expect(instructions).toHaveValue("A second edit after saving");
+  await expectCode(instructions, /A second edit after saving/);
   await page.getByRole("button", { name: "Save block", exact: true }).click();
   // The button is also disabled while saving; wait for the persisted result.
-  await expect.poll(async () => (await (await request.get("/api/library")).json()).blocks[blockId].prompt).toBe("A second edit after saving");
+  await expect.poll(async () => (await (await request.get("/api/library")).json()).blocks[blockId].definition.executor.source).toBe(savedInstructions + "\n// A second edit after saving\n");
   await expect(page.getByRole("button", { name: "Save block", exact: true })).toBeDisabled();
   page.once("dialog", (dialog) => { void dialog.accept(); });
   await page.getByRole("button", { name: "Remove block", exact: true }).click();
@@ -619,7 +627,7 @@ async function ensureDesignConnection(request: APIRequestContext) {
   await expect.poll(async () => (await (await request.get("/api/models")).json()).models.length).toBeGreaterThan(0);
 }
 
-test("changing and clearing a block model profile preserves its saved execution limits", async ({ page, request }) => {
+test("editing model choices in migrated TypeScript preserves execution limits", async ({ page, request }) => {
   await ensureDesignConnection(request);
   const headers = { "x-workflow-client": "1" };
   const original = await (await request.get("/api/settings/orchestration")).json();
@@ -647,26 +655,20 @@ test("changing and clearing a block model profile preserves its saved execution 
     await page.goto("/");
     await settings(page, "Blocks");
     await page.getByRole("button", { name: /Profile limits regression/ }).click();
-    const selector = page.getByLabel("Preferred model profile", { exact: true });
-    // Limits must not prevent recognizing the current model profile.
-    await expect(selector).toHaveValue("limits-reviewer");
-    await selector.selectOption("limits-helper");
+    const code = page.getByLabel("Block TypeScript", { exact: true });
+    const originalSource = await readCode(code);
+    expect(originalSource).toContain('"maxToolCalls":2');
+    expect(originalSource).toContain('"timeoutMs":10000');
+    const updatedSource = originalSource.replace('"thinking":"high"', '"thinking":"off"');
+    await fillCode(code, updatedSource);
     await page.getByRole("button", { name: "Save block", exact: true }).click();
     await expect(page.getByText(/Block saved. New workflows/)).toBeVisible();
-    expect((await (await request.get("/api/library")).json()).blocks["profile-limits"].definition.agent).toEqual({
-      ...profiles[1]!.agent, timeoutMs: 10000, maxToolCalls: 2,
-    });
-    await selector.selectOption("");
-    await page.getByRole("button", { name: "Save block", exact: true }).click();
-    await expect.poll(async () => (await (await request.get("/api/library")).json()).blocks["profile-limits"].definition.agent).toEqual({
-      timeoutMs: 10000, maxToolCalls: 2,
-    });
-    await expect(page.getByRole("button", { name: "Save block", exact: true })).toBeDisabled();
+    const saved = (await (await request.get("/api/library")).json()).blocks["profile-limits"];
+    expect(saved.definition.executor.source).toBe(updatedSource);
     expect((await (await request.get("/api/settings/orchestration")).json()).settings.profiles).toEqual(allProfiles);
-    await page.reload();
-    await settings(page, "Blocks");
+    await page.reload(); await settings(page, "Blocks");
     await page.getByRole("button", { name: /Profile limits regression/ }).click();
-    await expect(selector).toHaveValue("");
+    await expectCode(code, updatedSource);
   } finally {
     const current = await (await request.get("/api/settings/orchestration")).json();
     expect((await request.put("/api/settings/orchestration", { headers, data: { ...current, settings: original.settings } })).ok()).toBe(true);
@@ -747,19 +749,19 @@ test("AI blocks chat applies reviewed instructions and blocks applying over unsa
   await expect(chat.getByText("Review should cite independent acceptance evidence", { exact: true })).toBeVisible();
   await chat.getByRole("button", { name: "Minimize design chat", exact: true }).click();
   await page.getByRole("button", { name: /Independent review/ }).click();
-  await page.getByLabel("Block instructions", { exact: true }).fill("Unsaved manual review instructions");
+  await fillCode(page.getByLabel("Block TypeScript", { exact: true }), "// Unsaved manual review instructions");
   await page.getByLabel("Design chats").getByRole("button", { name: "Blocks", exact: true }).click();
   await expect(apply).toBeDisabled();
   await expect(chat.getByText(/Save or discard your form edits/)).toBeVisible();
   await chat.getByRole("button", { name: "Minimize design chat", exact: true }).click();
-  await page.getByLabel("Block instructions", { exact: true }).fill(before.blocks.review.prompt);
+  await page.getByRole("button", { name: "Discard block changes", exact: true }).click();
   await page.getByLabel("Design chats").getByRole("button", { name: "Blocks", exact: true }).click();
   await expect(apply).toBeEnabled(); await apply.click();
   await expect(chat.getByText("Changes applied", { exact: true })).toBeVisible();
   expect((await (await request.get("/api/project")).json()).blocks.review.prompt).toBe(instructions);
   await chat.getByRole("button", { name: "Minimize design chat", exact: true }).click();
   await page.getByRole("button", { name: /Independent review/ }).click();
-  await expect(page.getByLabel("Block instructions", { exact: true })).toHaveValue(instructions);
+  await expectCode(page.getByLabel("Block TypeScript", { exact: true }), new RegExp(instructions.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });
 
 test("AI design scopes keep distinct conversations and can configure cases, skills and execution", async ({ page, request }) => {
@@ -1031,11 +1033,11 @@ test("discard controls restore blocks, model defaults and settings without savin
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Close design chat", exact: true }).click();
   await page.locator(".block-catalog button").filter({ hasText: "Independent review" }).click();
-  const instructions = page.getByLabel("Block instructions", { exact: true });
-  const before = await instructions.inputValue();
-  await instructions.fill("Temporary instructions");
+  const instructions = page.getByLabel("Block TypeScript", { exact: true });
+  const before = await readCode(instructions);
+  await fillCode(instructions, "// Temporary instructions");
   await page.getByRole("button", { name: "Discard block changes", exact: true }).click();
-  await expect(instructions).toHaveValue(before);
+  await expectCode(instructions, before);
   expect(await (await request.get("/api/library")).json()).toEqual(originalLibrary);
   await page.getByRole("button", { name: "Providers & models", exact: true }).click();
   const model = page.getByLabel("Model", { exact: true });
@@ -1065,39 +1067,34 @@ test("discard controls restore blocks, model defaults and settings without savin
   expect(await (await request.get("/api/settings/execution")).json()).toEqual(originalExecution);
 });
 
-test("editable Bash, TypeScript and JavaScript blocks save source and runtime without a model", async ({ page, request }) => {
+test("one TypeScript editor saves typed code, rejects errors, downloads and discards without a model selector", async ({ page, request }) => {
   await page.goto("/"); await settings(page, "Blocks");
   await page.getByRole("button", { name: "Add block", exact: true }).click();
-  await page.getByLabel("Execution", { exact: true }).selectOption("script");
-  await expect(page.getByLabel("Script language", { exact: true })).toHaveValue("bash");
-  await expect(page.getByLabel("Script runtime", { exact: true })).toHaveCount(0);
-  await expect(page.getByRole("option", { name: /Built-in function/ })).toHaveCount(0);
+  await expect(page.getByLabel("Execution", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Preferred model profile", { exact: true })).toHaveCount(0);
-  await expect(page.getByLabel("Command", { exact: true })).toHaveCount(0);
   await page.getByLabel("Block name", { exact: true }).fill("Process files without AI");
-  await page.getByLabel("Output artifacts", { exact: true }).fill("evidence");
-  await page.getByLabel("Script timeout (seconds)", { exact: true }).fill("30");
   const id = await page.getByLabel("Block ID", { exact: true }).inputValue();
-  for (const [language, runtime, code] of [
-    ["bash", "bash", "printf 'Done\\n'\n"],
-    ["typescript", "node", "const result: number = 42;\nconsole.log(result);\n"],
-    ["javascript", "bun", "import { readFileSync } from 'node:fs';\nconsole.log(JSON.parse(readFileSync(process.env.WORKFLOW_INPUT, 'utf8')).inputs);\n"],
-  ]) {
-    await page.getByLabel("Script language", { exact: true }).selectOption(language!);
-    if (runtime !== "bash") await page.getByLabel("Script runtime", { exact: true }).selectOption(runtime!);
-    await fillCode(page.getByLabel("Script source", { exact: true }), code!);
-    await page.getByRole("button", { name: "Save block", exact: true }).click();
-    await expect(page.getByText(/Block saved. New workflows/)).toBeVisible();
-    const saved = (await (await request.get("/api/library")).json()).blocks[id];
-    expect(saved.definition.executor).toEqual({ kind: "script", language, runtime, code, timeoutMs: 30_000, expect: "success" });
-    expect(saved.definition.agent).toBeUndefined();
-    expect(saved.definition.outputs).toEqual(["evidence"]);
-  }
-  await fillCode(page.getByLabel("Script source", { exact: true }), "unsaved");
+  const editor = page.getByLabel("Block TypeScript", { exact: true });
+  const source = `import {block,z} from "workflow";
+export default block({output:z.object({answer:z.number()}),async run(ctx){ctx.summary("Computed locally");return {answer:42};}});`;
+  await fillCode(editor, source.replace("answer:42", 'answer:"wrong"'));
+  await page.getByRole("button", { name: "Save block", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("TypeScript");
+  expect((await (await request.get("/api/library")).json()).blocks[id]).toBeUndefined();
+  await fillCode(editor, source);
+  await page.getByRole("button", { name: "Save block", exact: true }).click();
+  await expect(page.getByText(/Block saved. New workflows/)).toBeVisible();
+  const saved = (await (await request.get("/api/library")).json()).blocks[id];
+  expect(saved.definition.executor).toMatchObject({kind:"code",source});
+  expect(saved.definition.agent).toBeUndefined();
+  await fillCode(editor, "// unsaved");
   await page.getByRole("button", { name: "Discard block changes", exact: true }).click();
-  await expectCode(page.getByLabel("Script source", { exact: true }), /WORKFLOW_INPUT/);
-  await page.getByText("Inputs, results & artifacts", { exact: true }).click();
-  await page.screenshot({ path: "/tmp/workflow-script-block.png", fullPage: true });
+  await expectCode(editor, source);
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download .ts", exact: true }).click();
+  expect(await readFile((await (await download).path())!,"utf8")).toBe(source);
+  await page.getByText("Block API & examples", { exact: true }).click();
+  await page.screenshot({ path: "/tmp/workflow-code-block.png", fullPage: true });
 });
 
 test("multiline fields grow for typing and pasted text, cap height, and shrink after discard", async ({ page }) => {

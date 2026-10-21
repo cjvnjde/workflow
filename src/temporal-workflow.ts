@@ -13,11 +13,14 @@ import { executionTimeoutMs, resolveInputs, runSchema, type BlockResult, type Ch
 import { addUsage, emptyUsage } from "./budget.js";
 import { failureMessage } from "./failure-message.js";
 import { programStep } from "./program-steps.js";
-import type { Block, StepOptions, StepResult, WorkflowDefinition } from "./workflow-sdk.js";
+import { executeCode } from "./code-runtime.js";
+import type { CodeOperation } from "./code-schema.js";
+import type { Block, CodeBlock, StepOptions, WorkflowDefinition } from "./workflow-sdk.js";
 
 export type WorkflowActivities = {
   saveProjection(run: WorkflowRun, event?: { kind: string; message: string; nodeId?: string }): Promise<void>;
   settleAttempt(run: WorkflowRun, commit: boolean): Promise<{ recovery: RecoveryResult; usage: UsageTotals }>;
+  executeOperation(run: WorkflowRun, operation: CodeOperation): Promise<unknown>;
   executeBlock(run: WorkflowRun): Promise<{ result: BlockResult; checks: CheckResult[] }>;
 };
 
@@ -29,7 +32,7 @@ const { saveProjection, settleAttempt } = proxyActivities<WorkflowActivities>({
   retry: { maximumAttempts: 5 },
 });
 
-export async function executeWorkflow(input: WorkflowRun, loadProgram?: () => WorkflowDefinition) {
+export async function executeWorkflow(input: WorkflowRun, loadProgram?: () => WorkflowDefinition & { blocks?: Record<string, CodeBlock<any, any>> }) {
   const parsed = runSchema.safeParse(input);
   if (!parsed.success) {
     throw ApplicationFailure.nonRetryable("Invalid workflow execution snapshot", "InvalidSnapshot");
@@ -63,7 +66,7 @@ export async function executeWorkflow(input: WorkflowRun, loadProgram?: () => Wo
     await saveProjection(run, { kind, message, nodeId });
   };
 
-  const executeNode = async (node: WorkflowNode): Promise<BlockResult> => {
+  const executeNode = async (node: WorkflowNode, body?: () => Promise<{ result: BlockResult; checks: CheckResult[] }>): Promise<BlockResult> => {
     while (true) {
       if (paused) {
         run.status = "paused";
@@ -120,7 +123,7 @@ export async function executeWorkflow(input: WorkflowRun, loadProgram?: () => Wo
       });
       let completion: Awaited<ReturnType<WorkflowActivities["executeBlock"]>>;
       try {
-        completion = await activities.executeBlock(run);
+        completion = body ? await body() : await activities.executeBlock(run);
       } catch (error) {
         attempt.finishedAt = new Date().toISOString();
         attempt.error = failureMessage(error);
@@ -170,17 +173,51 @@ export async function executeWorkflow(input: WorkflowRun, loadProgram?: () => Wo
       const inputValue = JSON.parse(JSON.stringify(run.program.input));
       const input = program.input ? program.input.parse(inputValue) : inputValue;
       const models = JSON.parse(JSON.stringify(run.program.models)) as typeof run.program.models;
-      let pending: Promise<StepResult> | undefined;
+      let pending: Promise<unknown> | undefined;
       const scope = new CancellationScope();
-      const step = <T>(id: string, block: Block<T> | string, options?: StepOptions): Promise<StepResult<T>> => {
+      const step = (id: string, reference: Block | CodeBlock<any, any> | string, options: StepOptions = {}, envelope = false): Promise<any> => {
         if (pending) return Promise.reject(new Error("Await each ctx.step before starting another; this project executes one step at a time."));
         const operation = (async () => {
+          const saved = typeof reference === "string" ? program.blocks?.[reference] : undefined;
+          const block = saved ?? reference;
           const node = programStep(run, id, block, options);
+          // Saved code keeps its reviewed metadata/resources as well as the
+          // compiled function. Inline definitions derive theirs from the source.
+          if (saved && typeof reference === "string") {
+            const bundle = run.program!.catalog[reference]!;
+            run.blocks[id] = JSON.parse(JSON.stringify(bundle));
+            run.blocks[id]!.definition.id = id;
+            node.label = options.label ?? bundle.definition.name;
+            const executor = run.blocks[id]!.definition.executor;
+            if (executor?.kind === "code") {
+              executor.timeoutMs = saved.options.timeoutMs ?? executor.timeoutMs;
+              executor.maxOperations = saved.options.maxOperations ?? executor.maxOperations;
+            }
+          }
+          if (typeof block !== "string" && block.kind === "code") {
+            let codeError: string | undefined;
+            const result = await executeNode(node, async () => {
+              const activities = proxyActivities<WorkflowActivities>({
+                startToCloseTimeout: executionTimeoutMs(run.config, run.blocks[id]!, node) + 5000,
+                heartbeatTimeout: "10 seconds", cancellationType: "WAIT_CANCELLATION_COMPLETED",
+                retry: { maximumAttempts: 1 },
+              });
+              const completion = await executeCode({ run, node, block, step: options,
+                operation: value => activities.executeOperation(run, value),
+                log: message => checkpoint("block_log", message, node.id),
+              });
+              codeError = completion.error;
+              return { result: completion.result, checks: [] };
+            });
+            if (codeError) throw new Error(codeError);
+            const data = result.artifacts.data === undefined ? undefined : JSON.parse(result.artifacts.data);
+            return envelope ? { ...result, data } : data;
+          }
           const result = await executeNode(node);
-          let data: T | undefined;
+          let data: unknown;
           if (result.artifacts.data) {
-            try { data = JSON.parse(result.artifacts.data) as T; }
-            catch { /* Nonpassing steps may return diagnostics instead of typed data. */ }
+            try { data = JSON.parse(result.artifacts.data); }
+            catch { /* Nonpassing legacy steps may return diagnostics instead of typed data. */ }
           }
           return { ...result, artifacts: { ...result.artifacts, summary: run.artifacts[node.id]?.summary ?? result.summary }, data };
         })();
@@ -190,7 +227,7 @@ export async function executeWorkflow(input: WorkflowRun, loadProgram?: () => Wo
       };
       let output: unknown;
       try {
-        output = await scope.run(() => program.run({ input, request: run.plan.task, models, step }));
+        output = await scope.run(() => program.run({ input, request: run.plan.task, models, step, stepResult: (id, block, options) => step(id, block, options, true) }));
         if (pending) throw new Error("The workflow returned before its step finished. Await every ctx.step call.");
       } catch (error) {
         scope.cancel();

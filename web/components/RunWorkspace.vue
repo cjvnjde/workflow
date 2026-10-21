@@ -538,7 +538,7 @@ function selectStep(id: string) {
               </h3>
               <MarkdownActions
                 :content="artifact.content"
-                :filename="`${artifact.nodeId}-${artifact.name}.md`"
+                :filename="`${artifact.nodeId}-${artifact.name}${artifact.name.endsWith('.md') ? '' : '.md'}`"
               />
             </div>
             <MarkdownView :content="artifact.content" />
@@ -665,7 +665,7 @@ function selectStep(id: string) {
             </summary>
             <MarkdownActions
               :content="artifact.content"
-              :filename="`${artifact.nodeId}-${artifact.name}.md`"
+              :filename="`${artifact.nodeId}-${artifact.name}${artifact.name.endsWith('.md') ? '' : '.md'}`"
             />
             <MarkdownView :content="artifact.content" />
           </details>

@@ -18,11 +18,10 @@ import {
 import { libraryProposalSchema } from "../../src/library-editor-schema.js";
 import type { OrchestrationSettings } from "../../src/orchestration-schema.js";
 import { request } from "../api.js";
-import { inputValue, inputChecked } from "../form-events.js";
 import Field from "../components/Field.vue";
 import CodeEditor from "../components/CodeEditor.vue";
 import Icon from "../components/Icon.vue";
-import { executionLabel } from "../execution-label.js";
+
 const props = defineProps<{
   library: Library;
   settings: OrchestrationSettings;
@@ -36,13 +35,14 @@ const emit = defineEmits<{
 const libraryStateSchema = z.object({
   revision: z.string(),
   blocks: z.record(identifierSchema, bundleSchema),
+  codeBlocks: z.record(identifierSchema, bundleSchema),
 });
 const state = shallowRef<z.infer<typeof libraryStateSchema>>();
 const selected = ref("");
 const bundle = ref<BlockBundle>();
-const busy = ref(false);
-const error = ref("");
-const notice = ref("");
+const busy = ref(false),
+  error = ref(""),
+  notice = ref("");
 const controller = new AbortController();
 async function load() {
   const value = await request("/api/library", libraryStateSchema, {
@@ -52,44 +52,42 @@ async function load() {
   return value;
 }
 onMounted(() => {
-  void load().catch((failure: unknown) => {
-    if (!controller.signal.aborted) {
-      error.value = String(failure);
-    }
+  void load().catch((failure) => {
+    if (!controller.signal.aborted) error.value = String(failure);
   });
 });
+const baseline = computed(() => state.value?.codeBlocks[selected.value]);
 const dirty = computed(
   () =>
     !!bundle.value &&
-    JSON.stringify(bundle.value) !==
-      JSON.stringify(state.value?.blocks[selected.value]),
+    JSON.stringify(bundle.value) !== JSON.stringify(baseline.value),
 );
 watch(dirty, (value) => emit("dirty", value), { immediate: true });
 onScopeDispose(() => {
   controller.abort();
   emit("dirty", false);
 });
-function canSwitch() {
-  return !dirty.value || window.confirm("Discard unsaved block changes?");
-}
+const definition = computed(() => bundle.value?.definition);
 function discard() {
   if (busy.value) return;
-  bundle.value = state.value?.blocks[selected.value]
-    ? structuredClone(toRaw(state.value.blocks[selected.value]))
+  bundle.value = baseline.value
+    ? structuredClone(toRaw(baseline.value))
     : undefined;
   if (!bundle.value) selected.value = "";
   error.value = "";
   notice.value = "";
 }
 defineExpose({ discard });
+function canSwitch() {
+  return !dirty.value || window.confirm("Discard unsaved block changes?");
+}
 function choose(id: string) {
-  if (!canSwitch()) {
-    return;
-  }
+  if (!canSwitch()) return;
   selected.value = id;
-  bundle.value = state.value?.blocks[id]
-    ? structuredClone(state.value.blocks[id])
+  bundle.value = state.value?.codeBlocks[id]
+    ? structuredClone(toRaw(state.value.codeBlocks[id]))
     : undefined;
+  error.value = "";
   notice.value = "";
 }
 async function perform(action: () => Promise<void>) {
@@ -106,79 +104,36 @@ async function perform(action: () => Promise<void>) {
     emit("busy", false);
   }
 }
-const definition = computed(() => bundle.value?.definition);
-const selectedProfile = computed(() => {
-  const agent = definition.value?.agent;
-  return (
-    props.settings.profiles.find(
-      ({ agent: candidate }) =>
-        candidate.provider === agent?.provider &&
-        candidate.model === agent?.model &&
-        candidate.thinking === agent?.thinking,
-    )?.id ?? ""
-  );
+const template = `import { block, z } from "workflow";
+
+export default block({
+  output: z.object({ exitCode: z.number().nullable(), output: z.string() }),
+  async run(ctx) {
+    const result = await ctx.exec("git status --short");
+    ctx.summary(result.output || "Working tree is clean.");
+    return { exitCode: result.exitCode, output: result.output };
+  },
 });
-function selectProfile(id: string) {
-  if (!definition.value) {
-    return;
-  }
-  const {
-    provider: _provider,
-    model: _model,
-    thinking: _thinking,
-    ...limits
-  } = definition.value.agent ?? {};
-  const profile = props.settings.profiles.find(
-    (candidate) => candidate.id === id,
-  );
-  const agent = { ...limits, ...profile?.agent };
-  definition.value.agent = Object.keys(agent).length ? agent : undefined;
-}
+`;
 function add() {
-  if (!canSwitch()) {
-    return;
-  }
-  const id = `block-${crypto.randomUUID().slice(0, 8)}`;
-  selected.value = id;
-  bundle.value = {
+  if (!canSwitch()) return;
+  selected.value = `block-${crypto.randomUUID().slice(0, 8)}`;
+  bundle.value = bundleSchema.parse({
     definition: {
-      id,
+      id: selected.value,
       name: "New block",
       description: "Describe when this block should be used",
-      skills: [],
-      outputs: [],
-      checks: [],
+      executor: { kind: "code", source: template },
     },
-    prompt: "Describe the work, acceptance criteria, and artifacts to publish.",
+    prompt: "Behavior, models, inputs and outputs are defined in TypeScript.",
     skills: [],
-  };
-}
-function execution(value: string) {
-  if (definition.value) {
-    definition.value.executor =
-      value === "script" ? { kind: "script", language: "bash", runtime: "bash",
-        code: 'printf "Script completed\\n"\n', timeoutMs: 120_000, expect: "success" } : undefined;
-  }
-}
-function language(value: string) {
-  const executor = definition.value?.executor;
-  if (executor?.kind !== "script" || !["bash", "javascript", "typescript"].includes(value)) return;
-  executor.language = value as typeof executor.language;
-  executor.runtime = value === "bash" ? "bash" : executor.runtime === "bash" ? "bun" : executor.runtime;
+  });
+  error.value = "";
+  notice.value = "";
 }
 async function save() {
   const current = bundle.value;
-  if (!current) {
-    return;
-  }
-  const { permissions: _legacy, ...def } = current.definition;
-  const normalized = {
-    ...current,
-    definition: {
-      ...def,
-      outputs: def.outputs.filter(Boolean),
-    },
-  };
+  if (!current) return;
   const proposal = await request(
     "/api/library/proposals",
     libraryProposalSchema,
@@ -188,8 +143,8 @@ async function save() {
         kind: "manual",
         baseHash: state.value?.revision,
         changes: {
-          summary: `Update ${def.name}`,
-          blocks: [{ bundle: normalized, rationale: "Configured in Settings" }],
+          summary: `Update ${current.definition.name}`,
+          blocks: [{ bundle: current, rationale: "Configured in Settings" }],
         },
       },
     },
@@ -199,34 +154,30 @@ async function save() {
     libraryProposalSchema,
     { method: "POST", body: {} },
   );
-  const updated = await load();
-  selected.value = def.id;
-  // The edit buffer must never share a mutable object with the saved baseline.
-  bundle.value = updated.blocks[def.id]
-    ? structuredClone(toRaw(updated.blocks[def.id]))
-    : undefined;
+  await load();
+  selected.value = current.definition.id;
+  bundle.value = structuredClone(
+    toRaw(state.value!.codeBlocks[selected.value]!),
+  );
   await props.onSaved();
   notice.value =
     "Block saved. New workflows use this definition; existing runs keep their snapshots.";
 }
 function remove() {
-  const current = definition.value;
-  const revision = state.value?.revision;
-  const id = selected.value;
+  const id = selected.value,
+    current = state.value?.blocks[id];
   if (
     !current ||
-    !revision ||
     !window.confirm(
-      `Remove “${current.name}” from the reusable library? Existing workflows keep their saved copy.`,
+      `Remove “${current.definition.name}” from the reusable library? Existing workflows keep their saved copy.`,
     )
-  ) {
+  )
     return;
-  }
   void perform(async () => {
     await request(
       `/api/library/blocks/${id}`,
       z.object({ removed: z.boolean() }),
-      { method: "DELETE", body: { revision } },
+      { method: "DELETE", body: { revision: state.value!.revision } },
     );
     await load();
     bundle.value = undefined;
@@ -234,12 +185,27 @@ function remove() {
     await props.onSaved();
   });
 }
-function check(command: string, enabled: boolean) {
-  if (definition.value) {
-    definition.value.checks = enabled
-      ? [...definition.value.checks, { command, expect: "success" }]
-      : definition.value.checks.filter((item) => item.command !== command);
+async function copy() {
+  if (definition.value?.executor?.kind !== "code") return;
+  try {
+    await navigator.clipboard.writeText(definition.value.executor.source);
+    notice.value = "TypeScript copied.";
+  } catch {
+    error.value = "Clipboard unavailable. Download the source instead.";
   }
+}
+function download() {
+  if (definition.value?.executor?.kind !== "code") return;
+  const url = URL.createObjectURL(
+    new Blob([definition.value.executor.source], {
+      type: "text/typescript;charset=utf-8",
+    }),
+  );
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${definition.value.id}.ts`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 </script>
 
@@ -249,47 +215,47 @@ function check(command: string, enabled: boolean) {
       <div>
         <h2>Reusable blocks</h2>
         <p>
-          Small units of work with instructions, outputs and pass/retry/fail
-          routes.
+          TypeScript functions with typed inputs and outputs. Call AI, run
+          commands, or combine both in the same block.
         </p>
       </div>
       <div class="button-row">
         <button class="ai-button" :disabled="busy" @click="emit('design')">
-          <Icon name="spark" />Design with AI</button
-        ><button :disabled="busy" @click="add">
+          <Icon name="spark" />Design with AI
+        </button>
+        <button :disabled="busy" @click="add">
           <Icon name="plus" />Add block
         </button>
       </div>
     </div>
-    <div v-if="error" class="inline-error" role="alert">{{ error }}</div>
-    <div v-if="notice" class="setup-notice" role="status">{{ notice }}</div>
+    <pre v-if="error" class="inline-error" role="alert">{{ error }}</pre>
+    <p v-if="notice" class="setup-notice" role="status">{{ notice }}</p>
     <div class="block-settings-layout">
       <div class="block-catalog">
         <button
-          v-for="item in Object.values(state?.blocks ?? {})"
+          v-for="item in Object.values(state?.blocks ?? library.blocks)"
           :key="item.definition.id"
           :class="{ selected: selected === item.definition.id }"
           :disabled="busy"
           @click="choose(item.definition.id)"
         >
-          <Icon :name="item.definition.executor ? 'terminal' : 'workflow'" />
+          <Icon name="code" />
           <div>
             <strong>{{ item.definition.name }}</strong
-            ><small
-              >{{
-                executionLabel(item.definition.executor)
-              }}
-              · {{ item.definition.outputs.length }} outputs</small
-            >
+            ><small>TypeScript block</small>
           </div>
         </button>
       </div>
-      <div v-if="bundle && definition" class="settings-card">
+      <div
+        v-if="bundle && definition?.executor?.kind === 'code'"
+        class="settings-card block-code-card"
+      >
         <fieldset :disabled="busy">
           <div class="field-grid">
             <Field v-slot="{ id }" label="Block name"
-              ><input :id="id" v-model="definition.name" /></Field
-            ><Field
+              ><input :id="id" v-model="definition.name"
+            /></Field>
+            <Field
               v-slot="{ id }"
               label="Block ID"
               help="Referenced by workflow steps."
@@ -307,124 +273,86 @@ function check(command: string, enabled: boolean) {
               :rows="2"
             />
           </Field>
-          <Field v-slot="{ id }" label="Execution"
-            ><select
-              :id="id"
-              :value="definition.executor?.kind ?? 'ai'"
-              @change="execution(inputValue($event))"
-            >
-              <option value="ai">AI agent</option>
-              <option value="script">Script · no model call</option>
-            </select></Field
-          >
-          <template v-if="definition.executor?.kind === 'script'">
-            <div class="field-grid">
-              <Field v-slot="{ id }" label="Script language">
-                <select :id="id" :value="definition.executor.language" @change="language(inputValue($event))">
-                  <option value="bash">Bash</option><option value="typescript">TypeScript</option><option value="javascript">JavaScript</option>
-                </select>
-              </Field>
-              <Field v-if="definition.executor.language !== 'bash'" v-slot="{ id }" label="Script runtime">
-                <select :id="id" v-model="definition.executor.runtime"><option value="bun">Bun</option><option value="node">Node.js</option></select>
-              </Field>
-            </div>
-            <Field v-slot="{ id }" label="Script source" help="Runs in the project root. Source is saved in each workflow snapshot; stdout and stderr appear live in Activity.">
-              <CodeEditor :id="id" :key="selected" v-model="definition.executor.code" label="Script source" :language="definition.executor.language" :readonly="busy" :min-lines="8" />
-            </Field>
-            <div class="field-grid">
-              <Field v-slot="{ id }" label="Script timeout (seconds)">
-                <input :id="id" type="number" min="0.1" max="3600" step="0.1" :value="definition.executor.timeoutMs / 1000" @input="definition.executor.timeoutMs = Number(inputValue($event)) * 1000" />
-              </Field>
-              <Field v-slot="{ id }" label="Success condition">
-                <select :id="id" v-model="definition.executor.expect"><option value="success">Exit code is zero</option><option value="failure">Exit code is nonzero (reproduction)</option></select>
-              </Field>
-            </div>
-            <details class="script-contract">
-              <summary>Inputs, results & artifacts</summary>
-              <p><code>WORKFLOW_INPUT</code> points to a JSON file with the task, step goal, visit, selected <code>inputs</code>, and declared <code>outputs</code>.</p>
-              <p>Optionally write <code>{ outcome, summary, artifacts }</code> as JSON to <code>WORKFLOW_RESULT</code>. Outcomes are <code>pass</code>, <code>retry</code>, and <code>fail</code>. Otherwise exit status decides the route and command output becomes the declared artifacts.</p>
-              <p>JavaScript and TypeScript use ES modules; choose Bun or an installed Node.js. TypeScript is transpiled for the selected runtime. Call existing files with Bash, for example <code>bun run scripts/check.ts</code>.</p>
-            </details>
-          </template>
-          <Field v-else v-slot="{ id }" label="Preferred model profile"
-            ><select
-              :id="id"
-              :value="selectedProfile"
-              @change="selectProfile(inputValue($event))"
-            >
-              <option value="">Let the orchestrator choose</option>
-              <option
+          <div class="editor-actions">
+            <strong>Block TypeScript</strong>
+            <button class="quiet" @click="copy">
+              <Icon name="copy" :size="14" />Copy code
+            </button>
+            <button class="quiet" @click="download">
+              <Icon name="download" :size="14" />Download .ts
+            </button>
+          </div>
+          <CodeEditor
+            :key="selected"
+            v-model="definition.executor.source"
+            label="Block TypeScript"
+            :readonly="busy"
+            :min-lines="12"
+            :max-lines="32"
+          />
+          <details class="script-contract block-code-help">
+            <summary>Block API & examples</summary>
+            <p>
+              Import <code>block, z</code> from <code>"workflow"</code> and
+              export
+              <code>block({ input, output, async run(ctx) { … } })</code>.
+              Schemas are optional; returning a value passes it to the next
+              step.
+            </p>
+            <p>
+              <code
+                >await ctx.ai({ prompt, model, output: z.object({ … }) })</code
+              >
+              returns a typed AI result. Omit <code>output</code> for Markdown.
+              Set a model in code, accept one through inputs, or use
+              <code>ctx.model</code> for the workflow's choice.
+            </p>
+            <p v-if="settings.profiles.some((profile) => profile.enabled)">
+              Available profiles:
+              <code
                 v-for="profile in settings.profiles.filter(
                   (item) => item.enabled,
                 )"
                 :key="profile.id"
-                :value="profile.id"
-              >
-                {{ profile.name }}
-              </option>
-            </select></Field
-          >
-          <Field
-            v-slot="{ id }"
-            :label="definition.executor ? 'Step notes' : 'Block instructions'"
-            :help="
-              definition.executor
-                ? 'Describe when and how the orchestrator should use this script. The source above performs the work.'
-                : undefined
-            "
-          >
-            <textarea
-              v-autosize
-              :id="id"
-              v-model="bundle.prompt"
-              :rows="definition.executor ? 3 : 7"
-            />
-          </Field>
-          <Field
-            v-slot="{ id }"
-            label="Output artifacts"
-            help="Comma-separated names. A summary is always available."
-            ><input
-              :id="id"
-              :value="definition.outputs.join(', ')"
-              @input="
-                definition.outputs = inputValue($event)
-                  .split(',')
-                  .map((item) => item.trim())
-              "
-          /></Field>
-          <details v-if="!definition.executor">
-            <summary>Host checks</summary>
-            <p class="muted">
-              AI steps can use files, Bash, Git and enabled MCP servers.
-              Describe each step’s responsibilities in its instructions.
+                >ctx.models[{{ JSON.stringify(profile.id) }}]
+              </code>
             </p>
-            <label
-              v-for="command in Object.keys(library.config.commands)"
-              :key="command"
-              class="checkbox"
-              ><input
-                type="checkbox"
-                :checked="
-                  definition.checks.some((item) => item.command === command)
-                "
-                @change="check(command, inputChecked($event))"
-              />Require {{ command }} to pass</label
-            >
+            <p>
+              <code>await ctx.exec("bun test")</code> returns
+              <code>exitCode, stdout, stderr, output, timedOut</code>. Return
+              failure feedback for the workflow to route to implementation. Run
+              project TypeScript files with
+              <code>ctx.exec("bun scripts/check.ts")</code>.
+            </p>
+            <p>
+              <code>ctx.readFile(path)</code>,
+              <code>ctx.writeFile(path, text)</code> and
+              <code>ctx.log(message)</code> are awaited operations.
+              <code>ctx.summary(markdown)</code> and
+              <code>ctx.artifact(name, text)</code> make results easy to find.
+              Set <code>timeoutMs</code> and <code>maxOperations</code> on the
+              block when needed.
+            </p>
+            <p>
+              Source and imports are frozen with each workflow. Commands run in
+              the project with its environment. Use context operations for host
+              effects so the engine can record and recover work.
+            </p>
           </details>
           <div class="button-row">
             <button class="primary" :disabled="!dirty" @click="perform(save)">
-              Save block</button
-            ><button v-if="dirty" @click="discard">
+              {{ busy ? "Typechecking…" : "Save block" }}
+            </button>
+            <button v-if="dirty" @click="discard">
               {{
                 state?.blocks[selected]
                   ? "Discard block changes"
                   : "Cancel new block"
-              }}</button
-            ><button
+              }}
+            </button>
+            <button
               v-if="state?.blocks[selected]"
               class="danger-quiet"
-              :disabled="Object.keys(state.blocks).length <= 1"
               @click="remove"
             >
               Remove block
@@ -432,13 +360,23 @@ function check(command: string, enabled: boolean) {
           </div>
         </fieldset>
       </div>
-      <div v-else class="settings-empty">
-        <Icon name="workflow" :size="32" />
-        <h3>Select a block</h3>
-        <p>
-          Inspect its instructions and outputs, or create a new unit of work.
-        </p>
+      <div v-else class="settings-card empty-state">
+        <Icon name="code" />
+        <h2>Choose a block</h2>
+        <p>Edit a reusable TypeScript function or design one with AI.</p>
       </div>
     </div>
   </section>
 </template>
+<style scoped>
+.block-code-help {
+  margin-top: 18px;
+}
+.block-code-card .editor-actions > strong {
+  margin-right: auto;
+  font-size: 12px;
+}
+.block-code-help code {
+  overflow-wrap: anywhere;
+}
+</style>

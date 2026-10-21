@@ -3,7 +3,7 @@ import { defineTool } from "@earendil-works/pi-coding-agent";
 import { runAgentSession, type ActivitySink } from "./agent-session.js";
 import { resolveAgentSettings, type WorkflowRun } from "./domain.js";
 import { programInstructions, type ProgramSource } from "./program-schema.js";
-import { checkProgram } from "./program-compiler.js";
+import { validateProgram } from "./program-compiler.js";
 import { Workspace } from "./workspace.js";
 import { workspaceTools, textResult } from "./block-runner.js";
 import type { AvailableModel } from "./library-editor-schema.js";
@@ -23,7 +23,7 @@ export async function refineProgram(options: {
     async execute(_id, args) {
       signal.throwIfAborted();
       try {
-        result = checkProgram(project, { source: args.source, input: JSON.parse(args.input), filename: run.program!.filename });
+        result = await validateProgram(project, { source: args.source, input: JSON.parse(args.input), filename: run.program!.filename }, run.program!.catalog);
         return { ...textResult("Refined TypeScript accepted."), terminate: true };
       } catch (error) {
         rejected = error instanceof Error ? error.message : String(error);

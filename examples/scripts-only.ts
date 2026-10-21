@@ -1,24 +1,23 @@
-import { workflow, script, z } from "workflow";
+import { workflow, block, z } from "workflow";
+
+const processMessage = block({
+  input: z.object({ message: z.string(), runtime: z.enum(["bun", "node"]) }),
+  output: z.object({ message: z.string(), runtime: z.string() }),
+  async run(ctx) {
+    // Pass data through an environment variable, not shell interpolation.
+    const result = await ctx.exec(`${ctx.input.runtime} -e 'console.log(process.env.MESSAGE.toUpperCase())'`, {
+      env: { MESSAGE: ctx.input.message },
+    });
+    if (result.exitCode !== 0 || result.timedOut) throw new Error(result.output);
+    ctx.summary("Message processed without an AI request.");
+    return { message: result.stdout.trim(), runtime: ctx.input.runtime };
+  },
+});
 
 export default workflow({
-  name: "Typed script result",
+  name: "Typed code result",
   input: z.object({ message: z.string(), runtime: z.enum(["bun", "node"]).default("bun") }),
   async run(ctx) {
-    const result = await ctx.step("process", script({
-      language: "typescript", runtime: ctx.input.runtime,
-      output: z.object({ message: z.string(), runtime: z.string() }),
-      code: `
-import { readFileSync, writeFileSync } from "node:fs";
-const context: { inputs: { message: string } } = JSON.parse(readFileSync(process.env.WORKFLOW_INPUT!, "utf8"));
-const data = { message: context.inputs.message.toUpperCase(), runtime: process.versions.bun ? "Bun" : "Node" };
-console.log(data);
-writeFileSync(process.env.WORKFLOW_RESULT!, JSON.stringify({
-  outcome: "pass", summary: "Message processed without an AI request",
-  artifacts: { data: JSON.stringify(data) },
-}));
-`,
-    }), { inputs: { message: ctx.input.message } });
-    if (result.outcome !== "pass") throw new Error(result.summary);
-    return result.data;
+    return await ctx.step("process", processMessage, { inputs: ctx.input });
   },
 });

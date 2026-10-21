@@ -8,6 +8,8 @@ import { WorkflowFailedError, WorkflowNotFoundError } from "@temporalio/client";
 import { Worker } from "@temporalio/worker";
 import {
   resolveAgentSettings,
+  bundleSchema,
+  agentOverrideSchema,
   executionTimeoutMs,
   resolveInputs,
   runSchema,
@@ -33,6 +35,8 @@ import { Workspace } from "./workspace.js";
 import { getModelRuntime } from "./model-runtime.js";
 import { acquireProjectLock } from "./project-lock.js";
 import { compileProgram } from "./program-compiler.js";
+import { codeOperationSchema, type CodeOperation } from "./code-schema.js";
+import { executeCodeCommand } from "./code-host.js";
 import { programSourceSchema } from "./program-schema.js";
 import { loadOrchestration } from "./orchestration-settings.js";
 
@@ -131,6 +135,7 @@ export class WorkflowEngine {
       activities: {
         saveProjection: (run, event) => { this.assertActivity(runSchema.parse(run)); return this.saveProjection(run, event); },
         executeBlock: (run) => this.executeBlock(run),
+        executeOperation: (run, operation) => this.executeOperation(run, operation),
         settleAttempt: (run, commit) => this.settleAttempt(run, commit),
       } satisfies WorkflowActivities,
       maxConcurrentActivityTaskExecutions: 1,
@@ -313,6 +318,24 @@ export class WorkflowEngine {
   }
 
   async create(plan: WorkflowPlan, library: Library) {
+    if (plan.nodes.some(node => library.blocks[node.block]?.definition.executor?.kind === "code")) {
+      const checked = validatePlan(plan, library);
+      const source = `import {workflow,type Model} from "workflow";
+const plan: {title:string;task:string;entry:string;nodes:{id:string;block:string;goal:string;label:string;maxVisits:number;agent?:Model;context?:Record<string,string>;inputs:{node:string;artifact:string;as?:string;required:boolean}[];on:Record<"pass"|"retry"|"fail",string>}[]} = ${JSON.stringify(checked)};
+export default workflow({name:plan.title,async run(ctx){
+  const artifacts:Record<string,Record<string,string>>={}; let cursor=plan.entry;
+  while(cursor!=="$complete" && cursor!=="$failed"){
+    const node=plan.nodes.find(node=>node.id===cursor)!;
+    const inputs:Record<string,string>={...node.context};
+    for(const input of node.inputs){const value=artifacts[input.node]?.[input.artifact];if(value===undefined && input.required)throw new Error("Missing required input: "+input.artifact);if(value!==undefined)inputs[input.as||input.artifact]=value;}
+    const result=await ctx.stepResult(node.id,node.block,{prompt:node.goal,label:node.label,inputs,maxVisits:node.maxVisits,model:node.agent});
+    artifacts[node.id]={...result.artifacts,summary:result.summary};cursor=node.on[result.outcome];
+  }
+  if(cursor==="$failed")throw new Error("Workflow stopped on its configured failure route.");
+  return artifacts;
+}});`;
+      return this.createProgram(checked.title, checked.task, { source }, library);
+    }
     return await this.mutate(async () => {
       const snapshot = structuredClone(library);
       const checkedPlan = validatePlan(plan, snapshot);
@@ -380,11 +403,12 @@ export class WorkflowEngine {
     // Freeze known model prices up front; unknown choices with a spending cap
     // are rejected before their first model request, not silently underpriced.
     const priceNodes = [
+      { agent: library.config.agent },
       ...Object.values(library.blocks).filter(bundle => !bundle.definition.executor).map(bundle => ({ block: bundle.definition.id })),
       ...Object.values(models).map(agent => ({ agent })),
     ];
     await this.priceSnapshot({ nodes: priceNodes }, library);
-    const { version } = await compileProgram(this.project, source, this.versions);
+    const { version } = await compileProgram(this.project, source, this.versions, library.blocks);
     return { version, program: { ...source, catalog: structuredClone(library.blocks), models } };
   }
 
@@ -667,7 +691,61 @@ export class WorkflowEngine {
     });
   }
 
-  private async executeBlock(value: WorkflowRun) {
+  private async executeOperation(value: WorkflowRun, raw: CodeOperation): Promise<unknown> {
+    const run = runSchema.parse(value);
+    this.assertActivity(run);
+    if (!run.program) throw new Error("Code effects require a frozen TypeScript workflow");
+    const operation = codeOperationSchema.parse(raw);
+    const node = run.plan.nodes.find(node => node.id === run.cursor)!;
+    const bundle = run.blocks[node.block]!;
+    if (bundle.definition.executor?.kind !== "code") throw new Error("Code effect has no active TypeScript block");
+    const context = Context.current();
+    const signal = AbortSignal.any([context.cancellationSignal, this.leaseCancellation.signal]);
+    signal.throwIfAborted();
+    const emit = (kind: string, message: string) => this.emit(run, kind, message, node.id);
+    const label = operation.kind === "exec" ? operation.command : operation.kind === "ai" ? operation.prompt : operation.path;
+    emit("operation_start", `${operation.kind}: ${label.slice(0, 6000)}`);
+    const heartbeat = setInterval(() => context.heartbeat({ nodeId: node.id, operation: operation.kind }), 1000);
+    context.heartbeat({ nodeId: node.id });
+    try {
+      let result: unknown;
+      if (operation.kind === "ai") {
+        const model = operation.model ? agentOverrideSchema.parse(operation.model) : undefined;
+        run.blocks[node.block] = bundleSchema.parse({
+          ...bundle,
+          definition: { ...bundle.definition, executor: undefined, checks: [],
+            agent: resolveAgentSettings(run.config.agent, bundle.definition.agent, node.agent, model),
+            outputs: operation.outputSchema ? ["data"] : [], outputSchema: operation.outputSchema,
+          },
+          prompt: operation.instructions || "Complete the requested task. Use tools when useful, then submit a concise result.",
+        });
+        // Call-specific settings win over the workflow's default model override.
+        node.agent = undefined;
+        node.goal = operation.prompt.slice(0, 8000);
+        node.context = { ...node.context, "call-prompt": operation.prompt };
+        const completion = await this.executeBlock(run, "value");
+        result = completion.result;
+      } else if (this.mode === "demo") {
+        result = operation.kind === "exec" ? { exitCode: 0, stdout: "DEMO", stderr: "", output: "DEMO: no command was executed.", timedOut: false }
+          : operation.kind === "read" ? "DEMO: no file was read." : null;
+      } else if (operation.kind === "exec") {
+        result = await executeCodeCommand(this.project, run, operation, signal, emit);
+      } else {
+        const directory = attemptDirectory(this.project, run.id, node.id, run.visits[node.id] ?? 1);
+        const workspace = await Workspace.create(this.project, { signal, journal: await FileJournal.open(directory) });
+        if (operation.kind === "read") result = await workspace.read(operation.path);
+        else { await workspace.write(operation.path, operation.content); result = null; }
+      }
+      signal.throwIfAborted();
+      if (Buffer.byteLength(JSON.stringify(result)) > 256_000) throw new Error("Operation result exceeds 256 KB. Read a smaller file or return a concise result.");
+      emit("operation_end", operation.kind === "exec"
+        ? `exec: exit ${(result as { exitCode: number | null }).exitCode}` : `${operation.kind}: finished`);
+      return result;
+    } catch (error) { emit("operation_error", `${operation.kind}: ${String(error)}`); throw error; }
+    finally { clearInterval(heartbeat); }
+  }
+
+  private async executeBlock(value: WorkflowRun, resultMode?: "value") {
     const run = runSchema.parse(value);
     this.assertActivity(run);
     if (run.mode !== this.mode) {
@@ -684,7 +762,8 @@ export class WorkflowEngine {
     signal.throwIfAborted();
     const directory = attemptDirectory(this.project, run.id, node.id, run.visits[node.id] ?? 1);
     const journal = run.executionProtocol === 2 ? await FileJournal.open(directory) : undefined;
-    const remainingCost = run.config.budget?.maxCostUsd === undefined ? undefined : run.config.budget.maxCostUsd - (run.usage?.costUsd ?? 0);
+    const previousUsage = await loadUsage(directory);
+    const remainingCost = run.config.budget?.maxCostUsd === undefined ? undefined : run.config.budget.maxCostUsd - (run.usage?.costUsd ?? 0) - previousUsage.costUsd;
     if (!bundle.definition.executor && remainingCost !== undefined && remainingCost <= 0) { throw new Error("Workflow spending limit reached"); }
     if (run.program && !bundle.definition.executor && remainingCost !== undefined &&
         !run.config.budget?.prices[`${settings.provider}/${settings.model}`]) {
@@ -699,8 +778,8 @@ export class WorkflowEngine {
       const result = validateBlockResult(await runner({
         project: this.project, config: run.config, bundle, node, task: run.plan.task, workflow: run.plan,
         inputs: resolveInputs(node, run), visit: run.visits[node.id] ?? 1,
-        settings, signal, journal, maxCostUsd: remainingCost,
-        onUsage: async (usage) => { await saveUsage(directory, usage); this.usageByAttempt.set(`${run.id}/${node.id}/${run.visits[node.id] ?? 1}`, { ...usage }); this.emit(run, "usage", JSON.stringify(usage), node.id); },
+        settings, signal, journal, maxCostUsd: remainingCost, resultMode,
+        onUsage: async (sessionUsage) => { const usage = addUsage(previousUsage, sessionUsage); await saveUsage(directory, usage); this.usageByAttempt.set(`${run.id}/${node.id}/${run.visits[node.id] ?? 1}`, { ...usage }); this.emit(run, "usage", JSON.stringify(usage), node.id); },
         emit: (kind, message) => { this.emit(run, kind, message, node.id); },
       }), bundle);
       signal.throwIfAborted();

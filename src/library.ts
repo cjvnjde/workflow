@@ -19,6 +19,7 @@ import {
 import { loadUserSettings } from "./user-settings.js";
 import { approvedLibrarySchema } from "./library-editor-schema.js";
 import { pushScript } from "./script-examples.js";
+import { codeBundle } from "./code-migration.js";
 import { scriptLibrary } from "./script-migration.js";
 
 export async function loadLibrary(project: string): Promise<Library> {
@@ -43,23 +44,6 @@ export async function loadLibrary(project: string): Promise<Library> {
       continue;
     }
     const blockDirectory = path.join(directory, "blocks", entry.name);
-    const definition = blockSchema.parse(
-      JSON.parse(
-        await readFile(path.join(blockDirectory, "block.json"), "utf8"),
-      ),
-    );
-    if (definition.id !== entry.name || blocks[definition.id]) {
-      throw new Error(
-        `Block ID must match its unique directory: ${entry.name}`,
-      );
-    }
-    for (const check of definition.checks) {
-      if (!config.commands[check.command]) {
-        throw new Error(
-          `Block ${definition.id} uses undefined command ${check.command}`,
-        );
-      }
-    }
     const root = await realpath(blockDirectory);
     const readResource = async (resource: string) => {
       const filename = await realpath(path.resolve(root, resource));
@@ -75,6 +59,24 @@ export async function loadLibrary(project: string): Promise<Library> {
 
       return await readFile(filename, "utf8");
     };
+    const rawDefinition = JSON.parse(await readFile(path.join(blockDirectory, "block.json"), "utf8"));
+    if (rawDefinition.executor?.kind === "code" && typeof rawDefinition.executor.file === "string") {
+      const { file, ...executor } = rawDefinition.executor;
+      rawDefinition.executor = { ...executor, source: await readResource(file) };
+    }
+    const definition = blockSchema.parse(rawDefinition);
+    if (definition.id !== entry.name || blocks[definition.id]) {
+      throw new Error(
+        `Block ID must match its unique directory: ${entry.name}`,
+      );
+    }
+    for (const check of definition.checks) {
+      if (!config.commands[check.command]) {
+        throw new Error(
+          `Block ${definition.id} uses undefined command ${check.command}`,
+        );
+      }
+    }
     const skills = await Promise.all(
       definition.skills.map(async (resource) => ({
         path: resource,
@@ -83,7 +85,10 @@ export async function loadLibrary(project: string): Promise<Library> {
     );
     blocks[definition.id] = {
       definition,
-      prompt: await readResource("prompt.md"),
+      prompt: await readResource("prompt.md").catch(error => {
+        if (definition.executor?.kind === "code" && error instanceof Error && "code" in error && error.code === "ENOENT") return "Behavior is defined in TypeScript.";
+        throw error;
+      }),
       skills,
     };
   }
@@ -118,7 +123,7 @@ export function validateLibraryResources(blocks: Library["blocks"], commands: Li
   if (Buffer.byteLength(JSON.stringify(blocks)) > 700_000) { throw new Error("Block library is too large; reduce prompts/resources below 700 KB"); }
 }
 
-export async function initializeProject(project: string, instructions = "") {
+export async function initializeProject(project: string, instructions = "", format: "code" | "legacy" = "code") {
   const directory = path.join(project, ".workflow");
   await mkdir(directory, { recursive: true });
   let scripts: Record<string, string> = {};
@@ -226,7 +231,7 @@ export async function initializeProject(project: string, instructions = "") {
   for (const specification of specifications) {
     const blockDirectory = path.join(directory, "blocks", specification.id);
     await mkdir(blockDirectory, { recursive: true });
-    const definition = blockSchema.parse({
+    let definition = blockSchema.parse({
       id: specification.id,
       name: specification.name,
       description: specification.description,
@@ -234,9 +239,16 @@ export async function initializeProject(project: string, instructions = "") {
       checks: specification.checks,
       executor: specification.executor,
     });
+    if (format === "code") definition = codeBundle({ definition, prompt: specification.prompt, skills: [] }, config.commands).definition;
+    let savedDefinition: unknown = definition;
+    if (definition.executor?.kind === "code") {
+      const { source, ...executor } = definition.executor;
+      await writeFile(path.join(blockDirectory, "block.ts"), source, { flag: "wx" });
+      savedDefinition = { ...definition, executor: { ...executor, file: "block.ts" } };
+    }
     await writeFile(
       path.join(blockDirectory, "block.json"),
-      JSON.stringify(definition, null, 2) + "\n",
+      JSON.stringify(savedDefinition, null, 2) + "\n",
       { flag: "wx" },
     );
     await writeFile(

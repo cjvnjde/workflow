@@ -1,11 +1,12 @@
 import { Type } from "@earendil-works/pi-ai";
-import { scriptInstructions } from "./script-schema.js";
+import { blockInstructions } from "./code-schema.js";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { agentSchema, blocksForAgent, resolveAgentSettings, type Library } from "./domain.js";
 import { runAgentSession, type ActivitySink } from "./agent-session.js";
 import { Workspace } from "./workspace.js";
 import { textResult, workspaceTools } from "./block-runner.js";
 import { validateLibraryChanges, validateModelChoice } from "./library-proposals.js";
+import { validateCodeBlocks } from "./program-compiler.js";
 import { validateLibraryResources } from "./library.js";
 import type { AvailableModel } from "./library-editor-schema.js";
 import { orchestrationSchema, type OrchestrationSettings } from "./orchestration-schema.js";
@@ -60,6 +61,10 @@ export async function designSettings(options: DesignOptions, session: typeof run
     parameters: Type.Object({ json: Type.String(), message: Type.String({ minLength: 1, maxLength: 16000 }) }),
     async execute(_id, args) {
       const proposal = validateDesign(JSON.parse(args.json), options);
+      if (proposal.scope === "blocks") {
+        const { blocks } = validateLibraryChanges(proposal.changes, options.library, "regenerate", options.models);
+        await validateCodeBlocks(options.project, blocks);
+      }
       result = { message: args.message, proposal };
       return { ...textResult("Proposal validated and ready for review."), terminate: true };
     },
@@ -67,7 +72,7 @@ export async function designSettings(options: DesignOptions, session: typeof run
   const formats: Record<DesignScope, string> = {
     profiles: '{scope:"profiles",summary,profiles:[{id,name,description,enabled,agent:{provider,model,thinking}}],coordinatorProfile:"profile-id or empty"}. Supply the full proposed list. Generate useful role descriptions from the project and available models, not one redundant profile per catalog entry. Use exact catalog IDs and supported thinking levels. Account for image input, task complexity, context and cost; price alone is not a quality ranking. A single model can have distinct profiles/thinking levels when that is all the account supports.',
     cases: '{scope:"cases",summary,instructions,cases:[{id,name,description,instructions,enabled}],suggestBlocks}. Supply the full proposed list. Cases are descriptions and instructions, NEVER predefined graphs. Tell the orchestrator how to approach, verify and hand off a class of work; keep the actual graph task-specific.',
-    blocks: '{scope:"blocks",summary,changes:{summary,blocks:[{bundle:{definition:{id,name,description,skills:[],outputs:[],checks:[{command,expect}],agent?:{provider,model,thinking},executor?:{kind:"script",language,runtime,code,timeoutMs,expect}},prompt,skills:[]},rationale}],remove?:["block-id"]}}. Unmentioned blocks stay unchanged. Preserve output contracts for existing blocks. AI steps select an available model explicitly; scripts need no model. Named host checks reference existing commands. Describe scope in instructions rather than file permissions. Keep verification separate from fixing. Deletions must be requested or clearly justified by the requested redesign.\n\n' + scriptInstructions,
+    blocks: '{scope:"blocks",summary,changes:{summary,blocks:[{bundle:{definition:{id,name,description,executor:{kind:"code",source},skills:[],outputs:[],checks:[]},skills:[]},rationale}],remove?:["block-id"]}}. Unmentioned blocks stay unchanged. Keep all behavior in TypeScript source, including model calls, prompts, schemas, host checks and execution limits. Preserve existing artifact contracts. Deletions must be requested or clearly justified.\n\n' + blockInstructions,
     capabilities: '{scope:"capabilities",summary,capabilities:{skills:[{id,name,description,content,enabled}],mcpServers:[{id,name,enabled,transport:"http"|"stdio",url,command,args,tokenEnv?}]}}. Supply complete proposed lists. Skill content contains instructions. MCP setup requires exact user-provided endpoint/command information; ask if missing. Do not invent server addresses, tool names or credentials. tokenEnv is only an environment-variable name, never a secret. Enabling a server makes all its tools available during planning and execution. Keep existing enabled states unless asked to change them; enable a new server when the user asks to use it. tools and planningTools are legacy discovery metadata, not permissions; omit them on new servers.',
     execution: '{scope:"execution",summary,settings:{instructions,commands:{name:{argv:["executable","arg"],timeoutMs}},maxSteps,budget?:{maxCostUsd?,inputTokensPerCall,outputTokensPerCall,callsPerVisit,prices:{}}}}. Supply all execution fields. Inspect package scripts before proposing commands. Commands are exact argument arrays without shell parsing; explain side effects such as commits. Never request or embed credentials. Workflow auto-approval is a separate user-controlled setting, not part of this proposal.',
   };

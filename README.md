@@ -1,8 +1,8 @@
 # Workflow
 
-**TypeScript workflows for AI and scripts, with durable execution and a live web UI.**
+**TypeScript workflows and blocks, with durable AI and command execution and a live web UI.**
 
-Describe a task, attach context, and let the orchestrator classify it using your editable task instructions. It inspects the project, chooses blocks and model profiles, and writes a TypeScript workflow. Review it or enable automatic execution. Ordinary async functions, conditions and loops compose agent and script steps; Temporal persists their progress. The graph shows the executed path. Pi is an embedded model/session adapter; Workflow owns setup, tasks, settings and the web interface.
+Describe a task, attach context, and let the orchestrator classify it using your editable task instructions. It inspects the project, chooses blocks and model profiles, and writes a TypeScript workflow. Review it or enable automatic execution. Ordinary async functions, conditions and loops compose code blocks with optional AI calls; Temporal persists their progress. The graph shows the executed path. Pi is an embedded model/session adapter; Workflow owns setup, tasks, settings and the web interface.
 
 This is a single-user desktop tool with a real Temporal backend, not a production sandbox or hosted multi-user service.
 
@@ -69,48 +69,56 @@ Use `workflow --port 4320` for another port, or `--port 0` to select a free port
 The API takes inspiration from [Smithers v0.35.0](https://github.com/smithersai/smithers/tree/v0.35.0): typed blocks, persisted outputs, and code deciding what runs next. Workflow uses ordinary functions and `await`, with its existing Temporal engine and Vue interface. No React or JSX is involved.
 
 ```ts
-import { workflow, agent, z } from "workflow";
+import { workflow, block, z } from "workflow";
 
-const reviewer = agent({
-  instructions: "Review independently. Report defects; do not edit files.",
-  output: z.object({ approved: z.boolean(), feedback: z.string() }),
+const reviewer = block({
+  input: z.object({ request: z.string() }),
+  async run(ctx) {
+    const tests = await ctx.exec("bun test");
+    const result = await ctx.ai({
+      model: ctx.models.reviewer ?? ctx.model,
+      prompt: `Review ${ctx.input.request}. Do not edit files.\nTests: ${tests.output}`,
+      output: z.object({ approved: z.boolean(), feedback: z.string() }),
+    });
+    ctx.summary(result.feedback);
+    return result;
+  },
 });
 
 export default workflow({
-  name: "Implement and review",
+  name: "Review working files",
   input: z.object({ request: z.string() }),
   async run(ctx) {
-    let feedback = "";
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const work = await ctx.step("implement", "implement", {
-        prompt: ctx.input.request, inputs: { feedback }, maxVisits: 3,
-      });
-      if (work.outcome !== "pass") { feedback = work.summary; continue; }
-      const review = await ctx.step("review", reviewer, {
-        prompt: ctx.input.request, maxVisits: 3,
-      });
-      if (review.outcome === "pass" && review.data?.approved) return review.data.feedback;
-      feedback = review.data?.feedback ?? review.summary;
-    }
-    throw new Error(`Review did not pass: ${feedback}`);
+    const result = await ctx.step("review", reviewer, { inputs: ctx.input });
+    if (!result.approved) throw new Error(result.feedback);
+    return result.feedback;
   },
 });
 ```
 
-`ctx.step(id, block, options)` accepts an inline `agent(...)`, a `script(...)`, or a Settings block ID. It returns `{outcome, summary, artifacts, data?}`. An `output: z.object(...)` schema gives typed `data` and validates the JSON artifact before a passing result is accepted. Pass selected values through `inputs`; they are visible in step details. Reuse IDs for repeated visits. Await steps sequentially; one executor owns the project.
+There is one block interface: `block({ input?, output?, async run(ctx) { … } })`. A block is a TypeScript function and can combine pure computation, model calls, commands and files. `ctx.step(id, block, { inputs, model?, maxVisits? })` returns its typed return value directly. Optional Zod schemas validate inputs and outputs at runtime. There is no AI/script selector.
 
-Set `model: {provider, model, thinking}` in `agent(...)` or override it per `ctx.step`. A model ID string inherits the configured provider. Models can come from workflow inputs or `ctx.models[profileId]`; profiles and the reusable library are frozen with the draft. See [the implementation/review example](examples/implement-reviewed.ts) and [the script-only example](examples/scripts-only.ts).
+Inside a block:
 
-On **New task → Use a TypeScript workflow**, import or paste a `.ts` file and supply its JSON inputs. With the local server running, the CLI also accepts:
+- `await ctx.ai({ prompt, instructions?, model?, output? })` runs a model/tool session. An output schema returns typed data; omitting it returns Markdown. Set a model in code, accept it through inputs, or use `ctx.model` / `ctx.models[profileId]`.
+- `await ctx.exec(command, { timeoutMs?, env? })` runs Bash in the project and returns `exitCode`, `stdout`, `stderr`, `output`, and `timedOut`. Nonzero exits are values: route verification feedback back to implementation using ordinary conditions and bounded loops.
+- `await ctx.readFile(path)` and `await ctx.writeFile(path, text)` record file effects with recovery. `await ctx.log(message)` adds live activity.
+- `ctx.summary(markdown)` and `ctx.artifact(name, text)` publish visible results. `ctx.outcome("retry")` can mark a verification attempt while still returning structured feedback.
+
+Use stable step IDs inside loops and await operations sequentially. `timeoutMs` and `maxOperations` bound a block; node `maxVisits`, workflow `maxSteps`, and model spending limits still apply. A block may make multiple AI calls, and their usage accumulates against the same run budget. Code errors fail the block and propagate to the workflow; provider/worker interruptions retain the explicit recovery/resume boundary.
+
+Saved Settings blocks work with `ctx.step<OutputType>(id, "block-id", options)`. Their source and helper imports, like the workflow's, are frozen with the draft. Old saved agent/script definitions and old `agent()` / `script()` imports remain readable for compatibility; new authoring uses `block()`.
+
+Open **New task → Use a TypeScript workflow** to import or paste a `.ts` file and JSON inputs. The CodeMirror editor provides Mocha syntax highlighting, line numbers, folding, indentation, search and undo/redo. Approved source is read-only. The CLI also accepts:
 
 ```sh
 workflow run examples/implement-reviewed.ts --input '{"request":"Fix the empty-input bug"}'
 workflow run examples/scripts-only.ts --input '{"message":"hello","runtime":"bun"}' --approve
 ```
 
-Without `--approve`, the CLI creates a draft for browser review. The compiler checks source types without evaluating the module. Saving a draft bundles its pure helper imports and runtime into a version archive. Editing project helpers later does not alter that saved version. Approval starts execution; input schemas are checked before the first step.
+Without `--approve`, the CLI creates a draft for browser review. Typechecking never evaluates the module. Approval starts execution. See [the implementation/review example](examples/implement-reviewed.ts) and [the code-only command example](examples/scripts-only.ts).
 
-Orchestration code must be replayable: use agent/script steps for files, processes, network calls and other side effects. Script source can run arbitrary Bash, JavaScript or TypeScript in the project, call project scripts and import packages. Called project scripts are read at execution time; pure orchestration imports are frozen. Completed steps are replayed from Temporal history after restart; interrupted steps retain the explicit retry/recovery behavior. The global step limit also bounds loops. Model spending is measured as steps run; arbitrary code does not have a static graph cost estimate.
+Workflow and block functions run in Temporal's replayable environment. Use context operations for filesystem, process and network effects. Host modules and arbitrary installed packages can run through project TypeScript/JavaScript files, for example `ctx.exec("bun scripts/check.ts")` or `ctx.exec("node scripts/publish.mjs")`. Use static imports; dynamic imports and top-level await are rejected during submission so the planner can correct them. Pure imports are frozen; called project scripts are read at execution time. A restart replays recorded operation results without rerunning completed effects. Explicitly retrying an interrupted block can repeat its effects; inspect command/Git changes before resuming. Commands and network publication are outside file-tool rollback.
 
 Open **Settings → Providers & models** in the browser. Choose **Continue with ChatGPT**, open the sign-in link, and complete the account authorization. Alternatively, expand **Use an API key** and select a provider. ChatGPT is the only account sign-in offered; other providers use API keys. Choose an available model and thinking level, then **Save project model**. No terminal setup is required.
 
@@ -168,19 +176,19 @@ Ordinary server startup does not regenerate profiles or make background setup re
 
 - **Model profiles:** add multiple models with descriptions such as “careful reviewer for complex changes” or “fast helper for summaries.” The planner uses these descriptions and the connected catalog to choose models. TypeScript can also accept a model as input or override one per step. A planning-model override is optional.
 - **Task instructions:** add, edit, disable or remove cases such as bug, feature, maintenance and investigation. Each case contains a description and instructions, not a predefined graph. Add shared instructions and choose whether the planner may suggest new blocks.
-- **Blocks:** add, edit or remove reusable AI and script blocks using form controls. Configure instructions, declared outputs and checks. **Design with AI** supports conversational proposals for adding, updating and removing blocks. New blocks suggested while planning remain local to that workflow until you explicitly save them to the library.
+- **Blocks:** add, edit or remove reusable TypeScript blocks in CodeMirror. Define prompts, models, inputs, outputs and checks in their source. Saving typechecks without executing code; discard, copy and download controls are available. **Design with AI** supports conversational proposals for adding, updating and removing blocks. New blocks suggested while planning remain local to that workflow until you explicitly save them to the library.
 - **Skills & MCP:** add skill instructions, enable/disable them, and configure stdio or Streamable HTTP MCP servers. Enabling a server makes all its discovered tools available during planning and execution. Connect to preview the tools; there is no separate planning allowlist.
-- **Execution:** choose review or automatic approval, project instructions, maximum steps, a spending limit and named host checks. Every AI step also has Bash for general commands, including package installation, Git staging, commits and pushes. A request such as “commit and push these changes” does not require a preconfigured command. Script blocks run Bash, JavaScript or TypeScript directly, with no model call or command registration.
+- **Execution:** choose review or automatic approval, project instructions, maximum steps, a spending limit and named host checks. Every AI step also has Bash for general commands, including package installation, Git staging, commits and pushes. A request such as “commit and push these changes” does not require a preconfigured command. Code blocks run commands through `ctx.exec`, with no model call or command registration.
 
-**Scripts without AI:** in **Blocks → Add block → Execution**, choose **Script**. Select Bash, JavaScript or TypeScript; JS/TS can use Bun or an installed Node.js. Edit the source, timeout and expected exit status. TypeScript is transpiled before execution, so inline TypeScript does not require Node's native type stripping. Scripts run in the project root with the inherited environment; stdout/stderr stream into Activity. Use a Bash wrapper such as `bun run scripts/check.ts` or `node scripts/publish.mjs` to call an existing project file.
+**Code without AI:** in **Blocks → Add block**, write a function using `ctx.exec`, file operations, or pure TypeScript. No model is called unless the function calls `ctx.ai`. Command stdout/stderr stream into Activity. Tests return diagnostics; workflow code decides whether to retry implementation.
 
-`WORKFLOW_INPUT` is a JSON-file path containing `{version, project, task, node: {id, label, goal}, visit, inputs, outputs, attachments}`. Only selected handoffs appear in `inputs`. `WORKFLOW_RESULT` is a writable JSON-file path: optionally write `{outcome: "pass" | "retry" | "fail", summary, artifacts: {name: "text"}}` there. Without that file, exit status determines pass/retry and captured output fills the declared artifacts. Unexpected exits and timeouts cannot claim success. Context files are temporary; script effects in the project persist.
+The starter **Push current branch** block is editable TypeScript. It selects a configured Git remote, pushes existing commits, creates the remote branch/upstream when needed, and publishes diagnostics with no AI request. There is no fixed function catalog.
 
-The starter **Push current branch** block is an editable JavaScript script. It selects a configured Git remote, pushes existing commits, creates the remote branch/upstream when needed, and returns publication diagnostics. Change its source to suit your workflow. Existing function/command blocks are exposed as scripts when loading the reusable library; already approved workflow snapshots retain their original behavior.
+Opening an older block shows a TypeScript conversion without rewriting settings. Saving applies the reviewed code. Converted scripts retain their `WORKFLOW_INPUT` / `WORKFLOW_RESULT` JSON-file convention through `ctx.exec`; new code can use ordinary parameters and return values instead.
 
 MCP HTTP credentials reference a server-process environment variable containing a bearer token; plaintext tokens are not entered into settings. Local stdio servers inherit the application's environment, as Bash commands do. This is explicit project MCP configuration, not automatic discovery of Pi resources or support for every MCP authentication mechanism.
 
-Script blocks run without a model request. A failed condition returns `retry` and diagnostics. Pass them to implementation, then repeat verification. Both node visits and total workflow steps bound the cycle. Bash, Git, check-command and MCP side effects are outside file-tool rollback.
+Command-only code blocks run without a model request. Code can return a failed condition and diagnostics. Pass them to implementation, then repeat verification. Both node visits and total workflow steps bound the cycle. Bash, Git, check-command and MCP side effects are outside file-tool rollback.
 
 Settings are stored in `.workflow/orchestration.json` and `.workflow/config.json`. Concurrent stale edits are rejected. The reusable block library is published atomically as `.workflow/library.json`, with prior snapshots under `.workflow/libraries/`; once present, it takes precedence over the starter block directories. Removing a reusable block leaves existing workflow snapshots intact. Existing drafts/runs retain their prompts, capabilities, model settings and command definitions.
 
@@ -264,23 +272,11 @@ Choose host checks appropriate to your project; use `bun run test` for a package
 
 The generated `agent: {}` inherits your terminal-selected defaults; the explicit model above is an optional project override. Settings resolve as **Workflow user defaults → explicit project defaults → block overrides → graph node overrides**. Coordinator overrides resolve against project defaults. Supported thinking levels are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`; pi clamps them to model capabilities. Both elapsed time and tool calls are bounded.
 
-### A block: `blocks/fix/block.json`
+### A block: `blocks/review/block.ts`
 
-```json
-{
-  "id": "fix",
-  "name": "Fix bug without changing tests",
-  "description": "Use after a focused regression test reproduces a bug. Fix production code, never tests.",
-  "skills": ["skills/project-conventions.md"],
-  "outputs": ["implementation"],
-  "checks": [{ "command": "test", "expect": "success" }],
-  "agent": { "thinking": "high" }
-}
-```
+Initialization creates TypeScript modules with nearby `block.json` discovery metadata. The metadata contains `id`, `name`, `description`, and `executor: { "kind": "code", "file": "block.ts" }`. The loader reads the source without evaluating it. Edit the TypeScript file to change models, prompts, schemas and behavior. The block directory matches its ID; IDs are lowercase kebab-case; artifact names also accept underscores and dots such as `review.md`. Both are at most 64 characters.
 
-The directory must match the block ID. IDs and artifact names are lowercase kebab-case, at most 64 characters; `constructor` and `prototype` are reserved. Outputs must be unique; `summary` is implicit and host-owned.
-
-`prompt.md` contains the block's task-specific instructions. `skills` lists explicit UTF-8 Markdown resources inside the block directory; their contents are snapshotted and included directly. This first version supports explicit skill/reference text, not ambient skill discovery. Add a supporting reference to `skills` if the agent needs it. Block-local scripts can run through Bash or be named in project `commands` for deterministic host checks.
+Explicit `skills` resources are snapshotted and included in the block's AI sessions. Library changes from the web UI are atomically saved in `.workflow/library.json`, which takes precedence over starter directories. Download the `.ts` source from the editor when needed. Existing runs keep their saved source and resources.
 
 All AI sessions receive `bash`, `read_file`, `write_file`, `edit_file`, `list_files` and `git_changes`. Bash runs as the server user with its environment, credentials and network access; OS access rules still apply. File tools accept relative, absolute and `~/` paths, follow links and can access Git metadata and configuration. Text file tools are limited to 1 MB; Bash handles larger files, renames, deletes and other formats. Broad file lists skip generated/runtime directories for readability; explicit patterns such as `.git/**` include them.
 
@@ -288,19 +284,21 @@ Block instructions define responsibilities: reviews inspect and report; verifica
 
 `git_changes` is a bounded convenience summary of local branch/base comparisons and working changes. It reports exact HEAD/base/merge-base identifiers, labels inferred bases, disables external diffs/filters/hooks and never fetches or mutates Git. Use Bash for effective Git configuration, remote inspection, staging, commits and pushes. A repository with no commits is reported explicitly; the planner adapts review scope to working files when appropriate.
 
-Every configured host check is available through `run_check`. After an AI block submits its result, the engine runs that block's required checks again before choosing the next route. Failed conditions change a claimed `pass` into `retry`. Timeouts, signals and spawn errors do not satisfy an expected-failure check. Bash command output and errors are recorded in Activity.
+Every configured host check is available to AI through `run_check`. New TypeScript blocks perform verification with `ctx.exec` and route its returned status. Older agent blocks retain automatic configured host checks after submitting their result. Failed conditions change a claimed `pass` into `retry`. Timeouts, signals and spawn errors do not satisfy an expected-failure check. Bash command output and errors are recorded in Activity.
 
 **A failing command is not proof of the intended bug.** Use a focused regression command and inspect the reproduction artifact. Likewise, a passing existing suite is not proof that every new requirement has been implemented; the independent test/review blocks and your acceptance criteria matter.
 
 ### Custom blocks
 
-Create `.workflow/blocks/<id>/block.json` and `prompt.md`; optionally add explicit skills/resources. Give the block a precise description of **when to use it** and make its instructions and checks match its role. New proposals load the updated catalog. Live task planning can use custom blocks automatically. The legacy recipe API and demo graphs expect the starter IDs.
+Create `.workflow/blocks/<id>/block.json` with a `code` executor referencing `block.ts`, plus the TypeScript module; optional `prompt.md` and explicit skills/resources provide extra context. Give the block a precise description of **when to use it** and make its instructions and checks match its role. New proposals load the updated catalog. Live task planning can use custom blocks automatically. The legacy recipe API and demo graphs expect the starter IDs.
 
 Existing drafts/runs retain their original policy snapshots. Changing configuration does not silently upgrade an approved plan. Snapshots freeze prompts, loaded skill text, model settings, command arguments, inline script source and the graph. Imported or called project files are read at execution time.
 
-## Graphs and handoffs
+## Legacy graphs and handoffs
 
-A graph is a serial state machine with explicit routes for `pass`, `retry` and `fail`. It may contain cycles, bounded by both each node's `maxVisits` and the run's `maxSteps`.
+Existing JSON graph clients remain supported. Graphs that reference new code blocks are compiled into TypeScript orchestration. New tasks use ordinary TypeScript functions and parameters.
+
+A legacy graph is a serial state machine with explicit routes for `pass`, `retry` and `fail`. It may contain cycles, bounded by both each node's `maxVisits` and the run's `maxSteps`.
 
 Example node:
 

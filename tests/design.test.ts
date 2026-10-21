@@ -16,12 +16,35 @@ import { WorkflowEngine } from "../src/engine.js";
 import { createServer } from "../src/server.js";
 import type { DesignProposal } from "../src/design-schema.js";
 import type { AvailableModel } from "../src/library-editor-schema.js";
+import { bundleSchema } from "../src/domain.js";
 
 const models: AvailableModel[] = [{ provider: "test", id: "careful", name: "Careful model", reasoning: true, imageInput: true, thinkingLevels: ["off", "medium", "high"], contextWindow: 128000, maxTokens: 8000, cost: null }];
 const catalog = async () => ({ models, warnings: [] });
 const profileProposal = (description = "Use for careful diagnosis and independent review."): Extract<DesignProposal, { scope: "profiles" }> => ({ scope: "profiles", summary: "Choose a planning and review model", coordinatorProfile: "reviewer", profiles: [{ id: "reviewer", name: "Careful reviewer", description, enabled: true, agent: { provider: "test", model: "careful", thinking: "high" } }] });
 const profileDesigner: typeof designSettings = async () => ({ message: "Here is a proposed model lineup.", proposal: profileProposal() });
 const toolContext = {} as Parameters<ToolDefinition["execute"]>[4];
+
+test("AI code proposals resolve unchanged blocks from the complete library snapshot", async t => {
+  const { project, library } = await fixture(t);
+  library.config.agent = { thinking: "off", timeoutMs: 30000, maxToolCalls: 20 };
+  library.config.coordinator = {};
+  library.blocks.base = bundleSchema.parse({ definition: { id: "base", name: "Shared", description: "Shared code", executor: {
+    kind: "code", source: 'import {block} from "workflow"; export default block({name:"Shared",async run(){return "existing";}});',
+  } }, skills: [] });
+  const proposal = { scope: "blocks", summary: "Reuse the existing module", changes: { summary: "Add composition", blocks: [{
+    bundle: { definition: { id: "composed", name: "Composition", description: "Uses the saved shared module", executor: {
+      kind: "code", source: 'import {block} from "workflow";import base from "../base/block.ts";export default block({async run(ctx){return base.options.run(ctx);}});',
+    } }, skills: [] }, rationale: "Compose saved code",
+  }] } };
+  const signal = AbortSignal.timeout(30000);
+  const result = await designSettings({ project, library, settings: orchestrationSchema.parse({}), models,
+    scope: "blocks", messages: [], signal, emit: () => {},
+  }, async session => {
+    await session.tools.find(tool => tool.name === "propose_settings")!.execute("proposal", {json:JSON.stringify(proposal),message:"Shared code reused."}, signal, undefined, toolContext);
+  });
+  assert.equal(result.proposal?.scope, "blocks");
+  assert.equal(library.blocks.composed, undefined, "Submitting does not change settings");
+});
 async function settled(chats: DesignChats, id: string) {
   for (let count = 0; count < 300; count++) {
     const session = chats.get(id);

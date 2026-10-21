@@ -6,7 +6,7 @@ const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 /** Normalize editable libraries only; never rewrite approved run snapshots. */
 export function scriptBundle(bundle: BlockBundle, commands: Library["config"]["commands"]): BlockBundle {
   const executor = bundle.definition.executor;
-  if (!executor || executor.kind === "script") return bundle;
+  if (!executor || executor.kind === "script" || executor.kind === "code") return bundle;
   if (executor.kind === "function") {
     return { ...bundle, definition: { ...bundle.definition, executor: pushScript(executor.remote) } };
   }

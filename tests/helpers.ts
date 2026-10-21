@@ -17,7 +17,7 @@ export async function fixture(t: TestContext) {
       await rm(project, { recursive: true, force: true });
     }
   });
-  const library = await initializeProject(project);
+  const library = await initializeProject(project, "", "legacy");
 
   return { project, library, cleanup: (action: () => Promise<unknown>) => { cleanups.push(action); } };
 }
