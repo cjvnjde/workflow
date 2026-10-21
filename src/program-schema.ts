@@ -3,7 +3,7 @@ import { blockInstructions } from "./code-schema.js";
 
 /** Source is editable; compiled orchestration and imports live in the version archive. */
 export const programSourceSchema = z.object({
-  source: z.string().trim().min(1).max(256_000),
+  source: z.string().min(1).max(256_000).refine(value => !!value.trim(), "Enter TypeScript source"),
   filename: z.string().min(1).max(240).default("workflow.ts").refine(
     name => !name.startsWith("/") && !name.split(/[\\/]/).includes("..") && /\.ts$/.test(name),
     "Use a project-relative .ts filename",

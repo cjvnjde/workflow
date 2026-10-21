@@ -8,6 +8,7 @@ import { bundleWorkflowCode, DefaultLogger } from "@temporalio/worker";
 import { programSourceSchema, type ProgramSource } from "./program-schema.js";
 import type { Library } from "./domain.js";
 import type { WorkflowVersions } from "./workflow-versions.js";
+import { formatCode } from "./source-format.js";
 
 const dist = fileURLToPath(new URL("../dist/", import.meta.url));
 const installRoot = path.dirname(dist);
@@ -204,7 +205,8 @@ async function bundleProgram(
   value: unknown,
   catalog: Library["blocks"],
 ) {
-  const source = checkProgram(project, value, catalog);
+  const parsed = programSourceSchema.parse(value);
+  const source = checkProgram(project, { ...parsed, source: (await formatCode(parsed.source)).formatted }, catalog);
   const { files, entry: programEntry } = programFiles(project, source, catalog);
   const built = await Bun.build({
     entrypoints: [programEntry],

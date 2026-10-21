@@ -20,6 +20,7 @@ import { loadUserSettings } from "./user-settings.js";
 import { approvedLibrarySchema } from "./library-editor-schema.js";
 import { pushScript } from "./script-examples.js";
 import { codeBundle } from "./code-migration.js";
+import { formatBlock } from "./source-format.js";
 import { scriptLibrary } from "./script-migration.js";
 
 export async function loadLibrary(project: string): Promise<Library> {
@@ -239,7 +240,7 @@ export async function initializeProject(project: string, instructions = "", form
       checks: specification.checks,
       executor: specification.executor,
     });
-    if (format === "code") definition = codeBundle({ definition, prompt: specification.prompt, skills: [] }, config.commands).definition;
+    if (format === "code") definition = (await formatBlock(codeBundle({ definition, prompt: specification.prompt, skills: [] }, config.commands))).definition;
     let savedDefinition: unknown = definition;
     if (definition.executor?.kind === "code") {
       const { source, ...executor } = definition.executor;

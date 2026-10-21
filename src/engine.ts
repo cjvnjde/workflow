@@ -397,7 +397,7 @@ export default workflow({name:plan.title,async run(ctx){
   }
 
   private async prepareProgram(value: unknown, library: Library) {
-    const source = programSourceSchema.parse(value);
+    const valueSource = programSourceSchema.parse(value);
     const { settings } = await loadOrchestration(this.project);
     const models = Object.fromEntries(settings.profiles.filter(profile => profile.enabled).map(profile => [profile.id, profile.agent]));
     // Freeze known model prices up front; unknown choices with a spending cap
@@ -408,7 +408,7 @@ export default workflow({name:plan.title,async run(ctx){
       ...Object.values(models).map(agent => ({ agent })),
     ];
     await this.priceSnapshot({ nodes: priceNodes }, library);
-    const { version } = await compileProgram(this.project, source, this.versions, library.blocks);
+    const { source, version } = await compileProgram(this.project, valueSource, this.versions, library.blocks);
     return { version, program: { ...source, catalog: structuredClone(library.blocks), models } };
   }
 

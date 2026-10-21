@@ -8,6 +8,7 @@ import { textResult, workspaceTools } from "./block-runner.js";
 import { modelAssignmentsSchema, type AvailableModel, type LibraryChanges } from "./library-editor-schema.js";
 import { validateLibraryChanges } from "./library-proposals.js";
 import { validateCodeBlocks } from "./program-compiler.js";
+import { formatBlock } from "./source-format.js";
 
 export async function generateLibraryChanges(options: {
   project: string; library: Library; kind: "regenerate" | "models"; models: AvailableModel[];
@@ -37,6 +38,10 @@ export async function generateLibraryChanges(options: {
         };
       }
       const validated = validateLibraryChanges(value, options.library, options.kind, options.models);
+      for (const change of validated.changes.blocks) {
+        change.bundle = await formatBlock(change.bundle);
+        validated.blocks[change.bundle.definition.id] = change.bundle;
+      }
       await validateCodeBlocks(options.project, validated.blocks);
       changes = validated.changes;
       return { ...textResult("Library changes validated. The user must review and apply them."), terminate: true };

@@ -29,12 +29,6 @@ function cancelUpload() {
   uploadController?.abort();
 }
 onScopeDispose(cancelUpload);
-function discard() {
-  cancelUpload();
-  text.value = "";
-  files.value = [];
-  error.value = "";
-}
 const suggestions = [
   "Find and fix a bug in this project",
   "Build a feature from my screenshots",
@@ -207,15 +201,6 @@ function drop(event: DragEvent) {
         >
         <button v-if="uploading" type="button" @click="cancelUpload">
           Cancel upload
-        </button>
-        <button
-          v-if="text || files.length"
-          type="button"
-          class="quiet"
-          :disabled="submitting"
-          @click="discard"
-        >
-          Discard task draft
         </button>
         <button
           class="send-button"

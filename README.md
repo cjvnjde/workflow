@@ -109,7 +109,7 @@ Use stable step IDs inside loops and await operations sequentially. `timeoutMs` 
 
 Saved Settings blocks work with `ctx.step<OutputType>(id, "block-id", options)`. Their source and helper imports, like the workflow's, are frozen with the draft. Old saved agent/script definitions and old `agent()` / `script()` imports remain readable for compatibility; new authoring uses `block()`.
 
-Open **New task → Use a TypeScript workflow** to import or paste a `.ts` file and JSON inputs. The CodeMirror editor provides Mocha syntax highlighting, line numbers, folding, indentation, search and undo/redo. Approved source is read-only. The CLI also accepts:
+Open **New task → Use a TypeScript workflow** to import or paste a `.ts` file and JSON inputs. The CodeMirror editor provides Mocha syntax highlighting, line numbers, folding, indentation, search and undo/redo. **Format** or **Shift + Alt + F** runs Prettier; workflow and block saves also format source automatically. Formatting preserves invalid input for correction and never executes source or project formatter configuration. Approved source is read-only. The CLI also accepts:
 
 ```sh
 workflow run examples/implement-reviewed.ts --input '{"request":"Fix the empty-input bug"}'

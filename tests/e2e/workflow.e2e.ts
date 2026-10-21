@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Locator, type APIRequestContext } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import { formatCode } from "../../src/source-format.js";
 
 // Read the full document through the editor's public copy behavior, including
 // lines virtualized outside the viewport. Each browser context has its own clipboard.
@@ -32,6 +33,33 @@ async function settings(page: Page, section = "Providers & models") {
   await page.getByRole("button", { name: section, exact: true }).click();
 }
 
+test("Prettier editor formatting supports undo, errors and protects newer typing", async ({ page }) => {
+  await page.goto("/");
+  await page.getByText("Use a TypeScript workflow", { exact: true }).click();
+  const editor = page.getByLabel("New workflow TypeScript", { exact: true });
+  const button = page.getByRole("button", {name:"Format New workflow TypeScript",exact:true});
+  const source = "const value={one:1,two:2};";
+  await fillCode(editor, source);
+  await button.click();
+  await expectCode(editor, "const value = { one: 1, two: 2 };\n");
+  await editor.press("ControlOrMeta+z");
+  await expectCode(editor, source);
+  await fillCode(editor, "const =");
+  await button.click();
+  await expect(page.getByRole("alert")).toContainText(/expected|Unexpected/i);
+  await expectCode(editor, "const =");
+  let response: import("@playwright/test").Route | undefined;
+  await page.route("**/api/format", route => { response = route; });
+  await fillCode(editor, source);
+  await editor.press("Shift+Alt+f");
+  await expect.poll(() => !!response).toBe(true);
+  const newer = "const newer = 3;";
+  await fillCode(editor, newer);
+  await response!.fulfill({json:{formatted:"const value = { one: 1, two: 2 };\n",cursorOffset:0}});
+  await expect(button).toBeEnabled();
+  await expectCode(editor, newer);
+});
+
 test("TypeScript workflow import, typecheck, editable inputs, discard, download and live trace", async ({ page }) => {
   await page.goto("/");
   await page.getByText("Use a TypeScript workflow", { exact: true }).click();
@@ -40,6 +68,7 @@ export default workflow({name:"Code review",input:z.object({request:z.string()})
   await ctx.step("review","review",{prompt:ctx.input.request});
   return "Reviewed: " + ctx.input.request;
 }});`;
+  const formatted = (await formatCode(source)).formatted;
   await page.getByLabel("Import TypeScript file", { exact: true }).setInputFiles({
     name: "review.ts", mimeType: "text/typescript", buffer: Buffer.from(source),
   });
@@ -48,12 +77,12 @@ export default workflow({name:"Code review",input:z.object({request:z.string()})
   await page.getByRole("button", { name: "Create workflow draft", exact: true }).click();
   await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
   const code = page.getByLabel("Workflow TypeScript", { exact: true });
-  await expectCode(code, source);
+  await expectCode(code, formatted);
   await fillCode(code, source.replace("ctx.input.request", "ctx.input.missing"));
   await page.getByRole("button", { name: "Typecheck & save draft", exact: true }).click();
   await expect(page.getByRole("alert").filter({ hasText: /Property 'missing'/ })).toBeVisible();
   await page.getByRole("button", { name: "Discard code edits", exact: true }).click();
-  await expectCode(code, source);
+  await expectCode(code, formatted);
   await fillCode(page.getByLabel("Workflow inputs (JSON)", { exact: true }), '{"request":"updated working files"}');
   await page.getByRole("button", { name: "Typecheck & save draft", exact: true }).click();
   await expect(page.getByText("Typechecked · source and imports frozen", { exact: true })).toBeVisible();
@@ -61,7 +90,7 @@ export default workflow({name:"Code review",input:z.object({request:z.string()})
   await page.getByRole("button", { name: "Download .ts", exact: true }).click();
   const downloaded = await downloading;
   expect(downloaded.suggestedFilename()).toBe("review.ts");
-  expect(await readFile((await downloaded.path())!, "utf8")).toBe(source);
+  expect(await readFile((await downloaded.path())!, "utf8")).toBe(formatted);
   await page.screenshot({ path: "/tmp/workflow-typescript-editor.png", fullPage: true });
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
   await expect(page.locator(".status-pill")).toHaveText("Completed");
@@ -282,13 +311,13 @@ test("manual block editing is reviewed before applying and preserves existing wo
   try {
     await page.getByRole("button", { name: "Save block", exact: true }).click();
     await expect(page.getByText(/Block saved. New workflows/)).toBeVisible();
-    expect((await (await request.get("/api/project")).json()).blocks.review.definition.executor.source).toBe(source);
+    expect((await (await request.get("/api/project")).json()).blocks.review.definition.executor.source).toBe((await formatCode(source)).formatted);
     expect((await (await request.get(`/api/runs/${id}`)).json()).blocks.review).toEqual(oldRun.blocks.review);
     await page.reload();
     await newTask(page, "Updated library consumer");
     const updatedRuns = await (await request.get("/api/runs")).json();
     const newId = updatedRuns.find((run: { task: string }) => run.task === "Updated library consumer").id;
-    expect((await (await request.get(`/api/runs/${newId}`)).json()).program.catalog.review.definition.executor.source).toBe(source);
+    expect((await (await request.get(`/api/runs/${newId}`)).json()).program.catalog.review.definition.executor.source).toBe((await formatCode(source)).formatted);
   } finally {
     const library = await (await request.get("/api/library")).json();
     const headers = { "x-workflow-client": "1" };
@@ -664,11 +693,11 @@ test("editing model choices in migrated TypeScript preserves execution limits", 
     await page.getByRole("button", { name: "Save block", exact: true }).click();
     await expect(page.getByText(/Block saved. New workflows/)).toBeVisible();
     const saved = (await (await request.get("/api/library")).json()).blocks["profile-limits"];
-    expect(saved.definition.executor.source).toBe(updatedSource);
+    expect(saved.definition.executor.source).toBe((await formatCode(updatedSource)).formatted);
     expect((await (await request.get("/api/settings/orchestration")).json()).settings.profiles).toEqual(allProfiles);
     await page.reload(); await settings(page, "Blocks");
     await page.getByRole("button", { name: /Profile limits regression/ }).click();
-    await expectCode(code, updatedSource);
+    await expectCode(code, (await formatCode(updatedSource)).formatted);
   } finally {
     const current = await (await request.get("/api/settings/orchestration")).json();
     expect((await request.put("/api/settings/orchestration", { headers, data: { ...current, settings: original.settings } })).ok()).toBe(true);
@@ -1077,6 +1106,7 @@ test("one TypeScript editor saves typed code, rejects errors, downloads and disc
   const editor = page.getByLabel("Block TypeScript", { exact: true });
   const source = `import {block,z} from "workflow";
 export default block({output:z.object({answer:z.number()}),async run(ctx){ctx.summary("Computed locally");return {answer:42};}});`;
+  const formatted = (await formatCode(source)).formatted;
   await fillCode(editor, source.replace("answer:42", 'answer:"wrong"'));
   await page.getByRole("button", { name: "Save block", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("TypeScript");
@@ -1085,14 +1115,14 @@ export default block({output:z.object({answer:z.number()}),async run(ctx){ctx.su
   await page.getByRole("button", { name: "Save block", exact: true }).click();
   await expect(page.getByText(/Block saved. New workflows/)).toBeVisible();
   const saved = (await (await request.get("/api/library")).json()).blocks[id];
-  expect(saved.definition.executor).toMatchObject({kind:"code",source});
+  expect(saved.definition.executor).toMatchObject({kind:"code",source:formatted});
   expect(saved.definition.agent).toBeUndefined();
   await fillCode(editor, "// unsaved");
   await page.getByRole("button", { name: "Discard block changes", exact: true }).click();
-  await expectCode(editor, source);
+  await expectCode(editor, formatted);
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download .ts", exact: true }).click();
-  expect(await readFile((await (await download).path())!,"utf8")).toBe(source);
+  expect(await readFile((await (await download).path())!,"utf8")).toBe(formatted);
   await page.getByText("Block API & examples", { exact: true }).click();
   await page.screenshot({ path: "/tmp/workflow-code-block.png", fullPage: true });
 });
@@ -1121,7 +1151,8 @@ test("multiline fields grow for typing and pasted text, cap height, and shrink a
   const emptyHeight = (await task.boundingBox())!.height;
   await task.fill(manyLines);
   await expect.poll(async () => (await task.boundingBox())!.height).toBeGreaterThan(emptyHeight);
-  await page.getByRole("button", { name: "Discard task draft", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Discard task draft", exact: true })).toHaveCount(0);
+  await task.fill("");
   await expect(task).toHaveValue("");
   await expect.poll(async () => (await task.boundingBox())!.height).toBe(emptyHeight);
   expect(await page.evaluate(() => document.querySelectorAll("textarea:not([style*=height])").length)).toBe(0);
@@ -1240,7 +1271,7 @@ test("uploads and MCP discovery can be cancelled without late results or clearin
   await expect(page.locator(".attachment-chip")).toHaveCount(0);
   await expect(task).toHaveValue("Keep this task while cancelling its attachment");
   await expect(page.getByRole("alert")).toHaveCount(0);
-  await page.getByRole("button", { name: "Discard task draft", exact: true }).click();
+  await task.fill("");
   await settings(page, "Skills & MCP");
   await page.getByRole("button", { name: "Add MCP server", exact: true }).click();
   const name = page.getByLabel("MCP server name", { exact: true }).last();

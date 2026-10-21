@@ -1,5 +1,6 @@
 import path from "node:path";
 import { codeBundle } from "./code-migration.js";
+import { formatCode } from "./source-format.js";
 import { fileURLToPath } from "node:url";
 import { access } from "node:fs/promises";
 import Fastify from "fastify";
@@ -181,6 +182,12 @@ export async function createServer(engine: WorkflowEngine, port = 4310, services
     providers: await providers(planning.signal),
   })));
   server.post("/api/models/refresh", async () => await planningJob(async () => await catalog(planning.signal, true)));
+  server.post("/api/format", async request => {
+    const value = z.object({ source: z.string().max(256_000), language: z.enum(["typescript", "javascript", "json"]),
+      cursorOffset: z.number().int().nonnegative().optional(),
+    }).strict().parse(request.body);
+    return formatCode(value.source, value.language, value.cursorOffset);
+  });
   server.get("/api/library", async () => { const library = await loadLibrary(engine.project); return { revision: libraryHash(library), blocks: library.blocks, codeBlocks: Object.fromEntries(Object.entries(library.blocks).map(([id, bundle]) => [id, codeBundle(bundle, library.config.commands)])) }; });
   server.delete<{ Params: { id: string } }>("/api/library/blocks/:id", async (request) => await planningJob(async () => {
     const input = z.object({ revision: z.string() }).strict().parse(request.body);

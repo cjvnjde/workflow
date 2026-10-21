@@ -7,6 +7,7 @@ import { Workspace } from "./workspace.js";
 import { textResult, workspaceTools } from "./block-runner.js";
 import { validateLibraryChanges, validateModelChoice } from "./library-proposals.js";
 import { validateCodeBlocks } from "./program-compiler.js";
+import { formatBlock } from "./source-format.js";
 import { validateLibraryResources } from "./library.js";
 import type { AvailableModel } from "./library-editor-schema.js";
 import { orchestrationSchema, type OrchestrationSettings } from "./orchestration-schema.js";
@@ -62,6 +63,7 @@ export async function designSettings(options: DesignOptions, session: typeof run
     async execute(_id, args) {
       const proposal = validateDesign(JSON.parse(args.json), options);
       if (proposal.scope === "blocks") {
+        for (const change of proposal.changes.blocks) change.bundle = await formatBlock(change.bundle);
         const { blocks } = validateLibraryChanges(proposal.changes, options.library, "regenerate", options.models);
         await validateCodeBlocks(options.project, blocks);
       }

@@ -6,6 +6,7 @@ import { atomicWrite } from "./atomic-file.js";
 import { resolveAgentSettings, type Library, type WorkflowPlan } from "./domain.js";
 import { loadLibrary, validateLibraryResources } from "./library.js";
 import { validateCodeBlocks } from "./program-compiler.js";
+import { formatBlock } from "./source-format.js";
 import { scriptBundle } from "./script-migration.js";
 import {
   approvedLibrarySchema, libraryChangesSchema, libraryProposalSchema, modelKey,
@@ -96,6 +97,10 @@ export class LibraryProposals {
   async get(id: string) { return libraryProposalSchema.parse(JSON.parse(await readFile(this.filename(id), "utf8"))); }
   async create(library: Library, kind: LibraryProposal["kind"], value: unknown, models: AvailableModel[]) {
     const { changes, blocks } = validateLibraryChanges(value, library, kind, models);
+    for (const change of changes.blocks) {
+      change.bundle = await formatBlock(change.bundle);
+      blocks[change.bundle.definition.id] = change.bundle;
+    }
     await validateCodeBlocks(this.project, blocks);
     const proposal: LibraryProposal = { id: randomUUID(), createdAt: new Date().toISOString(), status: "draft", kind, baseHash: libraryHash(library), changes, allowedModels: models.map(modelKey) };
     await this.save(proposal);

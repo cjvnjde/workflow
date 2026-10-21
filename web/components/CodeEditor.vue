@@ -3,12 +3,14 @@ import { computed, onMounted, onScopeDispose, ref, useId, watch } from "vue";
 import { basicSetup } from "codemirror";
 import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
-import { indentWithTab } from "@codemirror/commands";
+import { indentWithTab, isolateHistory } from "@codemirror/commands";
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
 import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
 import { shell } from "@codemirror/legacy-modes/mode/shell";
 import { tags } from "@lezer/highlight";
+import { z } from "zod";
+import { request } from "../api.js";
 
 const props = withDefaults(defineProps<{
   modelValue: string;
@@ -23,9 +25,31 @@ const emit = defineEmits<{ "update:modelValue": [value: string] }>();
 const host = ref<HTMLDivElement>();
 const fallbackId = useId();
 const position = ref({ line: 1, column: 1 });
+const formatting = ref(false), formatError = ref("");
+const controller = new AbortController();
 const languageName = computed(() => ({ typescript: "TypeScript", javascript: "JavaScript", json: "JSON", bash: "Bash" })[props.language]);
 const language = new Compartment(), access = new Compartment();
 let view: EditorView | undefined;
+async function format() {
+  if (!view || props.readonly || formatting.value || props.language === "bash") return;
+  const editor = view, source = editor.state.doc.toString(), syntax = props.language;
+  formatting.value = true;
+  formatError.value = "";
+  try {
+    const result = await request("/api/format", z.object({ formatted: z.string(), cursorOffset: z.number() }), {
+      method: "POST", signal: controller.signal,
+      body: { source, language: syntax, cursorOffset: editor.state.selection.main.head },
+    });
+    // A late response must not replace typing, a new file or locked approval source.
+    if (controller.signal.aborted || view !== editor || props.readonly || syntax !== props.language || source !== editor.state.doc.toString()) return;
+    editor.dispatch({ changes: { from: 0, to: source.length, insert: result.formatted },
+      selection: { anchor: Math.max(0, Math.min(result.formatted.length, result.cursorOffset)) },
+      annotations: isolateHistory.of("full"),
+    });
+  } catch (error) {
+    if (!controller.signal.aborted) formatError.value = error instanceof Error ? error.message : String(error);
+  } finally { formatting.value = false; }
+}
 const languageExtension = () => props.language === "json" ? json() : props.language === "bash" ? StreamLanguage.define(shell) : javascript({ typescript: props.language === "typescript" });
 const accessExtension = () => [
   EditorState.readOnly.of(props.readonly),
@@ -69,7 +93,7 @@ onMounted(() => {
   view = new EditorView({
     parent: host.value,
     doc: props.modelValue,
-    extensions: [basicSetup, theme, syntaxHighlighting(highlight), keymap.of([indentWithTab]),
+    extensions: [basicSetup, theme, syntaxHighlighting(highlight), keymap.of([{ key: "Shift-Alt-f", run: () => { void format(); return true; } }, indentWithTab]),
       language.of(languageExtension()), access.of(accessExtension()),
       EditorView.updateListener.of(update => {
         if (update.docChanged) emit("update:modelValue", update.state.doc.toString());
@@ -87,7 +111,7 @@ watch(() => props.modelValue, value => {
 });
 watch(() => props.language, () => view?.dispatch({ effects: language.reconfigure(languageExtension()) }));
 watch(() => [props.readonly, props.id, props.label], () => view?.dispatch({ effects: access.reconfigure(accessExtension()) }));
-onScopeDispose(() => view?.destroy());
+onScopeDispose(() => { controller.abort(); view?.destroy(); view = undefined; });
 </script>
 
 <template>
@@ -98,9 +122,12 @@ onScopeDispose(() => view?.destroy());
     <div ref="host" class="code-editor-host" />
     <div class="code-editor-status">
       <span>{{ languageName }}<span v-if="readonly"> · Read only</span></span>
+      <button v-if="!readonly && props.language !== 'bash'" type="button" class="code-format" :disabled="formatting"
+        :aria-label="`Format ${label}`" title="Format with Prettier · Shift + Alt + F" @click="format">{{ formatting ? 'Formatting…' : 'Format' }}</button>
       <span class="code-editor-hint">Ctrl / ⌘ F to search · Esc, Tab to leave</span>
       <span>Ln {{ position.line }}, Col {{ position.column }}</span>
     </div>
+    <pre v-if="formatError" class="code-format-error" role="alert">{{ formatError }}</pre>
   </div>
 </template>
 
@@ -111,5 +138,7 @@ onScopeDispose(() => view?.destroy());
 .code-editor-status { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 6px 12px; border-top: 1px solid var(--ctp-surface0); background: var(--ctp-mantle); color: var(--ctp-overlay2); font-size: 10px; line-height: 1.5; }
 .code-editor-status > :last-child { margin-left: auto; font-variant-numeric: tabular-nums; }
 .code-editor-hint { color: var(--ctp-overlay0); margin-left: auto; }
+.code-format { padding: 1px 6px; font-size: 10px; min-height: 0; color: var(--ctp-lavender); background: transparent; }
+.code-format-error { white-space: pre-wrap; overflow-wrap: anywhere; padding: 8px 12px; margin: 0; font-size: 12px; color: var(--ctp-red); }
 @media (max-width: 700px) { .code-editor-hint { display: none; } }
 </style>
