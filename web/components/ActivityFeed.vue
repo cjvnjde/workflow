@@ -13,6 +13,7 @@ const props = withDefaults(
   defineProps<{
     events: RunEvent[];
     liveText?: string;
+    liveResponses?: Record<string, string>;
     running?: boolean;
     nodes?: { id: string; label: string }[];
     selected?: string;
@@ -117,6 +118,15 @@ function reset() {
       </div>
     </div>
     <div class="activity-feed">
+      <template v-if="!query && ['all', 'updates'].includes(category)">
+        <div v-for="(text, id) in liveResponses" :key="id" class="live-output">
+          <span class="eyebrow"
+            ><span class="live-dot" /> {{ labels[id] ?? id }} · Live
+            response</span
+          >
+          <MarkdownView :content="text" />
+        </div>
+      </template>
       <div
         v-if="liveText && !query && ['all', 'updates'].includes(category)"
         class="live-output"

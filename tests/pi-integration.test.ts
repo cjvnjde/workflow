@@ -272,6 +272,7 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
     bundle,
     node,
     task: "SECOND_SESSION_ONLY",
+    composition: {kind:"loop",id:"revise",label:"Revise",maxIterations:3,condition:"review.approved",children:[{kind:"step",id:node.id,label:node.label,children:[],step:{reference:node.block,options:{on:{retry:"repeat"}}}}]},
     inputs: {},
     visit: 2,
     settings,
@@ -280,6 +281,12 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
   });
   assert.equal(requests.length, 3);
   assert.ok(JSON.stringify(requests[2]).includes("SECOND_SESSION_ONLY"));
+  const secondContent = requests[2]!.messages.find(message => message.role === "user")!.content;
+  const secondText = typeof secondContent === "string" ? secondContent : z.array(z.object({type:z.literal("text"),text:z.string()})).parse(secondContent).map(part => part.text).join("\n");
+  const composedPrompt = JSON.parse(secondText);
+  assert.equal(composedPrompt.currentStep.routes, undefined, "Structured steps must not advertise placeholder legacy routes");
+  assert.equal(composedPrompt.composition.kind, "loop");
+  assert.deepEqual(composedPrompt.composition.children[0].outcomes,{pass:"continue",retry:"repeat",fail:"stop"});
   assert.ok(!JSON.stringify(requests[2]).includes("FIRST_SESSION_ONLY"));
   library.config.coordinator = settings;
   const customAudit = {

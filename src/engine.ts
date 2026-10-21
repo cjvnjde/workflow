@@ -26,11 +26,11 @@ import { runScriptBlock } from "./script-runner.js";
 import { runCheck } from "./checks.js";
 import { RunStore } from "./run-store.js";
 import { connectTemporal, type TemporalOptions } from "./temporal-runtime.js";
-import type { WorkflowActivities, executeWorkflow } from "./temporal-workflow.js";
+import type { WorkflowActivities, executeWorkflow, AttemptIdentity } from "./temporal-workflow.js";
 import { WorkflowVersions, type WorkflowVersion } from "./workflow-versions.js";
 import { addUsage, emptyUsage, estimateBudget } from "./budget.js";
 import { attemptDirectory, loadUsage, saveUsage } from "./attempt-store.js";
-import { FileJournal } from "./recovery.js";
+import { FileJournal, FileClaims } from "./recovery.js";
 import { Workspace } from "./workspace.js";
 import { getModelRuntime } from "./model-runtime.js";
 import { acquireProjectLock } from "./project-lock.js";
@@ -39,6 +39,7 @@ import { codeOperationSchema, type CodeOperation } from "./code-schema.js";
 import { executeCodeCommand } from "./code-host.js";
 import { programSourceSchema } from "./program-schema.js";
 import { graphProgram } from "./graph-composition.js";
+import { compositionPlan } from "./composition-plan.js";
 import { loadOrchestration } from "./orchestration-settings.js";
 
 const activeStatuses = new Set<WorkflowRun["status"]>(["running", "pausing", "paused", "interrupted"]);
@@ -58,6 +59,8 @@ export class WorkflowEngine {
   private readonly taskQueue: string;
   private releaseProject: (() => Promise<void>) | undefined;
   private readonly leaseCancellation = new AbortController();
+  private fileClaims: FileClaims | undefined;
+  private budgetQueue = Promise.resolve();
 
   constructor(
     readonly project: string,
@@ -77,6 +80,7 @@ export class WorkflowEngine {
       void this.shutdown().catch((failure: unknown) => { console.error("Project lease lost:", failure); });
     });
     try {
+      this.fileClaims = new FileClaims((await Workspace.create(this.project)).root);
       for (const run of await this.store.load()) {
         if (run.status === "running" && !run.temporalWorkflowId) {
           run.status = "interrupted";
@@ -84,6 +88,7 @@ export class WorkflowEngine {
           await this.store.save(run);
         }
         this.runs.set(run.id, run);
+        for (const attempt of run.attempts) await FileJournal.open(attemptDirectory(this.project, run.id, attempt.nodeId, attempt.visit), this.fileClaims);
       }
       this.environment = await connectTemporal(this.project, this.temporalOptions);
       this.currentVersion = await this.versions.install(this.temporalOptions.workflowBundlePath ?? fileURLToPath(new URL("../dist/workflow-bundle.js", import.meta.url)));
@@ -135,11 +140,11 @@ export class WorkflowEngine {
       taskQueue: this.queueFor(version), workflowBundle: { codePath },
       activities: {
         saveProjection: (run, event) => { this.assertActivity(runSchema.parse(run)); return this.saveProjection(run, event); },
-        executeBlock: (run) => this.executeBlock(run),
-        executeOperation: (run, operation) => this.executeOperation(run, operation),
-        settleAttempt: (run, commit) => this.settleAttempt(run, commit),
+        executeBlock: (run, identity) => this.executeBlock(this.scopeAttempt(run, identity)),
+        executeOperation: (run, operation, identity) => this.executeOperation(this.scopeAttempt(run, identity), operation),
+        settleAttempt: (run, commit, identity) => this.settleAttempt(run, commit, identity),
       } satisfies WorkflowActivities,
-      maxConcurrentActivityTaskExecutions: 1,
+      maxConcurrentActivityTaskExecutions: 12,
       maxHeartbeatThrottleInterval: "1 second", defaultHeartbeatThrottleInterval: "1 second",
       shutdownGraceTime: "2 seconds", shutdownForceTime: "5 seconds",
     });
@@ -293,7 +298,14 @@ export class WorkflowEngine {
     this.assertSnapshot(run);
     const operation = this.projections.then(async () => {
       const current = this.runs.get(run.id);
-      if (current && (current.deletedAt || current.revision > run.revision)) {
+      if (current?.deletedAt) return;
+      if (current && current.revision > run.revision) {
+        // Concurrent branches may deliver checkpoints out of order. Keep the
+        // newest projection, but retain every branch's activity event.
+        if (event) {
+          this.emit(run, event.kind, event.message, event.nodeId, `${run.id}:${run.revision}:${event.kind}`);
+          await this.store.flush();
+        }
         return;
       }
       this.assertSnapshot(run);
@@ -356,15 +368,16 @@ export class WorkflowEngine {
       const checked = graph && validatePlan(graph, snapshot);
       if (checked) await this.priceSnapshot(checked, snapshot);
       const prepared = await this.prepareProgram(value, snapshot);
+      const composed = prepared.program.structure && compositionPlan(prepared.program.structure, title, task, snapshot);
       signal?.throwIfAborted();
       const now = new Date().toISOString(), id = randomUUID();
       const run = runSchema.parse({
         id, temporalWorkflowId: `workflow-${id}`, revision: 0,
         executionVersion: prepared.version.id, executionProtocol: 2,
         createdAt: now, updatedAt: now, mode: this.mode, status: "draft",
-        plan: checked ?? { title, task, entry: "start", nodes: [] },
-        program: { ...prepared.program, composition: checked ? "graph" : undefined },
-        config: snapshot.config, blocks: checked ? snapshot.blocks : {}, cursor: checked?.entry ?? "start", visits: {}, artifacts: {}, attempts: [],
+        plan: checked ?? composed?.plan ?? { title, task, entry: "start", nodes: [] },
+        program: { ...prepared.program, composition: checked ? "graph" : composed ? "structured" : undefined },
+        config: snapshot.config, blocks: checked ? snapshot.blocks : composed?.blocks ?? {}, cursor: checked?.entry ?? composed?.plan.entry ?? "start", visits: {}, artifacts: {}, attempts: [],
       });
       this.checkSnapshotSize(run);
       await this.store.save(run);
@@ -400,8 +413,8 @@ export class WorkflowEngine {
       ...Object.values(models).map(agent => ({ agent })),
     ];
     await this.priceSnapshot({ nodes: priceNodes }, library);
-    const { source, version } = await compileProgram(this.project, valueSource, this.versions, library.blocks);
-    return { version, program: { ...source, catalog: structuredClone(library.blocks), models } };
+    const { source, structure, version } = await compileProgram(this.project, valueSource, this.versions, library.blocks);
+    return { version, program: { ...source, structure, catalog: structuredClone(library.blocks), models } };
   }
 
   async updateProgram(id: string, value: unknown, expectedRevision?: number, signal?: AbortSignal) {
@@ -412,7 +425,11 @@ export class WorkflowEngine {
       this.assertRevision(run, expectedRevision);
       const prepared = await this.prepareProgram(value, { config: run.config, blocks: run.program.catalog });
       signal?.throwIfAborted();
-      run.program = prepared.program;
+      const composed = prepared.program.structure && compositionPlan(prepared.program.structure, run.plan.title, run.plan.task, {config:run.config,blocks:run.program.catalog});
+      run.program = { ...prepared.program, composition: composed ? "structured" : undefined };
+      run.plan = composed?.plan ?? { ...run.plan, entry: "start", nodes: [] };
+      run.blocks = composed?.blocks ?? {};
+      run.cursor = run.plan.entry;
       run.executionVersion = prepared.version.id;
       run.revision++;
       run.updatedAt = new Date().toISOString();
@@ -592,7 +609,7 @@ export class WorkflowEngine {
         throw new Error("Restart workflow in the original execution mode before resuming");
       }
       if (run.executionProtocol === 2 && run.status === "interrupted") {
-        const settled = await this.recoverAttempt(run, false);
+        const settled = await this.recoverAttempts(run);
         if (settled.recovery.status === "conflict") { throw new Error(`Resolve recovery conflicts before resuming: ${settled.recovery.conflicts.join(", ")}`); }
       }
       await this.handle(id).signal("resume");
@@ -654,33 +671,61 @@ export class WorkflowEngine {
     return this.shutdownPromise;
   }
 
-  private async recoverAttempt(run: WorkflowRun, commit: boolean) {
-    const attempt = run.attempts.at(-1);
+  private scopeAttempt(value: WorkflowRun, identity?: AttemptIdentity): WorkflowRun {
+    const run = runSchema.parse(value);
+    if (identity) {
+      if (!run.attempts.some(attempt => attempt.nodeId === identity.nodeId && attempt.visit === identity.visit) || run.visits[identity.nodeId] !== identity.visit) throw new Error("Unknown execution attempt");
+      run.cursor = identity.nodeId;
+    }
+    return run;
+  }
+
+  private async recoverAttempt(run: WorkflowRun, commit: boolean, identity?: AttemptIdentity) {
+    const attempt = identity ? run.attempts.find(attempt => attempt.nodeId === identity.nodeId && attempt.visit === identity.visit) : run.attempts.at(-1);
+    if (identity && !attempt) throw new Error("Unknown recovery attempt");
     if (!attempt) { return { recovery: { status: "none" as const, restored: [], conflicts: [] }, usage: emptyUsage() }; }
     const directory = attemptDirectory(this.project, run.id, attempt.nodeId, attempt.visit);
     const node = run.plan.nodes.find((candidate) => candidate.id === attempt.nodeId);
     const bundle = node && run.blocks[node.block];
     if (!bundle) { throw new Error("Unknown recovery block"); }
     const workspace = await Workspace.create(this.project);
-    const journal = await FileJournal.open(directory);
+    const journal = await FileJournal.open(directory, this.fileClaims);
     const recovery = await journal.settle(workspace, commit || run.config.recovery?.rollbackOnFailure === false);
     return { recovery, usage: await loadUsage(directory) };
   }
 
-  private async settleAttempt(value: WorkflowRun, commit: boolean) {
+  private async settleAttempt(value: WorkflowRun, commit: boolean, identity?: AttemptIdentity) {
     const run = runSchema.parse(value);
     this.assertActivity(run);
-    return this.recoverAttempt(run, commit);
+    return this.recoverAttempt(run, commit, identity);
+  }
+
+  private async recoverAttempts(run: WorkflowRun) {
+    const attempts = run.attempts.filter(attempt => attempt.error || attempt.recovery?.status === "conflict");
+    if (!attempts.length) {
+      const settled = await this.recoverAttempt(run, false);
+      const last = run.attempts.at(-1);
+      if (last) { last.recovery = settled.recovery; last.usage = settled.usage; }
+      return settled;
+    }
+    const recovery: import("./domain.js").RecoveryResult = { status: "none", restored: [], conflicts: [] };
+    let usage = emptyUsage();
+    for (const attempt of attempts) {
+      const settled = await this.recoverAttempt(run, false, attempt);
+      attempt.recovery = settled.recovery; attempt.usage = settled.usage;
+      recovery.restored.push(...settled.recovery.restored); recovery.conflicts.push(...settled.recovery.conflicts);
+      usage = addUsage(usage, settled.usage);
+    }
+    recovery.status = recovery.conflicts.length ? "conflict" : recovery.restored.length ? "restored" : "none";
+    return { recovery, usage };
   }
 
   async recover(id: string) {
     return this.mutate(async () => {
       const run = structuredClone(this.requireRun(id));
       if (!["cancelled", "failed", "interrupted"].includes(run.status)) { throw new Error("Only cancelled, failed or interrupted steps can be recovered"); }
-      const settled = await this.recoverAttempt(run, false);
+      const settled = await this.recoverAttempts(run);
       if (run.status !== "interrupted") {
-        const attempt = run.attempts.at(-1);
-        if (attempt) { attempt.recovery = settled.recovery; attempt.usage = settled.usage; }
         run.revision += 1; run.updatedAt = new Date().toISOString();
         await this.store.save(run); this.runs.set(id, run);
       }
@@ -731,7 +776,7 @@ export class WorkflowEngine {
         result = await executeCodeCommand(this.project, run, operation, signal, emit);
       } else {
         const directory = attemptDirectory(this.project, run.id, node.id, run.visits[node.id] ?? 1);
-        const workspace = await Workspace.create(this.project, { signal, journal: await FileJournal.open(directory) });
+        const workspace = await Workspace.create(this.project, { signal, journal: await FileJournal.open(directory, this.fileClaims) });
         if (operation.kind === "read") result = await workspace.read(operation.path);
         else { await workspace.write(operation.path, operation.content); result = null; }
       }
@@ -745,6 +790,31 @@ export class WorkflowEngine {
   }
 
   private async executeBlock(value: WorkflowRun, resultMode?: "value") {
+    const node = value.plan.nodes.find(node => node.id === value.cursor);
+    if (value.config.budget?.maxCostUsd === undefined || (node && value.blocks[node.block]?.definition.executor)) return this.executeBlockNow(value, resultMode);
+    // Only budgeted model sessions serialize. Otherwise siblings may spend the
+    // same stale remaining balance. Compute and unbudgeted AI stay parallel.
+    const before = this.budgetQueue;
+    let release!: () => void;
+    this.budgetQueue = new Promise<void>(resolve => { release = resolve; });
+    const activity = Context.current();
+    const heartbeat = setInterval(() => activity.heartbeat({ nodeId: value.cursor, waiting: "budgeted model session" }), 1000);
+    activity.heartbeat({ nodeId: value.cursor, waiting: "budgeted model session" });
+    const signal = AbortSignal.any([activity.cancellationSignal, this.leaseCancellation.signal]);
+    let onAbort!: () => void;
+    try {
+      signal.throwIfAborted();
+      await Promise.race([before, new Promise<never>((_, reject) => { onAbort = () => reject(signal.reason); signal.addEventListener("abort", onAbort, {once:true}); })]);
+      signal.throwIfAborted();
+      return await this.executeBlockNow(value, resultMode);
+    } finally {
+      clearInterval(heartbeat);
+      if (onAbort) signal.removeEventListener("abort", onAbort);
+      void before.then(release, release);
+    }
+  }
+
+  private async executeBlockNow(value: WorkflowRun, resultMode?: "value") {
     const run = runSchema.parse(value);
     this.assertActivity(run);
     if (run.mode !== this.mode) {
@@ -760,9 +830,14 @@ export class WorkflowEngine {
     const signal = AbortSignal.any([context.cancellationSignal, this.leaseCancellation.signal, AbortSignal.timeout(executionTimeoutMs(run.config, bundle, node))]);
     signal.throwIfAborted();
     const directory = attemptDirectory(this.project, run.id, node.id, run.visits[node.id] ?? 1);
-    const journal = run.executionProtocol === 2 ? await FileJournal.open(directory) : undefined;
+    const journal = run.executionProtocol === 2 ? await FileJournal.open(directory, this.fileClaims) : undefined;
     const previousUsage = await loadUsage(directory);
-    const remainingCost = run.config.budget?.maxCostUsd === undefined ? undefined : run.config.budget.maxCostUsd - (run.usage?.costUsd ?? 0) - previousUsage.costUsd;
+    let spent = 0;
+    if (run.config.budget?.maxCostUsd !== undefined) {
+      const attempts = new Map([...this.requireRun(run.id).attempts, ...run.attempts].map(attempt => [`${attempt.nodeId}/${attempt.visit}`, attempt]));
+      for (const attempt of attempts.values()) spent += (await loadUsage(attemptDirectory(this.project, run.id, attempt.nodeId, attempt.visit))).costUsd;
+    }
+    const remainingCost = run.config.budget?.maxCostUsd === undefined ? undefined : run.config.budget.maxCostUsd - spent;
     if (!bundle.definition.executor && remainingCost !== undefined && remainingCost <= 0) { throw new Error("Workflow spending limit reached"); }
     if (run.program && !bundle.definition.executor && remainingCost !== undefined &&
         !run.config.budget?.prices[`${settings.provider}/${settings.model}`]) {
@@ -775,7 +850,7 @@ export class WorkflowEngine {
         : bundle.definition.executor.kind === "script" ? runScriptBlock
         : bundle.definition.executor.kind === "function" ? runFunctionBlock : runCommandBlock;
       const result = validateBlockResult(await runner({
-        project: this.project, config: run.config, bundle, node, task: run.plan.task, workflow: run.plan,
+        project: this.project, config: run.config, bundle, node, task: run.plan.task, workflow: run.plan, composition: run.program?.structure,
         inputs: resolveInputs(node, run), visit: run.visits[node.id] ?? 1,
         settings, signal, journal, maxCostUsd: remainingCost, resultMode,
         onUsage: async (sessionUsage) => { const usage = addUsage(previousUsage, sessionUsage); await saveUsage(directory, usage); this.usageByAttempt.set(`${run.id}/${node.id}/${run.visits[node.id] ?? 1}`, { ...usage }); this.emit(run, "usage", JSON.stringify(usage), node.id); },

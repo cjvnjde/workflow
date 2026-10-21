@@ -226,7 +226,7 @@ export async function initializeProject(project: string, instructions = "", form
       outputs: ["feedback"],
       checks: successChecks,
       prompt:
-        "Independently inspect the relevant code, tests, and supplied artifacts. Do not modify files. Report concrete correctness defects with file locations and evidence in feedback. Return retry for actionable defects, fail for a blocker, and pass only when requirements are met and checks pass. Do not invent issues to satisfy a quota.",
+        "Independently inspect the relevant code, tests, and supplied artifacts. Do not modify files. For a branch review, inspect the comparison base first. If no commits or usable baseline exists, review accessible working files and state that findings are not branch-relative; do not treat the absent baseline alone as a blocker. Report concrete correctness defects with file locations and evidence in feedback. Return retry for actionable defects, fail for a blocker that prevents useful inspection, and pass only when the review scope is satisfied and checks pass. Do not invent issues to satisfy a quota.",
     },
   ];
   for (const specification of specifications) {

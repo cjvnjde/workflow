@@ -12,7 +12,28 @@ export const programSourceSchema = z.object({
 }).strict();
 export type ProgramSource = z.infer<typeof programSourceSchema>;
 
+export const compositionInstructions = `
+Compose a TypeScript workflow with submit_workflow. Import {workflow,step,sequence,parallel,when,repeatUntil} from "workflow".
+Export default workflow({name:"Task title",flow:sequence(...)}). The flow is a declaration: NEVER call models, inspect files, Git, shell or MCP while composing it. Put all investigation and configuration checks into execution blocks.
+Connect every intended step and group to the exported flow. Declaring a variable does not schedule it: for example, a publication group after a review loop requires flow:sequence(reviewLoop,publish). Before submitting, trace the exported flow against the full request, including requested final actions and feedback paths.
+Use only the request, supplied attachments/answers, task instructions, blocks and profiles. Do not assert repository facts that were not supplied. For branch reviews, explicitly instruct the execution step to inspect its baseline and, if there are no commits or no usable comparison base, review the accessible working files instead, clearly stating that findings are not branch-relative. Missing baseline alone is a scope limitation, not a reason to skip useful inspection or declare the workflow blocked.
+Reuse the supplied saved blocks: const review=step<ReviewOutput>("review","review-block-id",{prompt:"Review...",model:{provider,model,thinking},maxVisits:3}). Step IDs and group IDs are unique lowercase kebab-case. Imported reusable TypeScript blocks also work and infer their return type.
+step options: {label?,prompt?:string|((ctx)=>string),inputs?:object|((ctx)=>object),model?:{provider,model,thinking},maxVisits?:1..30,on?:{pass?,retry?,fail?}}. Each outcome action is "continue", "stop", or "repeat". Defaults: pass continues, retry/fail stop. repeat immediately returns to the enclosing loop, skipping the remaining sequence. Keep hard failures as stop unless there is a real recovery path.
+sequence(a,b,c) runs in order. parallel([a,b,c],{concurrency:2,label:"Independent checks"}) runs independent branches and joins all started branches; concurrency is 1..8. These share the workspace: parallelize independent reads/checks or disjoint edits, not overlapping edits, Git mutations or checks that rebuild the same files. Parallel siblings cannot consume one another's partial outputs; their results become available after the join.
+when("publish-if-approved",ctx=>ctx.output(review)?.approved===true,thenNode,optionalElseNode) selects a branch. Conditions are synchronous booleans, with no effects.
+repeatUntil("revision",{body:sequence(implement,tests,review),until:ctx=>ctx.output(review)?.approved===true,maxIterations:3}) executes the body at least once. An unmet condition at the limit fails clearly; maxVisits still bounds each step. Loops may nest. ctx.iteration("revision") is one-based.
+Deferred inputs/prompts and conditions receive ctx.request (original task), ctx.input (workflow inputs), ctx.models (profiles), ctx.output<T>(stepOrId) (latest typed returned data, initially undefined), ctx.result<T>(stepOrId) ({outcome,summary,artifacts,data}, initially undefined). Reference a step variable for inferred output types, or supply the return type when using string IDs. Use optional access for first-iteration feedback.
+Example with library IDs implement, verify, review:
+const implement=step("implement","implement",{inputs:ctx=>({reviewFeedback:ctx.result("review")?.summary ?? "",testFeedback:ctx.result("verify")?.summary ?? ""}),maxVisits:3});
+const verify=step("verify","verify",{maxVisits:3,on:{retry:"repeat"}});
+const review=step("review","review",{maxVisits:3,on:{retry:"continue"}});
+export default workflow({name:"Implement and review",flow:repeatUntil("revision",{body:sequence(implement,verify,review),until:ctx=>ctx.result(review)?.outcome==="pass",maxIterations:3})});
+Adapt the example to actual block contracts. A generic type annotation does not convert a saved block's return shape: use approved only if the supplied source really returns that field. A verification block that reports outcomes instead of approved data can use ctx.result(verify)?.outcome==="pass". Preserve selected feedback in inputs, and use output schemas from the supplied source. Model defaults belong on each AI step; explicit ctx.ai model overrides in block source still win. Code without AI needs no model. Submit complete source, title, input JSON object, rationale and attachment observations. No fixed recipes are required.
+`.trim();
+
 export const programInstructions = `
+${compositionInstructions}
+For existing imperative workflows, preserve their style when refining them unless asked to change composition. The legacy imperative API remains supported:
 Create a real TypeScript workflow with submit_workflow. Import { workflow, block, z } from "workflow".
 Export default workflow({name:"descriptive name",input:z.object({request:z.string()}),async run(ctx){...}}).
 Use ordinary await, if, bounded for/while loops, functions and variables. Call await ctx.step(id, block, options) for each durable block. Inline code blocks return their typed value directly; there is no .data or .outcome wrapper unless the block's own return value defines it.

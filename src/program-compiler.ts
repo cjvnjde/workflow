@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
+import vm from "node:vm";
+import type { FlowStructure } from "./composition-sdk.js";
 import { bundleWorkflowCode, DefaultLogger } from "@temporalio/worker";
 import { programSourceSchema, type ProgramSource } from "./program-schema.js";
 import type { Library } from "./domain.js";
@@ -18,6 +20,65 @@ const builtins = new Set(
   builtinModules.map((name) => name.replace(/^node:/, "")),
 );
 const apiModules = new Set(["workflow", "predictable-workflow/workflow"]);
+// TypeScript emits these only for unused imports, bindings, properties and types.
+// We inspect them selectively instead of imposing a general lint policy on
+// generated workflows and their reusable imports.
+const unusedLocalCodes = new Set([6133, 6138, 6192, 6196, 6198, 6199]);
+
+function unusedFlowDiagnostics(
+  program: ts.Program,
+  diagnostics: readonly ts.Diagnostic[],
+): ts.Diagnostic[] {
+  const checker = program.getTypeChecker();
+  const sdkFile = program.getSourceFile(sdkTypes);
+  const sdk = sdkFile && checker.getSymbolAtLocation(sdkFile);
+  const flow =
+    sdk &&
+    checker
+      .getExportsOfModule(sdk)
+      .find((symbol) => symbol.name === "FlowNode");
+  if (!flow) return [];
+  const flowType = checker.getDeclaredTypeOfSymbol(flow);
+  const reported = new Set<ts.Identifier>();
+  const errors: ts.Diagnostic[] = [];
+  for (const diagnostic of diagnostics) {
+    const { file, start, length } = diagnostic;
+    if (!file || start === undefined || length === undefined) continue;
+    const end = start + length;
+    const binding = (name: ts.BindingName): void => {
+      if (!ts.isIdentifier(name)) {
+        for (const item of name.elements)
+          if (ts.isBindingElement(item)) binding(item.name);
+        return;
+      }
+      if (name.getStart(file) < start || name.end > end || reported.has(name))
+        return;
+      const type = checker.getNonNullableType(checker.getTypeAtLocation(name));
+      if (
+        type.flags &
+          (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never) ||
+        !checker.isTypeAssignableTo(type, flowType)
+      )
+        return;
+      reported.add(name);
+      errors.push({
+        category: ts.DiagnosticCategory.Error,
+        code: diagnostic.code,
+        file,
+        start: name.getStart(file),
+        length: name.getWidth(file),
+        messageText: `Workflow primitive "${name.text}" is declared but unused. Attach it to the exported workflow's flow (for example sequence(existingFlow, ${name.text})), or remove it if it is intentionally excluded. Declaring a step or group does not execute it.`,
+      });
+    };
+    const visit = (node: ts.Node): void => {
+      if (node.end < start || node.getStart(file) > end) return;
+      if (ts.isVariableDeclaration(node)) binding(node.name);
+      ts.forEachChild(node, visit);
+    };
+    visit(file);
+  }
+  return errors;
+}
 
 function programFiles(
   project: string,
@@ -52,7 +113,7 @@ function programFiles(
   const registry = `{${imports.map((item) => `${JSON.stringify(item.id)}:${item.variable}`).join(",")}}`;
   files.set(
     entry,
-    `${header}\nexport default {...definition,blocks:${registry}};`,
+    `${header}\nimport {describeFlow as describe} from "workflow";\nexport const __structure = () => definition.flow ? describe(definition.flow) : undefined;\nexport default {...definition,blocks:${registry}};`,
   );
   const check = `${filename}.check.ts`;
   files.set(
@@ -67,6 +128,7 @@ export function checkProgram(
   project: string,
   value: unknown,
   catalog: Library["blocks"] = {},
+  inspectDefinition?: (declarative: boolean) => void,
 ): ProgramSource {
   const source = programSourceSchema.parse(value);
   const { files: virtual, check: entry } = programFiles(
@@ -79,6 +141,7 @@ export function checkProgram(
     module: ts.ModuleKind.ESNext,
     moduleResolution: ts.ModuleResolutionKind.Bundler,
     strict: true,
+    noUnusedLocals: true,
     skipLibCheck: true,
     noEmit: true,
     allowImportingTsExtensions: true,
@@ -112,6 +175,20 @@ export function checkProgram(
       );
     });
   const program = ts.createProgram([entry], options, host);
+  const checker = program.getTypeChecker();
+  const file = program.getSourceFile(path.resolve(project, source.filename));
+  const module = file && checker.getSymbolAtLocation(file);
+  const exported =
+    module &&
+    checker
+      .getExportsOfModule(module)
+      .find((symbol) => symbol.name === "default");
+  const flow =
+    exported &&
+    file &&
+    checker.getTypeOfSymbolAtLocation(exported, file).getProperty("flow");
+  const declarative = !!flow && !(flow.flags & ts.SymbolFlags.Optional);
+  inspectDefinition?.(declarative);
   for (const file of program.getSourceFiles()) {
     if (file.isDeclarationFile) continue;
     const fail = (node: ts.Node, message: string): never => {
@@ -162,9 +239,18 @@ export function checkProgram(
     };
     visit(file);
   }
-  const diagnostics = ts
+  const checked = ts
     .getPreEmitDiagnostics(program)
     .filter((item) => item.category === ts.DiagnosticCategory.Error);
+  const diagnostics = [
+    ...checked.filter((item) => !unusedLocalCodes.has(item.code)),
+    ...(declarative
+      ? unusedFlowDiagnostics(
+          program,
+          checked.filter((item) => unusedLocalCodes.has(item.code)),
+        )
+      : []),
+  ];
   if (diagnostics.length)
     throw new Error(
       "TypeScript workflow needs correction:\n" +
@@ -206,7 +292,15 @@ async function bundleProgram(
   catalog: Library["blocks"],
 ) {
   const parsed = programSourceSchema.parse(value);
-  const source = checkProgram(project, { ...parsed, source: (await formatCode(parsed.source)).formatted }, catalog);
+  let declarative = false;
+  const source = checkProgram(
+    project,
+    { ...parsed, source: (await formatCode(parsed.source)).formatted },
+    catalog,
+    (flag) => {
+      declarative = flag;
+    },
+  );
   const { files, entry: programEntry } = programFiles(project, source, catalog);
   const built = await Bun.build({
     entrypoints: [programEntry],
@@ -258,7 +352,28 @@ async function bundleProgram(
   });
   if (!built.success)
     throw new Error(built.logs.map((log) => log.message).join("\n"));
-  return { source, compiled: await built.outputs[0]!.text() };
+  const compiled = await built.outputs[0]!.text();
+  let structure: FlowStructure | undefined;
+  // Only declarative workflows need preview evaluation. The context has no host
+  // APIs; blocks, deferred inputs and predicates are never called. Ordinary
+  // imperative programs retain their execution-only module initialization.
+  if (declarative) {
+    const sandbox = vm.createContext(Object.create(null), {
+      codeGeneration: { strings: false, wasm: false },
+      microtaskMode: "afterEvaluate",
+    });
+    const serialized = vm.runInContext(
+      `const module={exports:{}};const exports=module.exports;\n${compiled}\nJSON.stringify(module.exports.__structure());`,
+      sandbox,
+      { timeout: 1000 },
+    );
+    if (typeof serialized !== "string")
+      throw new Error("Export a workflow with a declared flow tree");
+    if (serialized.length > 500_000)
+      throw new Error("Composition preview is too large");
+    structure = JSON.parse(serialized);
+  }
+  return { source, compiled, structure };
 }
 
 /** Catch source/bundle errors while the coordinator can still correct its submission. */
@@ -268,6 +383,19 @@ export async function validateProgram(
   catalog: Library["blocks"] = {},
 ): Promise<ProgramSource> {
   return (await bundleProgram(project, value, catalog)).source;
+}
+
+export async function validateComposition(
+  project: string,
+  value: unknown,
+  catalog: Library["blocks"],
+) {
+  const { source, structure } = await bundleProgram(project, value, catalog);
+  if (!structure)
+    throw new Error(
+      "Use workflow({name, flow: ...}) with step, sequence, parallel, when and repeatUntil to provide a graph before execution",
+    );
+  return { source, structure };
 }
 
 export async function validateCodeBlocks(
@@ -297,7 +425,11 @@ export async function compileProgram(
   versions: WorkflowVersions,
   catalog: Library["blocks"] = {},
 ) {
-  const { source, compiled } = await bundleProgram(project, value, catalog);
+  const { source, compiled, structure } = await bundleProgram(
+    project,
+    value,
+    catalog,
+  );
   const directory = await mkdtemp(path.join(os.tmpdir(), "workflow-compile-"));
   try {
     const entry = path.join(directory, "entry.js");
@@ -328,7 +460,7 @@ export async function compileProgram(
     });
     const bundle = path.join(directory, "workflow-bundle.js");
     await writeFile(bundle, bundled.code);
-    return { source, version: await versions.install(bundle) };
+    return { source, structure, version: await versions.install(bundle) };
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

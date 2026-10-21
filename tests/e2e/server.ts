@@ -1,6 +1,7 @@
 import { cp, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { initializeProject } from "../../src/library.js";
 import { WorkflowEngine } from "../../src/engine.js";
 import { runDemoBlock } from "../../src/block-runner.js";
@@ -20,6 +21,15 @@ await cp(temporalCache, path.join(process.env.WORKFLOW_HOME, "cache", "temporal"
 await initializeProject(project, "", "legacy");
 process.env.WORKFLOW_DEMO_DELAY_MS = "400";
 const engine = new WorkflowEngine(project, "demo", async execution => {
+  if (execution.task.includes("[parallel-stream-fixture]")) {
+    const frontend = execution.node.id === "stream-frontend";
+    execution.emit("agent_start", "Deterministic parallel streaming fixture");
+    execution.emit("text_delta", frontend ? "Inspecting frontend. " : "Inspecting backend. ");
+    await delay(200, undefined, { signal: execution.signal });
+    execution.emit("text_delta", frontend ? "Frontend notes stay here." : "Backend notes stay here.");
+    await delay(frontend ? 6000 : 2500, undefined, { signal: execution.signal });
+    return { outcome: "pass", summary: frontend ? "Frontend finished." : "Backend finished.", artifacts: {} };
+  }
   if (execution.task.includes("[activity-fixture]") && execution.node.id === "work" && execution.visit === 1) {
     execution.emit("tool_start", 'read_file {"path":"src/example.ts"}');
     execution.emit("tool_end", "read_file: finished");

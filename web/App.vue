@@ -40,6 +40,7 @@ const {
   taskStreams,
   events,
   liveText,
+  liveTextByNode,
   coordinatorActivity,
   coordinatorText,
   notices,
@@ -307,8 +308,15 @@ async function submitTask(prompt: string, attachments: string[]) {
   applyTask(created);
   selectRun(undefined);
 }
-async function submitProgram(value: ProgramSource & { title: string; task: string }, signal: AbortSignal) {
-  const created = await request("/api/programs", runSchema, { method: "POST", body: value, signal });
+async function submitProgram(
+  value: ProgramSource & { title: string; task: string },
+  signal: AbortSignal,
+) {
+  const created = await request("/api/programs", runSchema, {
+    method: "POST",
+    body: value,
+    signal,
+  });
   selectedTask.value = undefined;
   applyRun(created);
   selectRun(created.id);
@@ -351,11 +359,17 @@ function savePlan() {
     return;
   }
   void perform(async () => {
-    const saved = await request(`/api/runs/${current.id}/${isSourceWorkflow(current) ? "program" : "plan"}`, runSchema, {
-      method: "PUT",
-      body: isSourceWorkflow(current) ? edit.validProgram : JSON.parse(edit.text),
-      revision: edit.revision,
-    });
+    const saved = await request(
+      `/api/runs/${current.id}/${isSourceWorkflow(current) ? "program" : "plan"}`,
+      runSchema,
+      {
+        method: "PUT",
+        body: isSourceWorkflow(current)
+          ? edit.validProgram
+          : JSON.parse(edit.text),
+        revision: edit.revision,
+      },
+    );
     applyRun(saved);
     edit.saved(saved);
   });
@@ -410,7 +424,9 @@ function saveSuggestedBlocks() {
           changes: {
             summary: "Save task-specific blocks for reuse",
             blocks: currentTask.suggestedBlocks.map((item) => ({
-              bundle: currentRun.program?.catalog[item.id] ?? currentRun.blocks[item.id],
+              bundle:
+                currentRun.program?.catalog[item.id] ??
+                currentRun.blocks[item.id],
               rationale: item.rationale,
             })),
           },
@@ -728,9 +744,20 @@ async function designApplied() {
               suggested for this task
             </summary>
             <article v-for="item in task.suggestedBlocks" :key="item.id">
-              <h3>{{ (run.program?.catalog[item.id] ?? run.blocks[item.id])?.definition.name ?? item.id }}</h3>
+              <h3>
+                {{
+                  (run.program?.catalog[item.id] ?? run.blocks[item.id])
+                    ?.definition.name ?? item.id
+                }}
+              </h3>
               <p>{{ item.rationale }}</p>
-              <pre>{{ JSON.stringify(run.program?.catalog[item.id] ?? run.blocks[item.id], null, 2) }}</pre>
+              <pre>{{
+                JSON.stringify(
+                  run.program?.catalog[item.id] ?? run.blocks[item.id],
+                  null,
+                  2,
+                )
+              }}</pre>
             </article>
             <button :disabled="busy" @click="saveSuggestedBlocks">
               Save these blocks to the reusable library
@@ -742,6 +769,7 @@ async function designApplied() {
             :draft="draft"
             :events="events"
             :live-text="liveText"
+            :live-text-by-node="liveTextByNode"
             :busy="busy"
             :live="project?.mode === 'live'"
             :coordinator-activity="coordinatorActivity"

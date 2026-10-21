@@ -13,6 +13,7 @@ import MarkdownView from "./MarkdownView.vue";
 import MarkdownActions from "./MarkdownActions.vue";
 import ActivityFeed from "./ActivityFeed.vue";
 import { describeActivity } from "../activity.js";
+import { findGroup } from "../graph-layout.js";
 const WorkflowGraph = defineAsyncComponent(() => import("./WorkflowGraph.vue"));
 const PlanEditor = defineAsyncComponent(() => import("./PlanEditor.vue"));
 const ProgramEditor = defineAsyncComponent(() => import("./ProgramEditor.vue"));
@@ -21,6 +22,7 @@ const props = defineProps<{
   draft: PlanDraft;
   events: RunEvent[];
   liveText: string;
+  liveTextByNode?: Record<string, string>;
   busy: boolean;
   live: boolean;
   coordinatorActivity: string;
@@ -34,7 +36,13 @@ const emit = defineEmits<{
   cancelRefinement: [];
   settings: [];
 }>();
-const tab = ref(isSourceWorkflow(props.run) && props.run.status === "draft" ? "edit" : "workflow");
+const initialTab = () =>
+  isSourceWorkflow(props.run) &&
+  !props.run.program?.structure &&
+  props.run.status === "draft"
+    ? "edit"
+    : "workflow";
+const tab = ref(initialTab());
 const selected = ref<string>();
 const expanded = ref(false);
 const focusDialog = ref<HTMLDialogElement>();
@@ -87,13 +95,18 @@ watch(
   () => {
     if (expanded.value) closeWorkspace();
     selected.value = undefined;
-    tab.value = isSourceWorkflow(props.run) && props.run.status === "draft" ? "edit" : "workflow";
+    tab.value = initialTab();
   },
 );
 watch(
   () => props.run.status,
   (status, previous, onCleanup) => {
-    if (props.run.program && previous === "draft" && props.run.approvedAt && tab.value === "edit") {
+    if (
+      props.run.program &&
+      previous === "draft" &&
+      props.run.approvedAt &&
+      tab.value === "edit"
+    ) {
       tab.value = "workflow";
     }
     if (!["running", "pausing"].includes(status)) {
@@ -115,6 +128,16 @@ const node = computed(() =>
   plan.value.nodes.find((item) => item.id === selected.value),
 );
 const bundle = computed(() => node.value && props.run.blocks[node.value.block]);
+const selectedGroup = computed(() =>
+  selected.value
+    ? findGroup(props.run.program?.structure, selected.value)
+    : undefined,
+);
+const activeLabels = computed(() =>
+  props.run.plan.nodes
+    .filter((node) => stepState(props.run, node.id) === "running")
+    .map((node) => node.label),
+);
 const agent = computed(() =>
   bundle.value
     ? resolveAgentSettings(
@@ -156,8 +179,16 @@ const completed = computed(
       (item) => stepState(props.run, item.id) === "pass",
     ).length,
 );
-const running = computed(() =>
-  ["running", "pausing"].includes(props.run.status),
+const skipped = computed(
+  () =>
+    props.run.plan.nodes.filter(
+      (node) => stepState(props.run, node.id) === "skipped",
+    ).length,
+);
+const running = computed(
+  () =>
+    ["running", "pausing"].includes(props.run.status) ||
+    !!props.run.activeNodes?.length,
 );
 const artifacts = computed(() =>
   Object.entries(props.run.artifacts).flatMap(([nodeId, items]) =>
@@ -174,7 +205,40 @@ const finished = computed(() =>
     "paused",
   ].includes(props.run.status),
 );
-const lastAttempt = computed(() => props.run.attempts.at(-1));
+const lastAttempt = computed(() => {
+  const ordered = [...props.run.attempts].sort((a, b) =>
+    (b.finishedAt ?? b.startedAt).localeCompare(a.finishedAt ?? a.startedAt),
+  );
+  return (
+    ordered.find((attempt) => {
+      const latest = props.run.attempts
+        .filter((other) => other.nodeId === attempt.nodeId)
+        .at(-1);
+      return (
+        latest === attempt &&
+        (attempt.recovery?.status === "conflict" ||
+          (["interrupted", "failed", "cancelled"].includes(props.run.status) &&
+            attempt.error))
+      );
+    }) ?? ordered[0]
+  );
+});
+const recoveryNeeded = computed(() =>
+  props.run.attempts.some(
+    (attempt) =>
+      attempt.recovery?.status === "conflict" ||
+      (props.run.status === "interrupted" &&
+        attempt.error &&
+        !attempt.recovery),
+  ),
+);
+const liveResponses = computed(() =>
+  Object.fromEntries(
+    Object.entries(props.liveTextByNode ?? {}).filter(
+      ([id, text]) => !!text && (!selected.value || selected.value === id),
+    ),
+  ),
+);
 const resultSummary = computed(
   () =>
     props.run.error ??
@@ -232,9 +296,11 @@ function resume() {
   emit("action", "resume");
 }
 function selectStep(id: string) {
-  selected.value = plan.value.nodes.some((item) => item.id === id)
-    ? id
-    : undefined;
+  selected.value =
+    plan.value.nodes.some((item) => item.id === id) ||
+    findGroup(props.run.program?.structure, id)
+      ? id
+      : undefined;
   if (tab.value === "edit") {
     tab.value = "workflow";
   }
@@ -281,7 +347,7 @@ function selectStep(id: string) {
         :disabled="busy"
         @click="emit('action', 'pause')"
       >
-        <Icon name="pause" :size="16" />Pause after step
+        <Icon name="pause" :size="16" />Pause after active steps
       </button>
       <button
         v-if="
@@ -313,8 +379,7 @@ function selectStep(id: string) {
           ['cancelled', 'failed', 'interrupted'].includes(run.status) &&
           run.executionProtocol === 2 &&
           run.config.recovery?.rollbackOnFailure !== false &&
-          (lastAttempt?.recovery?.status === 'conflict' ||
-            (run.status === 'interrupted' && !lastAttempt?.recovery))
+          recoveryNeeded
         "
         :disabled="busy"
         @click="emit('action', 'recover')"
@@ -348,10 +413,14 @@ function selectStep(id: string) {
       </div>
       <div>
         <span class="eyebrow">{{ currentActivity(latestEvent) }}</span
-        ><strong>{{ active?.label ?? "Preparing execution" }}</strong
+        ><strong>{{
+          activeLabels.length > 1
+            ? activeLabels.join(" · ")
+            : (active?.label ?? "Preparing execution")
+        }}</strong
         ><span>{{
           run.status === "pausing"
-            ? "Finishing this step, then pausing"
+            ? "Finishing active steps, then pausing"
             : (latestActivity?.preview.slice(0, 140) ?? "Starting…")
         }}</span>
       </div>
@@ -461,7 +530,7 @@ function selectStep(id: string) {
               ? "Live"
               : run.program && !run.plan.nodes.length
                 ? "Steps appear during execution"
-                : `${completed}/${run.plan.nodes.length} blocks passed`
+                : `${completed}/${run.plan.nodes.length - skipped} blocks passed${skipped ? ` · ${skipped} skipped` : ""}`
           }}</span>
           <button
             ref="expandButton"
@@ -547,11 +616,18 @@ function selectStep(id: string) {
         <div
           v-if="tab === 'workflow'"
           class="workflow-canvas"
-          :class="{ inspecting: node }"
+          :class="{ inspecting: node || selectedGroup }"
         >
           <div class="graph-panel">
-            <div v-if="!plan.nodes.length" class="panel-empty"><Icon name="code" :size="28" /><p>The graph appears as the TypeScript workflow reaches each step.</p><button @click="tab = 'edit'">View TypeScript</button></div>
-            <WorkflowGraph v-else
+            <div v-if="!plan.nodes.length" class="panel-empty">
+              <Icon name="code" :size="28" />
+              <p>
+                The graph appears as the TypeScript workflow reaches each step.
+              </p>
+              <button @click="tab = 'edit'">View TypeScript</button>
+            </div>
+            <WorkflowGraph
+              v-else
               ref="graph"
               :key="run.id"
               :run="{ ...run, plan }"
@@ -560,8 +636,14 @@ function selectStep(id: string) {
             <div class="graph-legend">
               <strong v-if="draft.dirty && draft.validPlan"
                 >Unsaved preview</strong
-              ><span>― pass</span><span>┄ retry with feedback</span
-              ><span>― fail</span>
+              ><template v-if="run.program?.structure"
+                ><span>― next</span><span>┄ repeat until satisfied</span
+                ><span>Groups show branches and concurrency</span></template
+              >
+              <template v-else
+                ><span>― pass</span><span>┄ retry with feedback</span
+                ><span>― fail</span></template
+              >
             </div>
           </div>
           <aside v-if="node && bundle" class="step-inspector">
@@ -602,10 +684,17 @@ function selectStep(id: string) {
                   : (agent?.model ?? "Project model")
               }}</strong>
             </div>
-            <div v-if="bundle.definition.executor?.kind === 'code' && agent?.model" class="detail-row">
-              <span>Default AI model</span><strong>{{ agent.model }} · {{ agent.thinking }}</strong>
+            <div
+              v-if="bundle.definition.executor?.kind === 'code' && agent?.model"
+              class="detail-row"
+            >
+              <span>Default AI model</span
+              ><strong>{{ agent.model }} · {{ agent.thinking }}</strong>
             </div>
-            <p v-if="bundle.definition.executor?.kind === 'code'" class="muted">Calls to ctx.ai inherit this step's model. An explicit model in the block source takes precedence.</p>
+            <p v-if="bundle.definition.executor?.kind === 'code'" class="muted">
+              Calls to ctx.ai inherit this step's model. An explicit model in
+              the block source takes precedence.
+            </p>
             <div class="detail-row">
               <span>Visits</span
               ><strong
@@ -626,10 +715,46 @@ function selectStep(id: string) {
                 >
               </div></template
             >
-            <template v-else-if="node.context && Object.keys(node.context).length">
-              <details v-for="(value, name) in node.context" :key="name"><summary>{{ name }}</summary><pre>{{ value }}</pre></details>
+            <template
+              v-else-if="node.context && Object.keys(node.context).length"
+            >
+              <details v-for="(value, name) in node.context" :key="name">
+                <summary>{{ name }}</summary>
+                <pre>{{ value }}</pre>
+              </details>
             </template>
+            <pre v-else-if="selectedGroup?.step?.options.inputs">{{
+              JSON.stringify(selectedGroup.step.options.inputs, null, 2)
+            }}</pre>
+            <p v-else-if="run.program?.structure" class="muted">
+              The composition resolves this step's inputs when it starts.
+              Inspect the TypeScript for dynamic handoffs.
+            </p>
             <p v-else class="muted">Task and attachments only.</p>
+            <template v-if="selectedGroup?.step">
+              <h3>Outcome actions</h3>
+              <div
+                v-for="outcome in ['pass', 'retry', 'fail'] as const"
+                :key="outcome"
+                class="detail-row"
+              >
+                <span>{{ outcome }}</span
+                ><strong>{{
+                  selectedGroup.step.options.on?.[outcome] ??
+                  (outcome === "pass" ? "continue" : "stop")
+                }}</strong>
+              </div>
+              <p
+                v-if="
+                  Object.values(selectedGroup.step.options.on ?? {}).includes(
+                    'repeat',
+                  )
+                "
+                class="muted"
+              >
+                Repeat starts the next iteration of the nearest enclosing loop.
+              </p>
+            </template>
             <button @click="tab = 'activity'">
               <Icon name="log" :size="15" />View step activity
             </button>
@@ -644,6 +769,34 @@ function selectStep(id: string) {
               <pre>{{ JSON.stringify(bundle.definition.checks, null, 2) }}</pre>
             </details>
           </aside>
+          <aside v-else-if="selectedGroup" class="step-inspector">
+            <div class="card-title">
+              <span class="eyebrow">{{ selectedGroup.kind }}</span
+              ><button
+                class="icon-button"
+                aria-label="Close group details"
+                @click="selected = undefined"
+              >
+                <Icon name="close" />
+              </button>
+            </div>
+            <h2>{{ selectedGroup.label }}</h2>
+            <p v-if="selectedGroup.concurrency">
+              Runs up to {{ selectedGroup.concurrency }} independent branches at
+              once, then waits for the group to finish.
+            </p>
+            <p v-if="selectedGroup.maxIterations">
+              Repeats until its condition is true, with at most
+              {{ selectedGroup.maxIterations }} iterations. Each step's visit
+              limit still applies.
+            </p>
+            <template v-if="selectedGroup.condition"
+              ><h3>Condition</h3>
+              <pre>{{ selectedGroup.condition }}</pre>
+            </template>
+            <p>{{ run.groups?.[selectedGroup.id]?.state ?? "Not started" }}</p>
+            <button @click="tab = 'edit'">View TypeScript</button>
+          </aside>
         </div>
         <ActivityFeed
           v-if="tab === 'activity'"
@@ -653,6 +806,7 @@ function selectStep(id: string) {
           :selected="selected"
           :running="running"
           :live-text="!selected || selected === run.cursor ? liveText : ''"
+          :live-responses="liveResponses"
           @select="selected = $event"
         />
         <div v-if="tab === 'artifacts'" class="artifact-list">
@@ -678,9 +832,18 @@ function selectStep(id: string) {
             <p>No artifacts yet.</p>
           </div>
         </div>
-        <ProgramEditor v-if="tab === 'edit' && isSourceWorkflow(run)" :run="run" :draft="draft" :busy="busy" :live="live"
-          :refining="refining" :activity="coordinatorActivity" @save="emit('save')" @refine="emit('refine', $event)"
-          @cancel-refinement="emit('cancelRefinement')" />
+        <ProgramEditor
+          v-if="tab === 'edit' && isSourceWorkflow(run)"
+          :run="run"
+          :draft="draft"
+          :busy="busy"
+          :live="live"
+          :refining="refining"
+          :activity="coordinatorActivity"
+          @save="emit('save')"
+          @refine="emit('refine', $event)"
+          @cancel-refinement="emit('cancelRefinement')"
+        />
         <PlanEditor
           v-else-if="tab === 'edit'"
           :run="run"

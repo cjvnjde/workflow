@@ -89,7 +89,9 @@ test("the coordinator classifies dynamically, reads case instructions, selects p
     assert.match(session.systemPrompt, /Cite a file/);
     assert.equal(session.images?.length, 1);
     assert.ok((session.tools.find(tool => tool.name === "submit_plan")!.parameters as { required?: string[] }).required?.includes("attachmentSummary"));
-    assert.deepEqual(session.tools.map(tool => tool.name).sort(), ["ask_user", "choose_task_case", "submit_plan", "suggest_block"]);
+    assert.deepEqual(session.tools.map(tool => tool.name).sort(), ["ask_user", "choose_task_case", "submit_plan", "submit_workflow", "suggest_block"]);
+    assert.match(session.systemPrompt, /no commits or no usable comparison base/);
+    assert.match(session.systemPrompt, /not branch-relative/);
     const plan = createTemplate(task.prompt, "bug", library);
     plan.nodes.forEach((node) => { node.agent = { provider: "test", model: "careful", thinking: "off" }; });
     await assert.rejects(call(session, "submit_plan", { json: JSON.stringify(plan), rationale: "Plan" }), /case/);
@@ -167,7 +169,7 @@ test("graph composition uses only supplied context and never connects enabled MC
   }]}});
   const result = await planTask({ project, library, task, settings, models,
     signal: new AbortController().signal, emit: () => {} }, async session => {
-    assert.deepEqual(session.tools.map(tool=>tool.name).sort(),["ask_user","choose_task_case","submit_plan","suggest_block"]);
+    assert.deepEqual(session.tools.map(tool=>tool.name).sort(),["ask_user","choose_task_case","submit_plan","submit_workflow","suggest_block"]);
     assert.match(session.systemPrompt,/Put all investigation and configuration checks into execution blocks/);
     assert.match(session.systemPrompt,/ctx.ai/);
     assert.ok(!(session.tools.find(tool => tool.name === "submit_plan")!.parameters as { required?: string[] }).required?.includes("attachmentSummary"));

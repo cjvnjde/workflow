@@ -5,14 +5,18 @@ import {
   Handle,
   Position,
   MarkerType,
+  BaseEdge,
   type Node,
   type Edge,
+  type EdgeProps,
   type NodeDragEvent,
   useVueFlow,
 } from "@vue-flow/core";
 import { Background } from "@vue-flow/background";
 import { Controls } from "@vue-flow/controls";
 import { resolveAgentSettings, type WorkflowRun } from "../../src/domain.js";
+import { compositionLayout, routedPositions } from "../graph-layout.js";
+import { stepState } from "../workflow-status.js";
 import { executionLabel, isSourceWorkflow } from "../execution-label.js";
 import "@vue-flow/core/dist/style.css";
 import "@vue-flow/core/dist/theme-default.css";
@@ -22,18 +26,18 @@ const emit = defineEmits<{ select: [id: string] }>();
 const { fitView, dimensions } = useVueFlow();
 const motionDuration = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 250;
-let focusedNode: string | undefined;
+let focusedNodes: string[] | undefined;
 function fitViewport() {
   if (!dimensions.value.width || !dimensions.value.height) return;
   void fitView({
-    nodes: focusedNode ? [focusedNode] : undefined,
-    padding: focusedNode ? 0.6 : 0.18,
+    nodes: focusedNodes,
+    padding: focusedNodes ? 0.3 : layout.value ? 0.07 : 0.18,
     maxZoom: 1.1,
     duration: motionDuration(),
   });
 }
 function fit() {
-  focusedNode = undefined;
+  focusedNodes = undefined;
   fitViewport();
 }
 defineExpose({ fit });
@@ -90,13 +94,40 @@ async function resetLayout() {
   fit();
 }
 async function focusActive() {
-  focusedNode = props.run.cursor;
-  emit("select", props.run.cursor);
+  focusedNodes = props.run.plan.nodes
+    .filter((node) => stepState(props.run, node.id) === "running")
+    .map((node) => node.id);
+  if (focusedNodes.length === 1) emit("select", focusedNodes[0]!);
   await nextTick();
   fitViewport();
 }
+const layout = computed(() =>
+  props.run.program?.structure
+    ? compositionLayout(props.run.program.structure)
+    : undefined,
+);
+const routed = computed(() => routedPositions(props.run.plan));
 const nodes = computed<Node[]>(() => [
-  ...props.run.plan.nodes.map((node, index) => {
+  ...(layout.value?.nodes
+    .filter((node) => node.kind !== "step")
+    .map((node) => ({
+      id: node.id,
+      type: node.kind,
+      position: node.position,
+      draggable: false,
+      selectable: node.kind === "group",
+      data: {
+        label: node.label,
+        detail: node.detail,
+        state: props.run.groups?.[node.id],
+        horizontal: true,
+      },
+      style: { width: `${node.width}px`, height: `${node.height}px` },
+      class:
+        node.kind === "group" ? "composition-group" : "composition-junction",
+      zIndex: node.kind === "group" ? 0 : 1,
+    })) ?? []),
+  ...props.run.plan.nodes.map((node) => {
     const { run } = props;
     const block = run.blocks[node.block]?.definition;
     const settings = resolveAgentSettings(
@@ -104,23 +135,17 @@ const nodes = computed<Node[]>(() => [
       block?.agent,
       node.agent,
     );
-    const current =
-      ["running", "pausing"].includes(run.status) && run.cursor === node.id;
-    const last = run.attempts
-      .filter((attempt) => attempt.nodeId === node.id)
-      .at(-1);
-    const state = current
-      ? "active"
-      : last?.error
-        ? "fail"
-        : (last?.result?.outcome ?? "pending");
+    const status = stepState(run, node.id);
+    const current = status === "running";
+    const state = current ? "active" : status === "failed" ? "fail" : status;
+    const placement = layout.value?.nodes.find((item) => item.id === node.id);
     return {
       id: node.id,
       type: "workflow",
-      position: positions.value[node.id] ?? {
-        x: index % 2 === 0 ? 70 : 380,
-        y: index * 155 + 25,
-      },
+      position: positions.value[node.id] ??
+        placement?.position ??
+        routed.value[node.id] ?? { x: 0, y: 0 },
+      extent: placement?.extent,
       data: {
         block: node.block,
         visits: run.visits[node.id] ?? 0,
@@ -131,63 +156,141 @@ const nodes = computed<Node[]>(() => [
             ? `${executionLabel(block.executor)} · ${settings.model}`
             : executionLabel(block.executor)
           : (settings.model ?? "orchestrator chooses"),
-        thinking: block?.executor && !(block.executor.kind === "code" && node.agent?.model) ? block.executor.kind : settings.thinking,
+        thinking:
+          block?.executor &&
+          !(block.executor.kind === "code" && node.agent?.model)
+            ? block.executor.kind
+            : settings.thinking,
         state,
         current,
+        horizontal: !!layout.value,
       },
-      class: `workflow-node ${state}`,
-      style: { width: "260px" },
+      class: `workflow-node ${layout.value ? "composition-step" : ""} ${state}`,
+      style: { width: `${placement?.width ?? 260}px` },
     };
   }),
   {
     id: "$complete",
     position: positions.value.$complete ?? {
-      x: 300,
-      y: props.run.plan.nodes.length * 155 + 25,
+      x: layout.value ? layout.value.width + 48 : 60,
+      y: layout.value
+        ? (() => {
+            const exit = layout.value.nodes.find(
+              (node) => node.id === layout.value!.exit,
+            )!;
+            return exit.position.y + exit.height / 2 - 20;
+          })()
+        : Math.max(0, ...Object.values(routed.value).map((point) => point.y)) +
+          205,
     },
     data: {},
     label: "✓ Complete",
     class: "terminal complete",
+    targetPosition: layout.value ? Position.Left : Position.Top,
   },
-  {
-    id: "$failed",
-    position: positions.value.$failed ?? { x: 720, y: 150 },
-    data: {},
-    label: "× Stop / failed",
-    class: "terminal failed",
-  },
+  ...(!layout.value
+    ? [
+        {
+          id: "$failed",
+          position: positions.value.$failed ?? { x: 720, y: 150 },
+          data: {},
+          label: "× Stop / failed",
+          class: "terminal failed",
+        },
+      ]
+    : []),
 ]);
 const edges = computed<Edge[]>(() =>
-  (isSourceWorkflow(props.run)
-    ? [...new Map((props.run.transitions ?? []).map(edge => [`${edge.from}-${edge.to}-${edge.outcome}`, edge])).values()]
-        .map(edge => ({ from: edge.from, target: edge.to, outcome: edge.outcome }))
-    : props.run.plan.nodes.flatMap(node => Object.entries(node.on).map(([outcome, target]) => ({ from: node.id, target, outcome }))))
-    .map(({ from, target, outcome }) => ({
-      id: isSourceWorkflow(props.run) ? `${from}-${target}-${outcome}` : `${from}-${outcome}`,
-      source: from,
-      target,
-      type: from === target ? "default" : "smoothstep",
-      label: isSourceWorkflow(props.run) && outcome === "pass" ? "next" : outcome,
-      animated: props.run.status === "running" && props.run.cursor === from,
-      markerEnd: { type: MarkerType.ArrowClosed },
-      style: {
-        stroke:
-          outcome === "pass"
-            ? "var(--ctp-green)"
-            : outcome === "retry"
-              ? "var(--ctp-yellow)"
-              : "var(--ctp-overlay0)",
-        strokeWidth: outcome === "fail" ? 1 : 2,
-        strokeDasharray: outcome === "retry" ? "6 4" : undefined,
-      },
-      labelStyle: { fill: "var(--ctp-subtext1)", fontSize: 10 },
-      labelBgStyle: { fill: "var(--ctp-mantle)" },
-    })),
+  (layout.value
+    ? [...layout.value.edges, { from: layout.value.exit, to: "$complete" }].map(
+        (edge) => ({
+          from: edge.from,
+          target: edge.to,
+          outcome: edge.repeat ? "retry" : "pass",
+          label: edge.label,
+          returnY: "returnY" in edge ? edge.returnY : undefined,
+          returnSide: "returnSide" in edge ? edge.returnSide : undefined,
+        }),
+      )
+    : isSourceWorkflow(props.run)
+      ? [
+          ...new Map(
+            (props.run.transitions ?? []).map((edge) => [
+              `${edge.from}-${edge.to}-${edge.outcome}`,
+              edge,
+            ]),
+          ).values(),
+        ].map((edge) => ({
+          from: edge.from,
+          target: edge.to,
+          outcome: edge.outcome,
+        }))
+      : props.run.plan.nodes.flatMap((node) =>
+          Object.entries(node.on).map(([outcome, target]) => ({
+            from: node.id,
+            target,
+            outcome,
+          })),
+        )
+  ).map(({ from, target, outcome, ...extra }) => ({
+    id: `${from}-${target}-${outcome}`,
+    source: from,
+    target,
+    type:
+      "returnY" in extra && extra.returnY !== undefined
+        ? "loop-return"
+        : from === target
+          ? "default"
+          : "smoothstep",
+    sourceHandle:
+      "returnY" in extra && extra.returnY !== undefined
+        ? `return-output-${"returnSide" in extra ? extra.returnSide : "top"}`
+        : undefined,
+    targetHandle:
+      "returnY" in extra && extra.returnY !== undefined
+        ? `return-input-${"returnSide" in extra ? extra.returnSide : "top"}`
+        : undefined,
+    data: { returnY: "returnY" in extra ? extra.returnY : undefined },
+    selectable: false,
+    focusable: false,
+    interactionWidth: 0,
+    label: layout.value
+      ? "label" in extra
+        ? (extra.label as string)
+        : undefined
+      : isSourceWorkflow(props.run) && outcome === "pass"
+        ? "next"
+        : outcome,
+    animated: stepState(props.run, from) === "running",
+    markerEnd: { type: MarkerType.ArrowClosed },
+    style: {
+      stroke:
+        outcome === "pass"
+          ? "var(--ctp-green)"
+          : outcome === "retry"
+            ? "var(--ctp-yellow)"
+            : "var(--ctp-overlay0)",
+      strokeWidth: outcome === "fail" ? 1 : 2,
+      strokeDasharray: outcome === "retry" ? "6 4" : undefined,
+      pointerEvents: "none",
+    },
+    labelStyle: { fill: "var(--ctp-subtext1)", fontSize: 10 },
+    labelBgStyle: { fill: "var(--ctp-mantle)" },
+  })),
 );
+function returnPath(edge: EdgeProps) {
+  const y = Number(edge.data.returnY);
+  const direction = Math.sign(edge.targetX - edge.sourceX) || -1;
+  const radius = 8;
+  const sourceCorner = y + Math.sign(edge.sourceY - y) * radius;
+  const targetCorner = y + Math.sign(edge.targetY - y) * radius;
+  return `M ${edge.sourceX} ${edge.sourceY} L ${edge.sourceX} ${sourceCorner} Q ${edge.sourceX} ${y} ${edge.sourceX + direction * radius} ${y} L ${edge.targetX - direction * radius} ${y} Q ${edge.targetX} ${y} ${edge.targetX} ${targetCorner} L ${edge.targetX} ${edge.targetY}`;
+}
 </script>
 
 <template>
   <VueFlow
+    class="workflow-graph"
     :nodes="nodes"
     :edges="edges"
     fit-view-on-init
@@ -199,8 +302,55 @@ const edges = computed<Edge[]>(() =>
     @node-click="emit('select', $event.node.id)"
     @node-drag-stop="remember"
   >
+    <template #edge-loop-return="edge">
+      <BaseEdge
+        :id="edge.id"
+        :path="returnPath(edge)"
+        :style="edge.style"
+        :marker-end="edge.markerEnd"
+        :interaction-width="0"
+        :label="edge.label"
+        :label-x="(edge.sourceX + edge.targetX) / 2"
+        :label-y="Number(edge.data.returnY)"
+        :label-style="edge.labelStyle"
+        :label-bg-style="edge.labelBgStyle"
+      />
+    </template>
+    <template #node-group="{ data }">
+      <div class="composition-heading">
+        <strong>{{ data.label }}</strong
+        ><span>{{ data.detail }}</span
+        ><small v-if="data.state"
+          >{{ data.state.state
+          }}<template v-if="data.state.iteration">
+            · round {{ data.state.iteration }}</template
+          ></small
+        >
+      </div>
+    </template>
+    <template #node-junction>
+      <Handle type="target" :position="Position.Left" /><Handle
+        type="source"
+        :position="Position.Right"
+      />
+      <Handle id="return-input-top" type="target" :position="Position.Top" />
+      <Handle id="return-output-top" type="source" :position="Position.Top" />
+      <Handle
+        id="return-input-bottom"
+        type="target"
+        :position="Position.Bottom"
+      />
+      <Handle
+        id="return-output-bottom"
+        type="source"
+        :position="Position.Bottom"
+      />
+    </template>
     <template #node-workflow="{ data }">
-      <Handle type="target" :position="Position.Top" />
+      <Handle
+        type="target"
+        :position="data.horizontal ? Position.Left : Position.Top"
+      />
       <div class="graph-label">
         <small
           >{{ data.block }} · {{ data.visits }}/{{
@@ -208,20 +358,29 @@ const edges = computed<Edge[]>(() =>
           }}
           visits</small
         ><strong>{{ data.label }}</strong
-        ><span>{{ data.model }} · {{ data.thinking }}</span
+        ><span
+          >{{ data.model
+          }}<template v-if="data.thinking !== 'code'">
+            · {{ data.thinking }}</template
+          ></span
         ><b>{{ data.current ? "● working" : data.state }}</b>
       </div>
-      <Handle type="source" :position="Position.Bottom" />
+      <Handle
+        type="source"
+        :position="data.horizontal ? Position.Right : Position.Bottom"
+      />
     </template>
     <Background :gap="22" pattern-color="var(--ctp-surface1)" />
     <Controls :show-interactive="false" />
     <div class="graph-toolbar">
       <span>Drag blocks to arrange</span>
       <button
-        v-if="['running', 'pausing'].includes(run.status)"
+        v-if="
+          run.plan.nodes.some((node) => stepState(run, node.id) === 'running')
+        "
         @click="focusActive"
       >
-        Focus active step
+        Focus active {{ (run.activeNodes?.length ?? 1) > 1 ? "steps" : "step" }}
       </button>
       <button @click="fit">Fit workflow</button>
       <button @click="resetLayout">Reset layout</button>

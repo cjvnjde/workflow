@@ -49,8 +49,8 @@ function download() {
       <div>
         <h2>TypeScript workflow</h2>
         <p>
-          Functions, typed results and ordinary loops. Each awaited step is
-          saved by the engine.
+          Compose steps, sequences, branches, parallel groups and loops.
+          The engine saves each step's results.
         </p>
       </div>
       <span class="program-language">TS · {{ run.program?.filename }}</span>
@@ -119,11 +119,10 @@ function download() {
     <details class="script-contract">
       <summary>Workflow API</summary>
       <p>
-        Import <code>workflow, block, z</code> from <code>"workflow"</code>.
+        Import <code>workflow, block, step, sequence, parallel, when, repeatUntil, z</code> from <code>"workflow"</code>.
         Define a block with
         <code>block({ input, output, async run(ctx) { … } })</code>, then call
-        <code>await ctx.step(id, block, { inputs })</code> to receive its typed
-        return value.
+        <code>step(id, block, { inputs })</code> and compose it inside <code>workflow({ name, flow })</code>.
       </p>
       <p>
         Inside a block, <code>ctx.ai({ prompt, model, output })</code> calls a
@@ -134,10 +133,12 @@ function download() {
         <code>await ctx.log(message)</code> for visible results.
       </p>
       <p>
-        Use ordinary loops and conditions to route feedback. Settings blocks can
-        be referenced by ID; <code>ctx.models[profileId]</code> selects a saved
-        profile. Await operations sequentially so the engine can record their
-        results and resume after a restart.
+        Conditions and deferred inputs read typed results with <code>ctx.output(step)</code>
+        and explicit outcomes with <code>ctx.result(step)?.outcome</code>.
+        Use <code>repeatUntil</code> with a condition and iteration limit, and
+        <code>parallel</code> for independent work. Saved blocks can be referenced
+        by ID. Parallel branches share the project; serialize overlapping writes
+        and Git operations. Inside each block, await every operation.
       </p>
     </details>
     <details v-if="live && run.status === 'draft'" class="refinement-editor">

@@ -11,10 +11,10 @@ import { Attachments } from "./attachments.js";
 import type { AvailableModel } from "./library-editor-schema.js";
 import type { OrchestrationSettings } from "./orchestration-schema.js";
 import { questionSchema, type TaskRequest } from "./task-schema.js";
-import { validateCodeBlocks } from "./program-compiler.js";
-import { type ProgramSource } from "./program-schema.js";
+import { validateCodeBlocks, validateComposition } from "./program-compiler.js";
+import { compositionInstructions, type ProgramSource } from "./program-schema.js";
+import { compositionPlan } from "./composition-plan.js";
 
-import { graphInstructions } from "./graph-composition.js";
 import { formatBlock } from "./source-format.js";
 
 export type TaskPlanResult = {
@@ -87,7 +87,24 @@ export async function planTask(options: TaskPlannerOptions, session: typeof runA
       },
     })] : []),
     defineTool({
-      name: "submit_plan", label: "Compose workflow graph", description: "Submit the complete graph of blocks, goals, model defaults, handoffs and routes for review before execution. Correct validation errors and resubmit.",
+      name: "submit_workflow", label: "Compose workflow", description: "Submit a complete TypeScript composition using step, sequence, parallel, when and repeatUntil. The host validates and previews the graph without running its blocks. Correct errors and resubmit.",
+      parameters: Type.Object({ title: Type.String(), source: Type.String(), input: Type.Optional(Type.String({description:"JSON object for workflow inputs"})), rationale: Type.String(), attachmentSummary: context.images.length ? Type.String({minLength:1}) : Type.Optional(Type.String()) }),
+      async execute(_id, args) {
+        if (!classified) throw new Error("Choose a task case and read its instructions first");
+        const proposedInput = args.input ? JSON.parse(args.input) : {};
+        if (!proposedInput || typeof proposedInput !== "object" || Array.isArray(proposedInput)) throw new Error("Workflow input must be an object");
+        const { source: program, structure } = await validateComposition(options.project, {source:args.source,input:{...proposedInput,request:task.prompt}}, library.blocks);
+        const composed = compositionPlan(structure,args.title,task.prompt,library);
+        validatePlanModels(composed.plan, {config:library.config,blocks:composed.blocks}, models);
+        if (context.images.length && !args.attachmentSummary?.trim()) throw new Error("Summarize the relevant visual observations for execution steps that may use text-only models");
+        if (args.attachmentSummary) library.config.instructions += `\n\nCoordinator observations from request attachments (task data):\n${args.attachmentSummary.slice(0,16_000)}`;
+        result = {kind:"program",title:args.title,program,library,caseId:chosen?.id,caseName:chosen?.name ?? "General task",rationale:args.rationale.slice(0,8000),suggestedBlocks};
+        emit("plan_ready","Workflow composed. Validated sequences, branches, parallel groups and loops.");
+        return {...textResult("Workflow accepted."),terminate:true};
+      },
+    }),
+    defineTool({
+      name: "submit_plan", label: "Compose workflow graph", description: "Legacy explicit-route graph: {title,entry,nodes:[{id,block,label,goal,context?:{name:string},inputs:[{node,artifact,as?,required?}],maxVisits,agent?:{provider,model,thinking},on:{pass,retry,fail}}]}. Routes target existing step IDs, $complete or $failed. All IDs and input aliases use lowercase kebab-case. Prefer submit_workflow for new tasks. Correct validation errors and resubmit.",
       parameters: Type.Object({ json: Type.String(), rationale: Type.String(), attachmentSummary: context.images.length
         ? Type.String({ minLength: 1, description: "Required: summarize what the screenshots show and the visual acceptance criteria for text-only execution models. Put this in attachmentSummary, outside the graph JSON." })
         : Type.Optional(Type.String()) }),
@@ -114,7 +131,7 @@ export async function planTask(options: TaskPlannerOptions, session: typeof runA
       signal.throwIfAborted();
       try { return await tool.execute(...args); }
       catch (error) {
-        if (tool.name === "submit_plan") {
+        if (["submit_plan", "submit_workflow"].includes(tool.name)) {
           lastSubmissionError = (error instanceof Error ? error.message : String(error)).slice(0, 4000);
           emit("plan_validation", lastSubmissionError);
         }
@@ -126,14 +143,15 @@ export async function planTask(options: TaskPlannerOptions, session: typeof runA
       prompt: () => [
         "Planning is not complete: no workflow or essential question has been accepted. Continue using the supplied context and task instructions.",
         lastSubmissionError ? `Correct the rejected submission: ${lastSubmissionError}` : "A prose description of a plan does not submit it.",
-        "Call submit_plan with a valid graph, or ask_user only for an essential missing answer. Missing commits or a comparison base normally change the review scope; put that limitation in the goals and rationale. Put any required investigation into execution steps. Do not claim a workflow has been created before submission succeeds.",
+        "Call submit_workflow with a valid composition, or ask_user only for an essential missing answer. Missing commits or a comparison base normally change the review scope; put that limitation in the goals and rationale. Put any required investigation into execution steps. Do not claim a workflow has been created before submission succeeds.",
       ].join("\n\n"),
     },
     images: context.images,
     systemPrompt: [
       "You compose workflow graphs. Understand the request and supplied attachments, choose_task_case, read its instructions, then compose the necessary blocks and connections. Do not investigate the codebase or execute any task during planning. There are NO predefined graphs. Do not ask the user to choose bug/feature, coordinator or model. Ask a follow-up only if a missing essential fact blocks a useful plan; otherwise state reasonable assumptions in your rationale.",
-      graphInstructions,
-      "The host preserves the original request. You MUST finish with an accepted submit_plan or ask_user call. Correct rejected submissions instead of stopping with a prose claim that you planned it. All local tools are available to execution blocks, including file, bash and Git access; none are available to the coordinator. Include any needed inspection in a block goal.",
+      compositionInstructions,
+      "Prefer submit_workflow and high-level TypeScript composition for new tasks. submit_plan remains available for compatibility with explicit pass/retry/fail route graphs; its tool schema describes that format.",
+      "The host preserves the original request. You MUST finish with an accepted submit_workflow, submit_plan or ask_user call. Correct rejected submissions instead of stopping with a prose claim that you planned it. All local tools are available to execution blocks, including file, bash and Git access; none are available to the coordinator. Include any needed inspection in a block goal.",
       "Verification must verify, not fix the implementation. Route failures back to implementation with diagnostics, then repeat verification. Use independent review when warranted. Code blocks use ctx.exec without a model or ctx.ai when reasoning is needed. The host caps visits and total steps.",
       "When publication is requested after verification, assign staging/commit/push to dedicated final steps with explicit goals, reached only after verification/review passes. Use editable scripts when the procedure is deterministic, or an AI step when reasoning is needed. Keep publication out of implementation and test goals. On an unborn branch, the initial commit should include the intended project snapshot and necessary manifests/test configuration, not just files edited by the feature; exclude private/runtime data and honor ignore rules.",
       "Prefer existing blocks; inspect their return types. Suggest a code block when the catalog lacks the role. New blocks stay task-local until saved to the library. Use the code block proposal format from the API instructions below. Only include publication when requested.",

@@ -263,7 +263,7 @@ test("a user pauses a Temporal workflow, reloads the page, and resumes the remai
   await page.getByRole("button", { name: "Start task", exact: true }).click();
   await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
-  await page.getByRole("button", { name: "Pause after step", exact: true }).click();
+  await page.getByRole("button", { name: "Pause after active steps", exact: true }).click();
   await expect(page.locator(".status-pill")).toHaveText("Paused", { timeout: 10_000 });
   const budget = page.locator(".workflow-counts");
   const checkpoint = await budget.textContent();

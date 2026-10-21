@@ -19,6 +19,7 @@ const refreshKinds = new Set([
   "approved",
   "node_start",
   "node_end",
+  "group_state",
   "run_end",
   "rejected",
   "paused",
@@ -51,6 +52,7 @@ export function useWorkflowData() {
   const run = shallowRef<WorkflowRun>();
   const events = shallowRef<RunEvent[]>([]);
   const liveText = shallowRef("");
+  const liveTextByNode = shallowRef<Record<string, string>>({});
   const coordinatorText = shallowRef("");
   const coordinatorActivity = shallowRef("");
   const connected = shallowRef(false);
@@ -85,6 +87,7 @@ export function useWorkflowData() {
     run.value = undefined;
     events.value = [];
     liveText.value = "";
+    liveTextByNode.value = {};
     schedule(true);
   }
   function applyRun(loaded: WorkflowRun) {
@@ -290,7 +293,14 @@ export function useWorkflowData() {
       }
       if (event.runId === selectedId.value) {
         if (event.kind === "text_delta") {
-          liveText.value = (liveText.value + event.message).slice(-16_000);
+          if (event.nodeId)
+            liveTextByNode.value = {
+              ...liveTextByNode.value,
+              [event.nodeId]: (
+                (liveTextByNode.value[event.nodeId] ?? "") + event.message
+              ).slice(-16_000),
+            };
+          else liveText.value = (liveText.value + event.message).slice(-16_000);
           return;
         }
         if (
@@ -302,7 +312,14 @@ export function useWorkflowData() {
             "interrupted",
           ].includes(event.kind)
         ) {
-          liveText.value = "";
+          if (event.kind === "run_end") {
+            liveText.value = "";
+            liveTextByNode.value = {};
+          } else if (event.nodeId) {
+            const next = { ...liveTextByNode.value };
+            delete next[event.nodeId];
+            liveTextByNode.value = next;
+          } else liveText.value = "";
         }
         events.value = mergeEvents(events.value, [event]);
       }
@@ -327,6 +344,7 @@ export function useWorkflowData() {
     refreshProject,
     events,
     liveText,
+    liveTextByNode,
     coordinatorText,
     coordinatorActivity,
     connected,

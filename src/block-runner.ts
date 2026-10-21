@@ -24,6 +24,7 @@ import { Workspace } from "./workspace.js";
 import { Attachments } from "./attachments.js";
 import { mcpTools } from "./mcp-tools.js";
 import { inspectGit } from "./git-inspection.js";
+import type { FlowStructure } from "./composition-sdk.js";
 
 export type BlockExecution = {
   project: string;
@@ -31,6 +32,7 @@ export type BlockExecution = {
   bundle: BlockBundle;
   node: WorkflowNode;
   workflow?: WorkflowPlan;
+  composition?: FlowStructure;
   task: string;
   inputs: Record<string, string>;
   visit: number;
@@ -44,6 +46,13 @@ export type BlockExecution = {
   resultMode?: "value";
 };
 export type BlockRunner = (execution: BlockExecution) => Promise<BlockResult>;
+
+function compositionContext(node: FlowStructure): unknown {
+  return { kind: node.kind, id: node.id, label: node.label, condition: node.condition,
+    concurrency: node.concurrency, maxIterations: node.maxIterations,
+    outcomes: node.step ? { pass: "continue", retry: "stop", fail: "stop", ...node.step.options.on } : undefined,
+    children: node.children.map(compositionContext) };
+}
 
 export function workspaceTools(workspace: Workspace) {
   const bash = createBashToolDefinition(workspace.root, {
@@ -287,12 +296,13 @@ export const runPiBlock: BlockRunner = async (execution) => {
           overallTask: execution.task,
           currentStep: {
             id: execution.node.id, block: bundle.definition.id,
-            label: execution.node.label, goal: execution.node.goal, routes: execution.node.on,
+            label: execution.node.label, goal: execution.node.goal, routes: execution.composition ? undefined : execution.node.on,
           },
           workflow: execution.workflow?.nodes.map((node) => ({
             id: node.id, block: node.block, label: node.label,
-            current: node.id === execution.node.id, routes: node.on,
+            current: node.id === execution.node.id, routes: execution.composition ? undefined : node.on,
           })),
+          composition: execution.composition && compositionContext(execution.composition),
           visit: execution.visit,
           handoffs: execution.inputs,
           attachments: attachments.texts,

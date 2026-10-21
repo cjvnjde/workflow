@@ -25,8 +25,15 @@ const execute = promisify(execFile);
 const signal = AbortSignal.timeout(15 * 60_000);
 const scenario = process.env.WORKFLOW_LIVE_SCENARIO ?? "all";
 assert.ok(
-  ["all", "publication", "cancellation", "blocks", "automatic"].includes(scenario),
-  "Use all, publication, cancellation, blocks or automatic for WORKFLOW_LIVE_SCENARIO",
+  [
+    "all",
+    "publication",
+    "cancellation",
+    "blocks",
+    "automatic",
+    "composition",
+  ].includes(scenario),
+  "Use all, publication, cancellation, blocks, automatic or composition for WORKFLOW_LIVE_SCENARIO",
 );
 const providers = await providerStatus(signal);
 assert.ok(
@@ -221,8 +228,18 @@ async function taskFromComposer(prompt: string, attachment?: string) {
     planned.error ?? JSON.stringify(planned.question),
   );
   assert.ok(planned.runId);
-  const inspection = planned.events.filter(event => event.kind === "tool_start" && /^(bash|git_changes|read_file|list_files|edit_file|write_file|mcp_)/.test(event.message));
-  assert.deepEqual(inspection, [], "Graph composition must not inspect or execute project tools");
+  const inspection = planned.events.filter(
+    (event) =>
+      event.kind === "tool_start" &&
+      /^(bash|git_changes|read_file|list_files|edit_file|write_file|mcp_)/.test(
+        event.message,
+      ),
+  );
+  assert.deepEqual(
+    inspection,
+    [],
+    "Graph composition must not inspect or execute project tools",
+  );
   return planned;
 }
 async function finish(task: TaskRequest, publicationStep?: string) {
@@ -285,18 +302,33 @@ async function approveAndFinish(
   const draft = runSchema.parse(await api(`/api/runs/${task.runId}`));
   assert.equal(draft.status, "draft", "Review mode must wait for approval");
   assert.equal(draft.attempts.length, 0);
-  assert.ok(draft.plan.nodes.length, "Generated workflows must preview all planned steps");
-  assert.equal(draft.program?.composition, "graph");
-  await expect(page.getByRole("button", { name: "Workflow", exact: true })).toHaveClass(/active/);
-  for (const node of draft.plan.nodes) await expect(page.locator(`.vue-flow__node[data-id="${node.id}"]`)).toBeVisible();
-  await page.screenshot({ path: path.join(directory, `${task.id}-graph.png`), fullPage: true });
+  assert.ok(
+    draft.plan.nodes.length,
+    "Generated workflows must preview all planned steps",
+  );
+  assert.equal(draft.program?.composition, "structured");
+  assert.ok(
+    draft.program.structure,
+    "Generated composition must contain a reviewed structure",
+  );
+  await expect(
+    page.getByRole("button", { name: "Workflow", exact: true }),
+  ).toHaveClass(/active/);
+  for (const node of draft.plan.nodes)
+    await expect(
+      page.locator(`.vue-flow__node[data-id="${node.id}"]`),
+    ).toBeVisible();
+  await page.screenshot({
+    path: path.join(directory, `${task.id}-graph.png`),
+    fullPage: true,
+  });
   const publicationStep =
-    checkPublicationOrder && (!draft.program || draft.program.composition === "graph")
+    checkPublicationOrder && (!draft.program || !!draft.program.composition)
       ? draft.plan.nodes.find((node) =>
           /publish|commit|push/i.test(`${node.id} ${node.label}`),
         )
       : undefined;
-  if (checkPublicationOrder && (!draft.program || draft.program.composition === "graph"))
+  if (checkPublicationOrder && (!draft.program || !!draft.program.composition))
     assert.ok(
       publicationStep,
       "The plan must include a dedicated publication step",
@@ -319,7 +351,7 @@ async function approveAndFinish(
   }
   return await finish(
     task,
-    draft.program && draft.program.composition !== "graph" && checkPublicationOrder
+    draft.program && !draft.program.composition && checkPublicationOrder
       ? "$program-publication"
       : publicationStep?.id,
   );
@@ -424,9 +456,15 @@ async function checkAutomatic() {
   await page.goto(address);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("button", { name: "Execution", exact: true }).click();
-  await page.getByLabel("Workflow approval", { exact: true }).selectOption("automatic");
-  await page.getByRole("button", { name: "Save settings", exact: true }).click();
-  await expect(page.getByText("All changes saved", { exact: true })).toBeVisible();
+  await page
+    .getByLabel("Workflow approval", { exact: true })
+    .selectOption("automatic");
+  await page
+    .getByRole("button", { name: "Save settings", exact: true })
+    .click();
+  await expect(
+    page.getByText("All changes saved", { exact: true }),
+  ).toBeVisible();
   const automatic = await taskFromComposer(
     "Use one inspection step to summarize the exported functions in math.ts as a concise Markdown artifact. Do not edit files or make a commit.",
   );
@@ -435,9 +473,18 @@ async function checkAutomatic() {
   assert.equal((await git("rev-list", "--all")).stdout, commits);
   assert.equal(await readFile(path.join(project, "math.ts"), "utf8"), before);
   assert.deepEqual(errors, []);
-  console.log("PASS: automatic mode plans and executes without an approval click.");
+  console.log(
+    "PASS: automatic mode plans and executes without an approval click.",
+  );
   if (scenario === "automatic") {
-    await writeFile(path.join(directory, "report.json"), JSON.stringify({ scenario, model: agent.model, reports, browserErrors: errors }, null, 2));
+    await writeFile(
+      path.join(directory, "report.json"),
+      JSON.stringify(
+        { scenario, model: agent.model, reports, browserErrors: errors },
+        null,
+        2,
+      ),
+    );
     console.log(`Live automatic checks passed. Report: ${directory}`);
   }
 }
@@ -445,6 +492,77 @@ async function checkAutomatic() {
 console.log(
   `Live fixture: ${directory}\nModel: ${agent.provider}/${agent.model}\nBrowser: headless`,
 );
+async function checkComposition() {
+  const chosen = JSON.stringify({
+    provider: agent.provider,
+    model: agent.model,
+    thinking: agent.thinking,
+  });
+  const source = `import {workflow,block,step,sequence,parallel,when,repeatUntil,z} from "workflow";
+const inspect=block({input:z.object({role:z.string()}),async run(ctx){
+  const result=await ctx.ai({model:ctx.input.role==="second"?${chosen}:undefined,prompt:"Read-only smoke check. Do not edit files. Reply with a concise acknowledgement for role "+ctx.input.role,output:z.object({acknowledgement:z.string()})});
+  ctx.summary(result.acknowledgement);return result;
+}});
+const first=step("first",inspect,{inputs:{role:"first"},model:${chosen},maxVisits:2});
+const second=step("second",inspect,{inputs:{role:"second"},model:${chosen},maxVisits:2});
+const review=step("review",block({input:z.object({a:z.string(),b:z.string()}),run(ctx){
+  if(!ctx.input.a||!ctx.input.b)throw new Error("Missing joined results");
+  const approved=ctx.visit===2;ctx.outcome(approved?"pass":"retry");return {approved};
+}}),{inputs:ctx=>({a:ctx.output(first)!.acknowledgement,b:ctx.output(second)!.acknowledgement}),maxVisits:2,on:{retry:"continue"}});
+const report=step("report",block({async run(ctx){const checked=await ctx.exec("bun test");if(checked.exitCode!==0)throw new Error(checked.output);return "Parallel model calls, typed joins, two loop rounds and conditional completion passed.";}}));
+export default workflow({name:"Live composed workflow",flow:sequence(repeatUntil("rounds",{body:sequence(parallel([first,second],{concurrency:2}),review),until:ctx=>ctx.output(review)?.approved===true,maxIterations:2}),when("approved",ctx=>ctx.output(review)?.approved===true,report))});`;
+  const draft = await engine.createProgram(
+    "Live composed workflow",
+    "Validate parallel composition",
+    { source },
+    library,
+  );
+  assert.equal(draft.program?.composition, "structured");
+  await page.goto(`${address}/#run=${draft.id}`);
+  // This may be a hash-only navigation from a previous task in the same page.
+  // Reload to exercise opening the new run's deep link as a fresh document.
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Workflow", exact: true }),
+  ).toHaveClass(/active/);
+  await page
+    .getByRole("button", { name: "Approve & start", exact: true })
+    .click();
+  const run = await until(
+    "Composed execution",
+    async () => engine.get(draft.id),
+    (item) =>
+      ["completed", "failed", "interrupted", "cancelled"].includes(item.status),
+  );
+  assert.equal(run.status, "completed", run.error);
+  assert.deepEqual(run.visits, { first: 2, second: 2, review: 2, report: 1 });
+  assert.equal(run.groups?.rounds?.iteration, 2);
+  for (const id of ["first", "second"])
+    for (const attempt of run.attempts.filter((item) => item.nodeId === id))
+      assert.ok((attempt.usage?.requests ?? 0) > 0);
+  const a = run.attempts.find((item) => item.nodeId === "first")!,
+    b = run.attempts.find((item) => item.nodeId === "second")!;
+  assert.ok(
+    a.startedAt < b.finishedAt! && b.startedAt < a.finishedAt!,
+    "Parallel model steps must overlap",
+  );
+  await expect(page.locator(".result-banner")).toContainText(
+    "Parallel model calls",
+  );
+  await writeFile(
+    path.join(directory, "composition-run.json"),
+    JSON.stringify(run, null, 2),
+  );
+  await page.screenshot({
+    path: path.join(directory, "composition.png"),
+    fullPage: true,
+  });
+  assert.deepEqual(errors, []);
+  console.log(
+    `PASS: real parallel AI, explicit model overrides, typed joins, two loop rounds and branch. Report: ${directory}`,
+  );
+}
+
 async function checkWorkflows() {
   if (scenario === "all") {
     // The original failure: an unborn branch should still produce a useful review.
@@ -491,9 +609,18 @@ async function checkWorkflows() {
         const state = await api("/api/design/profiles/latest");
         return state ? designSessionSchema.parse(state) : undefined;
       },
-      (item) => !!item && (item.status === "failed" || (["ready", "idle"].includes(item.status) && item.messages.at(-1)?.role === "assistant")),
+      (item) =>
+        !!item &&
+        (item.status === "failed" ||
+          (["ready", "idle"].includes(item.status) &&
+            item.messages.at(-1)?.role === "assistant")),
     );
-    assert.equal(design?.status, "ready", design?.error ?? `Expected a reviewable proposal, received: ${design?.messages.at(-1)?.content}`);
+    assert.equal(
+      design?.status,
+      "ready",
+      design?.error ??
+        `Expected a reviewable proposal, received: ${design?.messages.at(-1)?.content}`,
+    );
     await chat
       .getByRole("button", { name: "Apply changes", exact: true })
       .click();
@@ -638,7 +765,10 @@ async function checkWorkflows() {
     `PASS: screenshot → workflow → code + tests → commit → push. HEAD ${local}`,
   );
 
-  if (scenario === "all") await checkAutomatic();
+  if (scenario === "all") {
+    await checkComposition();
+    await checkAutomatic();
+  }
   assert.deepEqual(errors, []);
   await writeFile(
     path.join(directory, "report.json"),
@@ -733,7 +863,8 @@ async function checkBlockDesigner() {
 }
 
 try {
-  if (scenario === "blocks") await checkBlockDesigner();
+  if (scenario === "composition") await checkComposition();
+  else if (scenario === "blocks") await checkBlockDesigner();
   else if (scenario === "automatic") await checkAutomatic();
   else if (scenario === "cancellation") await checkCancellation();
   else await checkWorkflows();

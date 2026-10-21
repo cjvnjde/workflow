@@ -1,5 +1,8 @@
 import { z } from "zod";
+import type { FlowNode } from "./composition-sdk.js";
 export { z };
+export { step, sequence, parallel, when, repeatUntil, describeFlow } from "./composition-sdk.js";
+export type { FlowNode, FlowStep, FlowContext, FlowStructure } from "./composition-sdk.js";
 
 export type Model = {
   provider?: string;
@@ -178,8 +181,9 @@ export interface WorkflowContext<I> {
 export type WorkflowDefinition<I = unknown> = {
   name: string;
   input?: z.ZodType<I>;
-  run(context: WorkflowContext<I>): Promise<unknown>;
-};
+} & ({ run(context: WorkflowContext<I>): Promise<unknown>; flow?: never } | { flow: FlowNode; run?: never });
+export function workflow<S extends z.ZodType>(definition: { name: string; input: S; flow: FlowNode }): WorkflowDefinition<z.output<S>> & { flow: FlowNode };
+export function workflow(definition: { name: string; flow: FlowNode }): WorkflowDefinition<Record<string, unknown>> & { flow: FlowNode };
 export function workflow<S extends z.ZodType>(definition: {
   name: string;
   input: S;

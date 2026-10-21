@@ -16,9 +16,10 @@ export const statusLabel = (status: string) =>
     ready: "Workflow ready",
   })[status] ?? status;
 export function stepState(run: WorkflowRun, id: string) {
-  if (["running", "pausing"].includes(run.status) && run.cursor === id) {
+  if ((run.activeNodes?.includes(id)) || (!run.activeNodes && ["running", "pausing"].includes(run.status) && run.cursor === id)) {
     return "running";
   }
+  if (run.groups?.[id]?.state === "skipped") return "skipped";
   const last = run.attempts.filter((attempt) => attempt.nodeId === id).at(-1);
   return last?.error ? "failed" : (last?.result?.outcome ?? "pending");
 }

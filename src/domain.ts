@@ -201,6 +201,15 @@ export const eventSchema = z
     message: z.string(),
   })
   .strict();
+const flowStructureSchema: z.ZodType<import("./composition-sdk.js").FlowStructure> = z.lazy(() => z.object({
+  kind: z.enum(["step", "sequence", "parallel", "when", "loop"]),
+  id: identifierSchema, label: z.string().max(200), children: z.array(flowStructureSchema).max(200),
+  condition: z.string().max(2000).optional(), concurrency: z.number().int().min(1).max(8).optional(), maxIterations: z.number().int().min(1).max(30).optional(),
+  step: z.object({
+    reference: z.union([identifierSchema, z.object({ kind: z.literal("code"), name: z.string().optional(), description: z.string().optional(), source: z.string(), timeoutMs: z.number().optional(), maxOperations: z.number().optional() }).strict()]),
+    options: z.object({ label: z.string().optional(), prompt: z.string().optional(), inputs: z.record(z.string(), z.unknown()).optional(), model: z.union([z.string(), agentOverrideSchema]).optional(), maxVisits: z.number().optional(), on: z.object({pass:z.enum(["continue","stop","repeat"]).optional(),retry:z.enum(["continue","stop","repeat"]).optional(),fail:z.enum(["continue","stop","repeat"]).optional()}).strict().optional() }).strict(),
+  }).strict().optional(),
+}).strict());
 export const runSchema = z
   .object({
     id: z.string().uuid(),
@@ -230,7 +239,8 @@ export const runSchema = z
     ]),
     plan: planSchema.extend({ nodes: z.array(nodeSchema).max(500) }),
     program: programSourceSchema.extend({
-      composition: z.literal("graph").optional(),
+      composition: z.enum(["graph", "structured"]).optional(),
+      structure: flowStructureSchema.optional(),
       catalog: z.record(identifierSchema, bundleSchema),
       models: z.record(z.string(), agentOverrideSchema),
     }).optional(),
@@ -241,6 +251,8 @@ export const runSchema = z
     config: configSchema,
     blocks: z.record(identifierSchema, bundleSchema),
     cursor: z.string(),
+    activeNodes: z.array(identifierSchema).max(8).optional(),
+    groups: z.record(z.string(), z.object({ state: z.enum(["running", "completed", "failed", "skipped"]), iteration: z.number().int().optional(), branch: z.enum(["then", "otherwise"]).optional() }).strict()).optional(),
     visits: z.record(z.string(), z.number()),
     artifacts: z.record(z.string(), z.record(z.string(), z.string())),
     attempts: z.array(

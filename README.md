@@ -2,7 +2,7 @@
 
 **TypeScript workflows and blocks, with durable AI and command execution and a live web UI.**
 
-Describe a task, attach context, and let the orchestrator classify it using your editable task instructions. It inspects the project, chooses blocks and model profiles, and writes a TypeScript workflow. Review it or enable automatic execution. Ordinary async functions, conditions and loops compose code blocks with optional AI calls; Temporal persists their progress. The graph shows the executed path. Pi is an embedded model/session adapter; Workflow owns setup, tasks, settings and the web interface.
+Describe a task, attach context, and let the orchestrator classify it using your editable task instructions. It chooses blocks and model profiles from the supplied context and writes a TypeScript composition. Review its graph or enable automatic execution. Sequences, branches, parallel groups and bounded loops compose code blocks with optional AI calls; Temporal persists their progress. Project inspection happens inside execution blocks, after approval. Pi is an embedded model/session adapter; Workflow owns setup, tasks, settings and the web interface.
 
 This is a single-user desktop tool with a real Temporal backend, not a production sandbox or hosted multi-user service.
 
@@ -51,8 +51,8 @@ Open **http://127.0.0.1:4310**.
 1. Open **Settings → Providers & models**, connect ChatGPT (or a provider API key). In **Model profiles → Generate with AI**, describe your preferences, send the request and apply the proposed profiles. The AI selects a planning model. You can also choose a project default manually.
 2. Return to **New task**. Write the goal in the central input; attach images or text/code files, paste a screenshot, or drop files onto the composer. Press Enter to start; Shift+Enter adds a line.
 3. The orchestrator classifies the request, reads the matching task instructions and composes a graph from the supplied context and block catalog. It does not inspect project files, Git, shell or MCP; investigation happens in execution blocks. It asks a follow-up only when an essential detail is missing. There is no task-type or coordinator selector.
-4. Review the complete graph and **Approve & start**, or select automatic execution in **Settings → Execution**. The editor lets you change each step’s instructions, model/thinking, routes and context handoffs. Blocks remain TypeScript; the engine compiles their connections into an internal executable workflow. Advanced imported TypeScript workflows keep their source editor and dynamic execution trace.
-5. Watch the highlighted active step and live activity. Drag blocks to arrange the graph; positions survive updates and reloads, and **Reset layout** restores the original arrangement. **Focus active step** brings running work into view.
+4. Review the complete graph and **Approve & start**, or select automatic execution in **Settings → Execution**. The TypeScript editor lets you change steps, models, inputs and composition. Saving typechecks the source and refreshes its graph without running blocks. Legacy explicit-route graphs retain their visual editor.
+5. Watch all highlighted active steps and their separate live activity streams. Drag blocks to arrange the graph; positions survive updates and reloads, and **Reset layout** restores the original arrangement. **Focus active step** brings running work into view.
 6. The outcome appears above the graph, including failures and blockers. Open **Results** for rendered Markdown, verification checks and artifacts; use **Copy Markdown** or **Download** on any artifact, or export the whole report. The notification bell records completions, pauses and failures received while the app is open.
 7. Active and previous tasks stay in the sidebar; reloading restores the selected task. Pause, resume or stop execution there. **Delete workflow** (also available beside a sidebar entry) removes settled tasks and drafts from history. Stop active work first. Deletion does not undo project files or erase recovery journals, attachments or Temporal execution history from disk.
 
@@ -66,10 +66,10 @@ Use `workflow --port 4320` for another port, or `--port 0` to select a free port
 
 ## Workflows as TypeScript
 
-The API takes inspiration from [Smithers v0.35.0](https://github.com/smithersai/smithers/tree/v0.35.0): typed blocks, persisted outputs, and code deciding what runs next. Workflow uses ordinary functions and `await`, with its existing Temporal engine and Vue interface. No React or JSX is involved.
+The API takes inspiration from [Smithers v0.35.0](https://github.com/smithersai/smithers/tree/v0.35.0): typed blocks, persisted outputs, and code deciding what runs next. Workflow uses TypeScript functions with its existing Temporal engine and Vue interface. No React or JSX is involved. New workflows declare a composition that can be shown completely before execution. Existing imperative `run(ctx)` workflows remain supported.
 
 ```ts
-import { workflow, block, z } from "workflow";
+import { workflow, block, step, z } from "workflow";
 
 const reviewer = block({
   input: z.object({ request: z.string() }),
@@ -81,22 +81,20 @@ const reviewer = block({
       output: z.object({ approved: z.boolean(), feedback: z.string() }),
     });
     ctx.summary(result.feedback);
+    ctx.outcome(result.approved ? "pass" : "fail");
     return result;
   },
 });
 
 export default workflow({
   name: "Review working files",
-  input: z.object({ request: z.string() }),
-  async run(ctx) {
-    const result = await ctx.step("review", reviewer, { inputs: ctx.input });
-    if (!result.approved) throw new Error(result.feedback);
-    return result.feedback;
-  },
+  flow: step("review", reviewer, {
+    inputs: ctx => ({ request: ctx.request }),
+  }),
 });
 ```
 
-There is one block interface: `block({ input?, output?, async run(ctx) { … } })`. A block is a TypeScript function and can combine pure computation, model calls, commands and files. `ctx.step(id, block, { inputs, model?, maxVisits? })` returns its typed return value directly. Optional Zod schemas validate inputs and outputs at runtime. There is no AI/script selector.
+There is one block interface: `block({ input?, output?, async run(ctx) { … } })`. A block is a TypeScript function and can combine pure computation, model calls, commands and files. Composition uses `step(id, block, options)` and typed `ctx.output(step)` handoffs. In imperative `run(ctx)` workflows, `await ctx.step(id, block, { inputs, model?, maxVisits? })` returns its typed value directly. Optional Zod schemas validate inputs and outputs at runtime. There is no AI/script selector.
 
 Inside a block:
 
@@ -105,7 +103,7 @@ Inside a block:
 - `await ctx.readFile(path)` and `await ctx.writeFile(path, text)` record file effects with recovery. `await ctx.log(message)` adds live activity.
 - `ctx.summary(markdown)` and `ctx.artifact(name, text)` publish visible results. `ctx.outcome("retry")` can mark a verification attempt while still returning structured feedback.
 
-Models resolve from the project default, then block metadata, then the graph step (or `ctx.step(id, block, { model })` option), then an explicit `ctx.ai({ model })`. In the graph’s **Editor**, select a step and use **Step model** / **Step thinking** to change its default. In block source, either inherit that choice or override individual calls:
+Models resolve from the project default, then block metadata, then the graph step (or `ctx.step(id, block, { model })` option), then an explicit `ctx.ai({ model })`. For compositions, set `step(..., { model: { provider, model, thinking } })` in the TypeScript editor. Legacy route graphs retain the **Step model** / **Step thinking** controls. In block source, either inherit that choice or override individual calls:
 
 ```ts
 const draft = await ctx.ai({ prompt: ctx.prompt }); // uses this step's model
@@ -117,7 +115,7 @@ const checked = await ctx.ai({
 // A model ID string is also accepted, inheriting the provider and other settings.
 ```
 
-Use stable step IDs inside loops and await operations sequentially. `timeoutMs` and `maxOperations` bound a block; node `maxVisits`, workflow `maxSteps`, and model spending limits still apply. A block may make multiple AI calls, and their usage accumulates against the same run budget. Code errors fail the block and follow the graph’s fail route (or throw from an advanced `ctx.step` call); provider/worker interruptions retain the explicit recovery/resume boundary.
+Use stable step IDs inside loops and await each block's context operations sequentially; use `parallel()` for concurrency between blocks. `timeoutMs` and `maxOperations` bound a block; node `maxVisits`, workflow `maxSteps`, and model spending limits still apply. A block may make multiple AI calls, and their usage accumulates against the same run budget. Code errors fail the block and follow its configured outcome action or graph route (or throw from an advanced `ctx.step` call); provider/worker interruptions retain the explicit recovery/resume boundary.
 
 Saved Settings blocks work with `ctx.step<OutputType>(id, "block-id", options)`. Their source and helper imports, like the workflow's, are frozen with the draft. Old saved agent/script definitions and old `agent()` / `script()` imports remain readable for compatibility; new authoring uses `block()`.
 
@@ -166,13 +164,13 @@ Credential/settings files use private permissions. `WORKFLOW_HOME` optionally ch
 
 New projects inherit terminal-selected model/thinking defaults. Explicit project settings take precedence; existing drafts/runs retain their snapshots. Connecting another provider does not silently change an existing model selection.
 
-Graph edits stay in the browser when switching between runs. Valid unsaved changes preview in the graph, while invalid routes, duplicate aliases, and incomplete fields show validation errors before saving. Step controls and JSON share the same draft. Unsaved edits block approval and AI refinement until saved or discarded. Saves and approvals carry the reviewed revision; a stale browser cannot overwrite or approve a newer draft. If another session edits a dirty draft, your text remains visible and **Discard edits & load latest draft** loads the current version. Reloading or closing the page warns about unsaved graph edits. Live updates share one event stream and merge by revision so delayed responses cannot roll back a run or its list entry.
+Source edits stay in the browser when switching between runs; saving refreshes a composition graph. For legacy route graphs, valid unsaved changes preview immediately, while invalid routes, duplicate aliases, and incomplete fields show validation errors before saving. Step controls and JSON share the same draft. Unsaved edits block approval and AI refinement until saved or discarded. Saves and approvals carry the reviewed revision; a stale browser cannot overwrite or approve a newer draft. If another session edits a dirty draft, your text remains visible and **Discard edits & load latest draft** loads the current version. Reloading or closing the page warns about unsaved graph edits. Live updates share one event stream and merge by revision so delayed responses cannot roll back a run or its list entry.
 
 The initial starter library detects a `test` script in `package.json`, configures `bun run test`, and accepts your project instructions. For projects without a package test script, configure commands manually. You can then generate project-specific blocks with AI or edit them yourself in the browser.
 
 ### Configure how the orchestrator works
 
-All configuration lives on **Settings**. The interface uses Catppuccin Mocha. Unsaved edits have visible discard controls: cancel a new block, restore an existing block or model selection, discard settings changes, or use **Discard all edits**. Discarding does not write to the project. Task drafts, attachment uploads, MCP discovery and AI workflow refinement also have discard/cancel controls.
+All configuration lives on **Settings**. The interface uses Catppuccin Mocha. Unsaved edits have visible discard controls: cancel a new block, restore an existing block or model selection, discard settings changes, or use **Discard all edits**. Discarding does not write to the project. Attachment uploads, MCP discovery and AI workflow refinement also have cancel controls.
 
 **Design with AI** opens a chat at the bottom right, scoped to the current section: model profiles, task instructions, blocks, skills/MCP or execution settings. Describe your goal, ask questions and refine the proposal across messages. Review the proposed settings, then click **Apply changes**. Drag a chat by its header (or focus the header and use arrow keys) to move it. **New conversation** opens an independent window, including another conversation for the same settings section. Each window keeps its own messages, draft and progress. Minimize windows into the bottom dock and restore them as needed; open conversations, positions and sizes survive reloading and server restarts. Resize either bottom corner by dragging or focusing its handle and using arrow keys. Textareas grow as you type or paste, up to a bounded height, then scroll inside. Use **Stop** to cancel generation, **Discard message** to clear an unsent draft, or **Discard proposal** to dismiss a suggestion without changing settings. AI generation uses your connected provider, uses file and Bash tools to inspect the project and returns settings proposals for review. Save or discard form edits before applying; stale proposals cannot overwrite later settings changes. Workflow auto-approval and provider credentials stay in their dedicated controls.
 
@@ -304,15 +302,55 @@ Every configured host check is available to AI through `run_check`. New TypeScri
 
 Create `.workflow/blocks/<id>/block.json` with a `code` executor referencing `block.ts`, plus the TypeScript module; optional `prompt.md` and explicit skills/resources provide extra context. Give the block a precise description of **when to use it** and make its instructions and checks match its role. New proposals load the updated catalog. Live task planning can use custom blocks automatically. The legacy recipe API and demo graphs expect the starter IDs.
 
-Existing drafts/runs retain their original policy snapshots. Changing configuration does not silently upgrade an approved plan. Snapshots freeze prompts, loaded skill text, model settings, command arguments, inline script source and the graph. Imported or called project files are read at execution time.
+Existing drafts/runs retain their original policy snapshots. Changing configuration does not silently upgrade an approved plan. Snapshots freeze prompts, loaded skill text, model settings, command arguments, inline script source, static helper imports and the graph. Scripts invoked through `ctx.exec` are read at execution time.
 
 ## Graphs and handoffs
 
-Generated tasks keep a complete graph of blocks, step goals, model defaults and connections before approval. Graphs referencing code blocks compile into TypeScript orchestration internally; execution does not replace or hide the reviewed graph. Editing a draft’s connections or model defaults preserves its frozen block code and helper imports. Advanced imported TypeScript workflows can still use arbitrary functions and bounded loops, with their trace appearing during execution.
+Generated tasks use a TypeScript composition as the source of truth. The graph shows sequences, parallel lanes, branch choices and loop boundaries before approval. Preview evaluates declarations in a bounded environment; it does not call blocks, deferred inputs or conditions. Declarations and callbacks must be deterministic; file, command and model effects belong inside blocks.
 
-A returned TypeScript value is exposed as the `data` artifact. Passing `data` to another code block parses its JSON into `ctx.input[alias]`; other artifacts remain text. `summary` is always available. Optional feedback handoffs can be absent on the first visit. Set `ctx.outcome("retry")` or `ctx.outcome("fail")` to select a route; a field in the returned object alone does not change routing.
+```ts
+import { workflow, step, sequence, parallel, when, repeatUntil } from "workflow";
 
-A generated graph is a serial state machine with explicit routes for `pass`, `retry` and `fail`. It may contain cycles, bounded by both each node's `maxVisits` and the run's `maxSteps`.
+// Saved blocks are ordinary TypeScript. Match their actual input/output contracts.
+const implement = step("implement", "implement", {
+  maxVisits: 3,
+  inputs: ctx => ({ reviewFeedback: ctx.result("review")?.summary ?? "", testFeedback: ctx.result("tests")?.summary ?? "" }),
+});
+const tests = step("tests", "verify", { maxVisits: 3, on: { retry: "repeat" } });
+const review = step("review", "review", {
+  maxVisits: 3, on: { retry: "continue" },
+});
+const report = step("report", "requirements", { prompt: "Summarize the approved work." });
+export default workflow({
+  name: "Implement and review",
+  flow: sequence(
+    repeatUntil("revision", {
+      body: sequence(implement, tests, review),
+      until: ctx => ctx.result(review)?.outcome === "pass",
+      maxIterations: 3,
+    }),
+    when("approved", ctx => ctx.result(review)?.outcome === "pass", report),
+  ),
+});
+```
+
+See [examples/composed.ts](examples/composed.ts) for self-contained blocks with typed review output and concurrent inspection.
+
+| Primitive | Behavior |
+| --- | --- |
+| `step(id, blockOrSavedId, options)` | One durable invocation; accepts typed object inputs, a prompt, model default, visit cap and outcome actions. |
+| `sequence(a, b, c)` | Runs each child in order. |
+| `parallel([a, b], { concurrency: 2 })` | Runs independent branches, then joins their results. Concurrency is 1–8, with an overall eight-step cap across nested groups. |
+| `when(id, condition, thenNode, elseNode?)` | Selects one branch using a synchronous boolean. The other branch is marked skipped. |
+| `repeatUntil(id, { body, until, maxIterations })` | Runs at least once, then checks the condition. An unmet condition at the iteration limit fails. |
+
+Use `ctx.output(step)` for its latest typed return value and `ctx.result(step)` for `{outcome, summary, artifacts, data}`. Saved IDs can specify an output type; inline blocks infer it. Deferred inputs, prompts and conditions receive `ctx.request`, `ctx.input`, frozen `ctx.models`, and one-based `ctx.iteration(loopId)`. First-visit feedback is `undefined`, so handle it explicitly. Each parallel branch sees the outputs available before the fork plus its own work; sibling outputs merge after the join. A parallel group's final summary comes from its last declared executed branch, independent of completion timing.
+
+`pass` continues by default; `retry` and `fail` stop. A step can set `on: { retry: "continue" }` to let the loop inspect review data, or `on: { retry: "repeat" }` to skip the remainder of the body and start its nearest enclosing loop again. `ctx.outcome()` selects an explicit outcome; returned fields such as `approved` are data for conditions, not implicit outcomes. Each step's `maxVisits` and the run's `maxSteps` remain independent limits, including resumed attempts.
+
+Parallel groups stop dispatching queued work after a failure and wait for already-running siblings. They share one working directory. Use independent reads/checks or disjoint edits; put overlapping edits, Git mutations and checks that rebuild shared outputs in sequence. Managed file writes reject another active step's claimed paths. Shell/Git/MCP effects are not isolated or rolled back by that guard. With a dollar spending limit, AI sessions serialize against the remaining budget while other operations can still overlap.
+
+Earlier explicit pass/retry/fail route graphs remain executable and editable. Their cycles are bounded by visit and total step limits. In that format, a returned TypeScript value is a `data` artifact; a data handoff to a code block becomes parsed JSON under the chosen input alias. Other artifacts remain text.
 
 Example node:
 
@@ -371,14 +409,14 @@ By default Workflow downloads a pinned official Temporal CLI once into its priva
 ```sh
 # While workflow is serving this project in another terminal:
 workflow runs
-workflow pause <run-id>       # finish the active step, then stop at the next boundary
+workflow pause <run-id>       # finish active steps, then stop at the next boundary
 workflow resume <run-id>      # continue a paused run; no repeated completed agents
-workflow cancel <run-id>      # stop the current activity and prevent subsequent steps
+workflow cancel <run-id>      # stop active activities and prevent subsequent steps
 workflow recover <run-id>     # retry file recovery after resolving a conflict
 # Add --port 4320 if your web server uses another port.
 ```
 
-The same controls are available in the web UI. Paused/interrupted runs retain ownership of the project until resumed or cancelled. Stopping the application stops its worker/local server, not the durable workflow; restart in the same project and execution mode to restore it.
+The same controls are available in the web UI. Paused/interrupted runs retain ownership of the project until resumed or cancelled. Pause drains all active parallel branches before admitting more work. Resume retries interrupted branches without rerunning completed siblings; cancellation settles each active attempt separately. Stopping the application stops its worker/local server, not the durable workflow; restart in the same project and execution mode to restore it.
 
 New approvals persist a pending start receipt before contacting Temporal. If the process stops at that boundary and Temporal has no execution, startup restores a draft for review and another approval. A new execution ID prevents a late response from authorizing the old snapshot. If Temporal accepted the start, startup reconnects to that execution. Missing history for a confirmed execution (or an older execution without a receipt) still requires restoring the history.
 
@@ -512,7 +550,7 @@ bun run test:e2e
 WORKFLOW_CHROMIUM_PATH=/usr/bin/chromium bun run test:e2e
 ```
 
-`bun run test:live` is an opt-in integration check using your existing ChatGPT sign-in. It creates a temporary project and local bare Git remote, then checks real planning on an unborn branch, browser approval, AI settings design, screenshot input, implementation/tests, commit/push, results/downloads and automatic execution. Chromium always runs headlessly. Set `WORKFLOW_CHROMIUM_PATH` if using a system browser, and optionally `WORKFLOW_LIVE_MODEL` (default `gpt-6-luna`). This consumes subscription usage, leaves the real project untouched, and writes its report/screenshots into the printed temporary directory.
+`bun run test:live` is an opt-in integration check using your existing ChatGPT sign-in. It creates a temporary project and local bare Git remote, then checks real planning on an unborn branch, browser approval, AI settings design, screenshot input, implementation/tests, commit/push, results/downloads, parallel model calls, typed joins, loop conditions and automatic execution. Chromium always runs headlessly. Set `WORKFLOW_CHROMIUM_PATH` if using a system browser, and optionally `WORKFLOW_LIVE_MODEL` (default `gpt-6-luna`). This consumes subscription usage, leaves the real project untouched, and writes its report/screenshots into the printed temporary directory.
 
 Use `WORKFLOW_LIVE_SCENARIO=cancellation bun run test:live` to check cancelling the real coordinator, stopping an executing Bash command without a late file write, persistence after browser reload, and successfully running another task afterward. `WORKFLOW_LIVE_SCENARIO=publication` runs just the screenshot-to-publication scenario.
 

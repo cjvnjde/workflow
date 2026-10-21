@@ -764,3 +764,18 @@ button.danger, button.danger-quiet { color: var(--ctp-red); background: color-mi
 .program-editor > .editor-field, .program-import .editor-field { display: block; color: var(--ctp-subtext1); font-size: 12px; margin-top: 20px; }
 .program-editor label textarea, .program-import label textarea, .program-import label input { display: block; margin-top: 8px; }
 .program-editor .editor-actions small { flex-basis: auto; margin-left: auto; }
+.vue-flow__node.composition-group { background: color-mix(in srgb, var(--ctp-surface0) 18%, transparent); border: 1px solid var(--ctp-surface1); border-radius: 16px; }
+.composition-heading { display: flex; align-items: center; gap: 12px; padding: 14px 18px; color: var(--ctp-subtext1); font-size: 11px; }
+.composition-heading strong { color: var(--ctp-mauve); font-size: 13px; }
+.composition-heading small { margin-left: auto; }
+.vue-flow__node.composition-junction { background: var(--ctp-surface1); border: 1px solid var(--ctp-overlay0); border-radius: 50%; }
+.workflow-graph .vue-flow__edge, .workflow-graph .vue-flow__edge-interaction { pointer-events: none !important; }
+.composition-heading { flex-wrap: wrap; gap: 5px 10px; padding: 12px 16px; cursor: pointer; }
+.composition-heading strong { font-size: 15px; }
+.composition-heading > span { font-size: 12px; }
+.composition-heading small { font-size: 11px; }
+.composition-step .graph-label { padding: 12px 14px; }
+.composition-step .graph-label strong { font-size: 16px; line-height: 1.3; }
+.composition-step .graph-label small, .composition-step .graph-label > span { font-size: 11px; }
+.composition-step .graph-label b { font-size: 10px; margin-top: 8px; }
+.composition-junction .vue-flow__handle { opacity: 0; }

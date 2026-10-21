@@ -109,6 +109,14 @@ export class Workspace {
     this.options.signal?.throwIfAborted();
     if (Buffer.byteLength(content) > maxFileBytes) { throw new Error("Writes are limited to 1 MB"); }
     const filename = await this.checkedPath(relativePath, "write");
+    const publish = () => this.writeChecked(filename, content);
+    if (this.options.journal) await this.options.journal.write(filename, publish);
+    else await publish();
+  }
+
+  private async writeChecked(filename: string, content: string) {
+    this.options.signal?.throwIfAborted();
+    if (Buffer.byteLength(content) > maxFileBytes) throw new Error("Writes are limited to 1 MB");
     const snapshot = await this.snapshot(filename);
     await mkdir(path.dirname(filename), { recursive: true });
     const relative = path.relative(this.root, filename);
@@ -122,16 +130,20 @@ export class Workspace {
     if (!oldText) {
       throw new Error("oldText must not be empty");
     }
-    await this.checkedPath(relativePath, "write");
-    const content = await this.read(relativePath);
-    const first = content.indexOf(oldText);
-    if (first < 0 || content.indexOf(oldText, first + 1) >= 0) {
-      throw new Error("oldText must match exactly once");
-    }
-    await this.write(
-      relativePath,
-      content.slice(0, first) + newText + content.slice(first + oldText.length),
-    );
+    const filename = await this.checkedPath(relativePath, "write");
+    const change = async () => {
+      const content = await this.read(filename);
+      const first = content.indexOf(oldText);
+      if (first < 0 || content.indexOf(oldText, first + 1) >= 0) {
+        throw new Error("oldText must match exactly once");
+      }
+      await this.writeChecked(
+        filename,
+        content.slice(0, first) + newText + content.slice(first + oldText.length),
+      );
+    };
+    if (this.options.journal) await this.options.journal.write(filename, change);
+    else await change();
   }
 
   async list(pattern = "**/*") {

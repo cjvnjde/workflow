@@ -43,7 +43,7 @@ test("TypeScript compiler catches type errors, missing exports and invalid input
 
 test("shipped TypeScript examples typecheck with the installed SDK", async t => {
   const { project } = await fixture(t);
-  for (const name of ["implement-reviewed", "scripts-only"]) {
+  for (const name of ["implement-reviewed", "scripts-only", "composed"]) {
     const source = await readFile(new URL(`../examples/${name}.ts`, import.meta.url), "utf8");
     checkProgram(project, { source, input: {} });
   }

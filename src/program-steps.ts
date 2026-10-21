@@ -13,6 +13,16 @@ export function programStep(run: WorkflowRun, id: string, block: Block | CodeBlo
     if (!node || block !== node.block || run.cursor !== id) throw new Error(`Step ${id} does not match the approved graph`);
     return node;
   }
+  if (run.program.composition === "structured") {
+    const node = run.plan.nodes.find(node => node.id === id);
+    if (!node) throw new Error(`Step ${id} is absent from the reviewed composition`);
+    const changed = nodeSchema.parse({ ...node, goal: options.prompt ?? run.plan.task,
+      context: Object.fromEntries(Object.entries(options.inputs ?? {}).filter(([, value]) => value !== undefined)
+        .map(([key, value]) => [key, typeof value === "string" ? value : JSON.stringify(value)])) });
+    if (utf8Bytes(JSON.stringify({...run,plan:{...run.plan,nodes:run.plan.nodes.map(item=>item.id===id?changed:item)}})) > 1_300_000) throw new Error("Workflow context is too large. Pass concise handoffs or split this workflow.");
+    Object.assign(node, changed);
+    return node;
+  }
   let bundle;
   if (typeof block === "string") {
     const saved = run.program.catalog[block];
