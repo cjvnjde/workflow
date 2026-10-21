@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onScopeDispose, ref } from "vue";
+import { defineAsyncComponent, onScopeDispose, ref } from "vue";
+const CodeEditor = defineAsyncComponent(() => import("./CodeEditor.vue"));
 import {
   programSourceSchema,
   type ProgramSource,
@@ -109,24 +110,14 @@ async function submit() {
         <button @click="picker?.click()">Import .ts file</button
         ><small>{{ filename }}</small>
       </div>
-      <label class="editor-field"
-        >New workflow TypeScript<textarea
-          v-autosize="24"
-          v-model="source"
-          class="program-source"
-          :spellcheck="false"
-          :rows="6"
-        />
-      </label>
-      <label class="editor-field"
-        >New workflow inputs (JSON)<textarea
-          v-autosize
-          v-model="input"
-          class="script-source"
-          :spellcheck="false"
-          :rows="3"
-        />
-      </label>
+      <div class="editor-field">
+        <span>New workflow TypeScript</span>
+        <CodeEditor v-model="source" label="New workflow TypeScript" :readonly="busy" />
+      </div>
+      <div class="editor-field">
+        <span>New workflow inputs (JSON)</span>
+        <CodeEditor v-model="input" label="New workflow inputs (JSON)" language="json" :min-lines="3" :max-lines="12" :readonly="busy" />
+      </div>
       <div class="editor-actions">
         <button class="primary" @click="submit">
           {{ busy ? "Checking TypeScript…" : "Create workflow draft" }}</button

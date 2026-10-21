@@ -2,8 +2,8 @@
 import { computed, ref } from "vue";
 import type { WorkflowRun } from "../../src/domain.js";
 import type { PlanDraft } from "../composables/use-draft.js";
-import { inputValue } from "../form-events.js";
 import Icon from "./Icon.vue";
+import CodeEditor from "./CodeEditor.vue";
 const props = defineProps<{
   run: WorkflowRun;
   draft: PlanDraft;
@@ -73,33 +73,16 @@ function download() {
     <div v-if="error || draft.error" class="validation-error" role="alert">
       {{ error || draft.error }}
     </div>
-    <label class="editor-field"
-      >Workflow TypeScript
-      <textarea
-        v-autosize="24"
-        class="program-source"
-        :spellcheck="false"
-        :rows="6"
-        :value="draft.text"
-        :readonly="locked"
-        @input="
-          draft.edit(inputValue($event));
-          copied = false;
-        "
-      />
-    </label>
-    <label class="editor-field"
-      >Workflow inputs (JSON)
-      <textarea
-        v-autosize
-        class="script-source"
-        :spellcheck="false"
-        :rows="3"
-        :value="draft.inputText"
-        :readonly="locked"
-        @input="draft.editInput(inputValue($event))"
-      />
-    </label>
+    <div class="editor-field">
+      <span>Workflow TypeScript</span>
+      <CodeEditor :key="run.id" label="Workflow TypeScript" :model-value="draft.text" :readonly="locked"
+        @update:model-value="draft.edit($event); copied = false" />
+    </div>
+    <div class="editor-field">
+      <span>Workflow inputs (JSON)</span>
+      <CodeEditor label="Workflow inputs (JSON)" language="json" :min-lines="3" :max-lines="12"
+        :model-value="draft.inputText" :readonly="locked" @update:model-value="draft.editInput($event)" />
+    </div>
     <div class="editor-actions">
       <button
         v-if="run.status === 'draft'"

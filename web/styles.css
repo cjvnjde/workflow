@@ -761,6 +761,6 @@ button.danger, button.danger-quiet { color: var(--ctp-red); background: color-mi
 .program-import[open] { border: 1px solid var(--border); border-radius: 14px; padding: 20px; background: var(--surface); }
 .program-import fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .program-import .editor-field { margin-top: 16px; }
-.program-editor > label, .program-import label { display: block; color: var(--ctp-subtext1); font-size: 12px; margin-top: 20px; }
+.program-editor > .editor-field, .program-import .editor-field { display: block; color: var(--ctp-subtext1); font-size: 12px; margin-top: 20px; }
 .program-editor label textarea, .program-import label textarea, .program-import label input { display: block; margin-top: 8px; }
 .program-editor .editor-actions small { flex-basis: auto; margin-left: auto; }

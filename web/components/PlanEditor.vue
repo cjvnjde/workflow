@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CodeEditor from "./CodeEditor.vue";
 import { computed, onMounted, onScopeDispose, ref } from "vue";
 import {
   agentSchema,
@@ -524,16 +525,7 @@ const outcomes = ["pass", "retry", "fail"] as const;
         Edit the complete graph, including step IDs and blocks. Block
         instructions and required checks stay fixed to this run's saved library.
       </p>
-      <textarea
-        v-autosize
-        aria-label="Workflow graph JSON"
-        class="json-editor"
-        :spellcheck="false"
-        :value="draft.text"
-        :disabled="locked"
-        :rows="22"
-        @input="draft.edit(inputValue($event))"
-      />
+      <CodeEditor label="Workflow graph JSON" language="json" :model-value="draft.text" :readonly="locked" :min-lines="12" @update:model-value="draft.edit($event)" />
     </template>
     <div class="editor-actions">
       <button

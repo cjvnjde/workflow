@@ -20,6 +20,7 @@ import type { OrchestrationSettings } from "../../src/orchestration-schema.js";
 import { request } from "../api.js";
 import { inputValue, inputChecked } from "../form-events.js";
 import Field from "../components/Field.vue";
+import CodeEditor from "../components/CodeEditor.vue";
 import Icon from "../components/Icon.vue";
 import { executionLabel } from "../execution-label.js";
 const props = defineProps<{
@@ -328,7 +329,7 @@ function check(command: string, enabled: boolean) {
               </Field>
             </div>
             <Field v-slot="{ id }" label="Script source" help="Runs in the project root. Source is saved in each workflow snapshot; stdout and stderr appear live in Activity.">
-              <textarea v-autosize :id="id" v-model="definition.executor.code" class="script-source" :rows="8" spellcheck="false" autocapitalize="off" />
+              <CodeEditor :id="id" :key="selected" v-model="definition.executor.code" label="Script source" :language="definition.executor.language" :readonly="busy" :min-lines="8" />
             </Field>
             <div class="field-grid">
               <Field v-slot="{ id }" label="Script timeout (seconds)">

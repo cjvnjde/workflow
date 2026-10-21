@@ -1,5 +1,25 @@
-import { expect, test, type Page, type APIRequestContext } from "@playwright/test";
+import { expect, test, type Page, type Locator, type APIRequestContext } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+
+// Read the full document through the editor's public copy behavior, including
+// lines virtualized outside the viewport. Each browser context has its own clipboard.
+async function readCode(editor: Locator) {
+  const page = editor.page();
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await editor.press("ControlOrMeta+a");
+  await editor.press("ControlOrMeta+c");
+  return page.evaluate(() => navigator.clipboard.readText());
+}
+async function fillCode(editor: Locator, value: string) {
+  await editor.press("ControlOrMeta+a");
+  await editor.press("Backspace");
+  await editor.page().keyboard.insertText(value);
+}
+async function expectCode(editor: Locator, value: string | RegExp) {
+  const assertion = expect.poll(() => readCode(editor));
+  if (typeof value === "string") await assertion.toBe(value);
+  else await assertion.toMatch(value);
+}
 
 async function newTask(page: Page, prompt: string) {
   await page.getByRole("button", { name: "New task", exact: true }).click();
@@ -24,17 +44,17 @@ export default workflow({name:"Code review",input:z.object({request:z.string()})
     name: "review.ts", mimeType: "text/typescript", buffer: Buffer.from(source),
   });
   await page.getByLabel("Workflow name", { exact: true }).fill("TypeScript browser workflow");
-  await page.getByLabel("New workflow inputs (JSON)", { exact: true }).fill('{"request":"working files"}');
+  await fillCode(page.getByLabel("New workflow inputs (JSON)", { exact: true }), '{"request":"working files"}');
   await page.getByRole("button", { name: "Create workflow draft", exact: true }).click();
   await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
   const code = page.getByLabel("Workflow TypeScript", { exact: true });
-  await expect(code).toHaveValue(source);
-  await code.fill(source.replace("ctx.input.request", "ctx.input.missing"));
+  await expectCode(code, source);
+  await fillCode(code, source.replace("ctx.input.request", "ctx.input.missing"));
   await page.getByRole("button", { name: "Typecheck & save draft", exact: true }).click();
   await expect(page.getByRole("alert").filter({ hasText: /Property 'missing'/ })).toBeVisible();
   await page.getByRole("button", { name: "Discard code edits", exact: true }).click();
-  await expect(code).toHaveValue(source);
-  await page.getByLabel("Workflow inputs (JSON)", { exact: true }).fill('{"request":"updated working files"}');
+  await expectCode(code, source);
+  await fillCode(page.getByLabel("Workflow inputs (JSON)", { exact: true }), '{"request":"updated working files"}');
   await page.getByRole("button", { name: "Typecheck & save draft", exact: true }).click();
   await expect(page.getByText("Typechecked · source and imports frozen", { exact: true })).toBeVisible();
   const downloading = page.waitForEvent("download");
@@ -52,7 +72,8 @@ export default workflow({name:"Code review",input:z.object({request:z.string()})
   await page.getByRole("button", { name: "Workflow", exact: true }).click();
   await expect(page.locator(".vue-flow__node").filter({ hasText: "Independent review" })).toBeVisible();
   await page.getByRole("button", { name: "Editor", exact: true }).click();
-  await expect(code).toHaveAttribute("readonly", "");
+  await expect(code).toHaveAttribute("aria-readonly", "true");
+  await expect(code).toHaveAttribute("contenteditable", "false");
 });
 
 test("TypeScript draft creation can be cancelled while preserving the source", async ({ page }) => {
@@ -64,12 +85,12 @@ test("TypeScript draft creation can be cancelled while preserving the source", a
   });
   await page.goto("/");
   await page.getByText("Use a TypeScript workflow", { exact: true }).click();
-  const source = await page.getByLabel("New workflow TypeScript", { exact: true }).inputValue();
+  const source = await readCode(page.getByLabel("New workflow TypeScript", { exact: true }));
   await page.getByRole("button", { name: "Create workflow draft", exact: true }).click();
   await page.getByRole("button", { name: "Cancel workflow creation", exact: true }).click();
   release();
   await expect(page.getByText("Workflow creation cancelled.", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("New workflow TypeScript", { exact: true })).toHaveValue(source);
+  await expectCode(page.getByLabel("New workflow TypeScript", { exact: true }), source);
   await expect(page.getByRole("button", { name: "Create workflow draft", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Discard TypeScript draft", exact: true }).click();
   await expect(page.getByLabel("New workflow TypeScript", { exact: true })).toHaveCount(0);
@@ -130,7 +151,7 @@ test("a user can edit a draft model and reject a graph without execution", async
     .click();
   await page.getByRole("button", { name: "JSON", exact: true }).click();
   const editor = page.getByLabel("Workflow graph JSON");
-  const plan: unknown = JSON.parse(await editor.inputValue());
+  const plan: unknown = JSON.parse(await readCode(editor));
   // The browser edit boundary remains schema-validated by the server.
   const { planSchema } = await import("../../src/domain.js");
   const edited = planSchema.parse(plan);
@@ -144,7 +165,7 @@ test("a user can edit a draft model and reject a graph without execution", async
     model: "claude-sonnet-4-5",
     thinking: "high",
   };
-  await editor.fill(JSON.stringify(edited, null, 2));
+  await fillCode(editor, JSON.stringify(edited, null, 2));
   await page
     .getByRole("button", { name: "Validate & save draft", exact: true })
     .click();
@@ -279,9 +300,9 @@ test("unsaved graph edits block approval and survive switching between runs", as
   await page.getByRole("button", { name: "Edit workflow", exact: true }).click();
   await page.getByRole("button", { name: "JSON", exact: true }).click();
   const editor = page.getByLabel("Workflow graph JSON");
-  const plan = JSON.parse(await editor.inputValue());
+  const plan = JSON.parse(await readCode(editor));
   plan.title = "Unsaved title that must survive";
-  await editor.fill(JSON.stringify(plan, null, 2));
+  await fillCode(editor, JSON.stringify(plan, null, 2));
   await expect(page.getByRole("button", { name: "Approve & start", exact: true })).toBeDisabled();
   await page.locator(".task-item").filter({ hasText: "Preserve edits first" }).click();
   await expect(page.locator(".task-request > p")).toHaveText("Preserve edits first");
@@ -290,7 +311,7 @@ test("unsaved graph edits block approval and survive switching between runs", as
   await expect(page.locator(".task-request > p")).toHaveText("Preserve edits second");
   await page.getByRole("button", { name: "Edit workflow", exact: true }).click();
   await page.getByRole("button", { name: "JSON", exact: true }).click();
-  await expect(editor).toHaveValue(/Unsaved title that must survive/);
+  await expectCode(editor, /Unsaved title that must survive/);
   await expect(page.getByRole("button", { name: "Approve & start", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Validate & save draft", exact: true }).click();
   await expect(page.getByRole("heading", { name: plan.title })).toBeVisible();
@@ -352,10 +373,10 @@ test("step controls validate edits, preview the graph and save model and handoff
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.getByRole("button", { name: "JSON", exact: true }).click();
   const json = page.getByLabel("Workflow graph JSON");
-  await expect(json).toHaveValue(/previous-feedback/);
-  await json.fill("{");
+  await expectCode(json, /previous-feedback/);
+  await fillCode(json, "{invalid");
   await page.getByRole("button", { name: "Step controls", exact: true }).click();
-  await expect(json).toHaveValue("{");
+  await expectCode(json, "{invalid");
   await expect(page.locator(".validation-error")).toContainText("JSON");
   await page.getByRole("button", { name: "Discard graph edits", exact: true }).click();
   await expect(title).toHaveValue("Reviewed with step controls");
@@ -388,17 +409,17 @@ test("a remote draft edit preserves local text and requires reviewing the latest
   await page.getByRole("button", { name: "Edit workflow", exact: true }).click();
   await page.getByRole("button", { name: "JSON", exact: true }).click();
   const editor = page.getByLabel("Workflow graph JSON");
-  const plan = JSON.parse(await editor.inputValue());
+  const plan = JSON.parse(await readCode(editor));
   const runs = await (await request.get("/api/runs")).json();
   const id = runs.find((run: { task: string }) => run.task === plan.task).id;
-  await editor.fill(JSON.stringify({ ...plan, title: "Local unsaved change" }, null, 2));
+  await fillCode(editor, JSON.stringify({ ...plan, title: "Local unsaved change" }, null, 2));
   const remote = await request.put(`/api/runs/${id}/plan`, { headers: { "x-workflow-client": "1" }, data: { ...plan, title: "Remote saved change" } });
   expect(remote.ok()).toBe(true);
   await expect(page.getByRole("heading", { name: "Remote saved change" })).toBeVisible();
-  await expect(editor).toHaveValue(/Local unsaved change/);
+  await expectCode(editor, /Local unsaved change/);
   await expect(page.getByRole("button", { name: "Validate & save draft", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Discard edits & load latest draft", exact: true }).click();
-  await expect(editor).toHaveValue(/Remote saved change/);
+  await expectCode(editor, /Remote saved change/);
   await expect(page.getByRole("button", { name: "Approve & start", exact: true })).toBeEnabled();
 });
 
@@ -945,11 +966,11 @@ test("expanded workspaces keep graph context, search and draft edits with keyboa
   await dialog.getByRole("button", { name: "Editor", exact: true }).click();
   await dialog.getByRole("button", { name: "JSON", exact: true }).click();
   const editor = dialog.getByLabel("Workflow graph JSON", { exact: true });
-  const edited = JSON.parse(await editor.inputValue()) as { title: string };
+  const edited = JSON.parse(await readCode(editor)) as { title: string };
   edited.title = "Retained expanded graph edit";
-  await editor.fill(JSON.stringify(edited, null, 2));
+  await fillCode(editor, JSON.stringify(edited, null, 2));
   await dialog.getByRole("button", { name: "Close expanded view", exact: true }).click();
-  await expect(page.getByLabel("Workflow graph JSON", { exact: true })).toHaveValue(JSON.stringify(edited, null, 2));
+  await expectCode(page.getByLabel("Workflow graph JSON", { exact: true }), JSON.stringify(edited, null, 2));
   await page.getByRole("button", { name: "Discard graph edits", exact: true }).click();
 
   await page.getByRole("button", { name: "Workflow", exact: true }).click();
@@ -1064,7 +1085,7 @@ test("editable Bash, TypeScript and JavaScript blocks save source and runtime wi
   ]) {
     await page.getByLabel("Script language", { exact: true }).selectOption(language!);
     if (runtime !== "bash") await page.getByLabel("Script runtime", { exact: true }).selectOption(runtime!);
-    await page.getByLabel("Script source", { exact: true }).fill(code!);
+    await fillCode(page.getByLabel("Script source", { exact: true }), code!);
     await page.getByRole("button", { name: "Save block", exact: true }).click();
     await expect(page.getByText(/Block saved. New workflows/)).toBeVisible();
     const saved = (await (await request.get("/api/library")).json()).blocks[id];
@@ -1072,9 +1093,9 @@ test("editable Bash, TypeScript and JavaScript blocks save source and runtime wi
     expect(saved.definition.agent).toBeUndefined();
     expect(saved.definition.outputs).toEqual(["evidence"]);
   }
-  await page.getByLabel("Script source", { exact: true }).fill("unsaved");
+  await fillCode(page.getByLabel("Script source", { exact: true }), "unsaved");
   await page.getByRole("button", { name: "Discard block changes", exact: true }).click();
-  await expect(page.getByLabel("Script source", { exact: true })).toHaveValue(/WORKFLOW_INPUT/);
+  await expectCode(page.getByLabel("Script source", { exact: true }), /WORKFLOW_INPUT/);
   await page.getByText("Inputs, results & artifacts", { exact: true }).click();
   await page.screenshot({ path: "/tmp/workflow-script-block.png", fullPage: true });
 });
@@ -1239,4 +1260,31 @@ test("uploads and MCP discovery can be cancelled without late results or clearin
   await expect(card.getByRole("alert")).toHaveCount(0);
   await page.getByRole("button", { name: "Discard settings changes", exact: true }).click();
   await expect(card).toHaveCount(0);
+});
+
+
+test("CodeMirror highlights TypeScript, indents, undoes, searches and bounds long documents", async ({ page }) => {
+  await page.goto("/");
+  await page.getByText("Use a TypeScript workflow", { exact: true }).click();
+  const editor = page.getByLabel("New workflow TypeScript", { exact: true });
+  await fillCode(editor, "const answer: number = 42;");
+  await expect(editor.locator(".cm-line span").first()).toBeVisible();
+  await editor.press("ControlOrMeta+Home");
+  await editor.press("Tab");
+  await expectCode(editor, "  const answer: number = 42;");
+  await editor.press("ControlOrMeta+z");
+  await expectCode(editor, "const answer: number = 42;");
+  await editor.press("ControlOrMeta+f");
+  const search = page.getByPlaceholder("Find", { exact: true });
+  await search.fill("answer");
+  await expect(page.locator(".cm-searchMatch")).toHaveCount(1);
+  await search.press("Escape");
+  await expect(search).not.toBeVisible();
+  await fillCode(editor, Array.from({ length: 100 }, (_, i) => `const line${i} = ${i};`).join("\n"));
+  await expect.poll(async () => page.locator(".code-editor").first().locator(".cm-scroller").evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
+  const height = (await page.locator(".code-editor").first().boundingBox())!.height;
+  expect(height).toBeLessThan(650);
+  await expectCode(editor, /const line99 = 99;/);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
