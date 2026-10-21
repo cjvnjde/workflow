@@ -89,6 +89,14 @@ export class DesignChats {
       // Publish the finished state only after persistence. A ready reply must never
       // race a new turn or an apply while its previous disk write is still pending.
       await this.save(finished);
+      if (controller.signal.aborted && finished.status !== "failed") {
+        // Cancellation can arrive while the reply is still being written. Keep
+        // the previous conversation/proposal and persist the stopped state before
+        // making it available for another turn or an apply.
+        finished = { ...session, revision: finished.revision, status: "failed", activity: "",
+          error: "Design stopped. Send another message to continue." };
+        await this.save(finished);
+      }
       this.jobs.delete(id); this.sessions.set(id, finished);
     })().catch((error: unknown) => {
       session.status = "failed"; session.error = "Could not save this design reply. Check local storage and send your request again.";

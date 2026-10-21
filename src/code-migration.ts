@@ -3,6 +3,20 @@ import { scriptBundle } from "./script-migration.js";
 
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 
+function convertedTimeout(bundle: BlockBundle, commands: Library["config"]["commands"]) {
+  const definition = bundle.definition;
+  return Math.min(
+    3_600_000,
+    (definition.executor?.kind === "script"
+      ? definition.executor.timeoutMs + 2000
+      : (definition.agent?.timeoutMs ?? 600_000)) +
+      definition.checks.reduce(
+        (sum, check) => sum + (commands[check.command]?.timeoutMs ?? 0) + 2000,
+        0,
+      ),
+  );
+}
+
 /** Editable TypeScript for older libraries. Reading never rewrites user settings. */
 export function blockSource(
   original: BlockBundle,
@@ -18,7 +32,7 @@ export function blockSource(
     "",
     "export default block({",
     `  name: ${JSON.stringify(def.name)},`,
-    ...(def.agent?.timeoutMs ? [`  timeoutMs: ${def.agent.timeoutMs},`] : []),
+    `  timeoutMs: ${convertedTimeout(bundle, commands)},`,
     "  async run(ctx) {",
   ];
   if (executor?.kind === "script") {
@@ -83,6 +97,7 @@ export function codeBundle(
   commands: Library["config"]["commands"],
 ): BlockBundle {
   if (bundle.definition.executor?.kind === "code") return bundle;
+  bundle = scriptBundle(bundle, commands);
   const {
     agent: _agent,
     checks: _checks,
@@ -98,17 +113,7 @@ export function codeBundle(
       executor: {
         kind: "code",
         source: blockSource(bundle, commands),
-        timeoutMs: Math.min(
-          3_600_000,
-          (bundle.definition.executor?.kind === "script"
-            ? bundle.definition.executor.timeoutMs + 2000
-            : (bundle.definition.agent?.timeoutMs ?? 600_000)) +
-            bundle.definition.checks.reduce(
-              (sum, check) =>
-                sum + (commands[check.command]?.timeoutMs ?? 0) + 2000,
-              0,
-            ),
-        ),
+        timeoutMs: convertedTimeout(bundle, commands),
         maxOperations: 100,
       },
     },

@@ -241,22 +241,23 @@ export async function createServer(engine: WorkflowEngine, port = 4310, services
     "/api/runs/:id/events",
     async (request) => await engine.events(request.params.id),
   );
-  server.post("/api/runs", async (request) => {
+  server.post("/api/runs", async (request, reply) => {
     const proposal = proposalSchema.parse(request.body);
-    const library = await loadLibrary(engine.project);
-    if (proposal.maxCostUsd !== undefined) {
-      library.config.budget = budgetSchema.parse({ ...library.config.budget, maxCostUsd: proposal.maxCostUsd });
-    }
-    if (proposal.strategy === "ai" && engine.mode === "demo") {
-      throw new Error(
-        "AI coordination needs live mode. Demo supports bug and feature templates.",
-      );
-    }
-    if (planningActive) {
-      throw new Error("A coordinator proposal is already in progress");
-    }
-    planningActive = true;
-    try {
+    const cancelled = new AbortController();
+    const close = () => { if (!reply.raw.writableEnded) cancelled.abort(new Error("Workflow creation cancelled")); };
+    const signal = AbortSignal.any([planning.signal, cancelled.signal]);
+    reply.raw.once("close", close);
+    try { return await planningJob(async () => {
+      signal.throwIfAborted();
+      const library = await loadLibrary(engine.project);
+      if (proposal.maxCostUsd !== undefined) {
+        library.config.budget = budgetSchema.parse({ ...library.config.budget, maxCostUsd: proposal.maxCostUsd });
+      }
+      if (proposal.strategy === "ai" && engine.mode === "demo") {
+        throw new Error(
+          "AI coordination needs live mode. Demo supports bug and feature templates.",
+        );
+      }
       const plan =
         proposal.strategy === "ai"
           ? await planWithAi({
@@ -267,16 +268,19 @@ export async function createServer(engine: WorkflowEngine, port = 4310, services
               emit: (kind, message) => {
                 engine.coordinatorActivity(kind, message);
               },
-              signal: planning.signal,
-              models: (await catalog(planning.signal)).models,
+              signal,
+              models: (await catalog(signal)).models,
             })
           : createTemplate(proposal.task, proposal.strategy, library);
+      signal.throwIfAborted();
       const run = await engine.create(plan, library);
+      if (signal.aborted) {
+        await engine.remove(run.id);
+        signal.throwIfAborted();
+      }
 
       return proposal.autoApprove ? await engine.approve(run.id) : run;
-    } finally {
-      planningActive = false;
-    }
+    }); } finally { reply.raw.removeListener("close", close); }
   });
   server.put<{ Params: { id: string } }>(
     "/api/runs/:id/plan",

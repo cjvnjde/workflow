@@ -660,9 +660,13 @@ export class WorkflowEngine {
         for (const { worker } of this.workers.values()) {
           if (worker.getState() === "RUNNING") { worker.shutdown(); }
         }
-        await Promise.all([...this.workers.values()].map(({ done }) => done));
+        // A crashed worker must not release ownership while another worker is
+        // still stopping activities that can change the shared project.
+        const stopped = await Promise.allSettled([...this.workers.values()].map(({ done }) => done));
         await this.projections;
         await this.store.flush();
+        const failures = stopped.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+        if (failures.length) { throw new AggregateError(failures.map(result => result.reason), "Temporal workers failed while stopping"); }
       } finally {
         try { await this.environment?.teardown(); } finally { await this.releaseProject?.(); }
       }
@@ -738,6 +742,9 @@ export class WorkflowEngine {
   private async executeOperation(value: WorkflowRun, raw: CodeOperation): Promise<unknown> {
     const run = runSchema.parse(value);
     this.assertActivity(run);
+    if (run.mode !== this.mode) {
+      throw new Error("Execution mode mismatch. Restart the server in this run's original mode.");
+    }
     if (!run.program) throw new Error("Code effects require a frozen TypeScript workflow");
     const operation = codeOperationSchema.parse(raw);
     const node = run.plan.nodes.find(node => node.id === run.cursor)!;

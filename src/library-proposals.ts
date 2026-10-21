@@ -89,6 +89,11 @@ export class LibraryProposals {
     return await result;
   }
   private filename(id: string) { return path.join(this.project, ".workflow", "library-proposals", `${libraryProposalSchema.shape.id.parse(id)}.json`); }
+  private removedBlockFiles(ids: readonly string[] = []) {
+    // JSON edits retain directory-backed source. Removed modules must not
+    // resolve to those old files when validating the remaining dependencies.
+    return new Set(ids.map(id => path.resolve(this.project, ".workflow", "blocks", id, "block.ts")));
+  }
   private async save(proposal: LibraryProposal) {
     const filename = this.filename(proposal.id);
     await mkdir(path.dirname(filename), { recursive: true, mode: 0o700 });
@@ -102,7 +107,7 @@ export class LibraryProposals {
       change.bundle = await formatBlock(change.bundle);
       blocks[change.bundle.definition.id] = change.bundle;
     }
-    await validateCodeBlocks(this.project, blocks);
+    await validateCodeBlocks(this.project, blocks, this.removedBlockFiles(changes.remove));
     const proposal: LibraryProposal = { id: randomUUID(), createdAt: new Date().toISOString(), status: "draft", kind, baseHash: libraryHash(library), changes, allowedModels: models.map(modelKey) };
     await this.save(proposal);
     return proposal;
@@ -119,7 +124,7 @@ export class LibraryProposals {
       if (libraryHash(current) !== proposal.baseHash) { throw new Error("The library or project defaults changed. Generate a new proposal to preserve those edits."); }
       const allowed = proposal.kind === "manual" ? models : models.filter((model) => proposal.allowedModels.includes(modelKey(model)));
       const { blocks } = validateLibraryChanges(proposal.changes, current, proposal.kind, allowed);
-      await validateCodeBlocks(this.project, blocks);
+      await validateCodeBlocks(this.project, blocks, this.removedBlockFiles(proposal.changes.remove));
       proposal.appliedHash = libraryHash({ config: current.config, blocks });
       // Persist the intended final fingerprint so a retry can recognize an interrupted publication.
       await this.save(proposal);
@@ -152,6 +157,7 @@ export class LibraryProposals {
       if (!library.blocks[id]) { throw new Error("Block not found"); }
       const blocks = { ...library.blocks }; delete blocks[id];
       validateLibraryResources(blocks, library.config.commands);
+      await validateCodeBlocks(this.project, blocks, this.removedBlockFiles([id]));
       const directory = path.join(this.project, ".workflow", "libraries");
       await mkdir(directory, { recursive: true, mode: 0o700 });
       await atomicWrite(path.join(directory, `${revision}.json`), JSON.stringify({ version: 1, blocks: library.blocks }));

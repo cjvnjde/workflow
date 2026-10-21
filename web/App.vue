@@ -300,13 +300,23 @@ function selectEntry(item: (typeof entries.value)[number]) {
   });
 }
 async function submitTask(prompt: string, attachments: string[]) {
+  const submittedComposer = composerKey.value;
   const created = await request("/api/tasks", taskSchema, {
     method: "POST",
     body: { prompt, attachments },
   });
-  selectedTask.value = created.id;
+  // Creation may finish after the user has opened another task or a new draft.
+  // Keep the created task in history without replacing that newer workspace.
+  if (
+    view.value === "task" &&
+    !selectedTask.value &&
+    !selectedId.value &&
+    composerKey.value === submittedComposer
+  ) {
+    selectedTask.value = created.id;
+    selectRun(undefined);
+  }
   applyTask(created);
-  selectRun(undefined);
 }
 async function submitProgram(
   value: ProgramSource & { title: string; task: string },

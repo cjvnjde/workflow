@@ -215,6 +215,35 @@ test("shutdown during initial chat persistence waits for cancellation without st
   await assert.rejects(chats.send(created.id, { message: "Again", revision: chats.get(created.id).revision }), /shutting down/);
 });
 
+test("cancelling while a design reply is being saved cannot publish the new proposal", async (t) => {
+  const { project, cleanup } = await fixture(t);
+  const chats = new DesignChats(project, catalog, profileDesigner);
+  await chats.initialize(); cleanup(() => chats.close());
+  const created = await chats.create({ scope: "profiles" });
+  const publishing = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const save = chats["save"].bind(chats);
+  chats["save"] = async session => {
+    await save(session);
+    if (session.status === "ready") { publishing.resolve(); await release.promise; }
+  };
+  cleanup(async () => { release.resolve(); });
+  await chats.send(created.id, { message: "Generate profiles", revision: created.revision });
+  await publishing.promise;
+  assert.equal(chats.get(created.id).status, "working");
+  const cancelling = chats.cancel(created.id);
+  release.resolve();
+  const cancelled = await cancelling;
+  assert.equal(cancelled.status, "failed");
+  assert.match(cancelled.error!, /stopped/);
+  assert.equal(cancelled.proposal, undefined);
+  await assert.rejects(chats.apply(created.id, { revision: cancelled.revision }), /cannot be applied/);
+  const restored = new DesignChats(project, catalog, profileDesigner);
+  await restored.initialize(); cleanup(() => restored.close());
+  assert.equal(restored.get(created.id).status, "failed");
+  assert.equal(restored.get(created.id).proposal, undefined);
+});
+
 test("interrupted persisted chats recover with their conversation intact", async (t) => {
   const { project, cleanup } = await fixture(t);
   const chats = new DesignChats(project, catalog, profileDesigner); await chats.initialize();

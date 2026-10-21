@@ -270,3 +270,80 @@ test("cancelling HTTP refinement stops its model work and cannot publish a late 
   assert.equal(engine.get(draft.id).plan.title, "Refined graph");
   assert.equal(calls, 2);
 });
+
+test("cancelling HTTP workflow creation stops planning and cannot publish or auto-approve its result", async t => {
+  const { project, cleanup } = await fixture(t);
+  const engine = new WorkflowEngine(project, "live", passingRunner);
+  const entered = Promise.withResolvers<AbortSignal>();
+  const release = Promise.withResolvers<void>();
+  let approvals = 0;
+  engine.approve = async () => { approvals++; throw new Error("Cancelled requests must not start workflows"); };
+  const server = await createServer(engine, 0, {
+    catalog: async () => ({ models: [], warnings: [] }),
+    plan: async options => {
+      entered.resolve(options.signal); await release.promise;
+      return createTemplate(options.task, "feature", options.library);
+    },
+  });
+  cleanup(() => server.close()); cleanup(async () => { release.resolve(); });
+  const address = await server.listen({ port: 0, host: "127.0.0.1" });
+  const controller = new AbortController();
+  const response = fetch(`${address}/api/runs`, {
+    method: "POST", headers: { "content-type": "application/json", "x-workflow-client": "1" },
+    body: JSON.stringify({ task: "Cancelled request", strategy: "ai", autoApprove: true }), signal: controller.signal,
+  });
+  const rejected = assert.rejects(response, /abort/i);
+  const signal = await entered.promise;
+  controller.abort(); await rejected;
+  for (let tries = 0; !signal.aborted && tries < 100; tries++) await new Promise(resolve => setTimeout(resolve, 10));
+  release.resolve();
+  assert.equal(signal.aborted, true);
+  let refreshed;
+  for (let tries = 0; tries < 100; tries++) {
+    refreshed = await server.inject({ method: "POST", url: "/api/models/refresh", headers });
+    if (refreshed.statusCode === 200) break;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.equal(refreshed?.statusCode, 200);
+  assert.equal(engine.list(true).length, 0);
+  assert.equal(approvals, 0);
+});
+
+test("cancelling HTTP creation while saving a draft removes it before auto-approval", async t => {
+  const { project, cleanup } = await fixture(t);
+  const engine = new WorkflowEngine(project, "live", passingRunner);
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const create = engine.create.bind(engine);
+  const disconnected = Promise.withResolvers<void>();
+  let approvals = 0;
+  engine.create = async (...args) => { entered.resolve(); await release.promise; return await create(...args); };
+  engine.approve = async () => { approvals++; throw new Error("Cancelled requests must not start workflows"); };
+  const server = await createServer(engine, 0, { catalog: async () => ({ models: [], warnings: [] }) });
+  server.addHook("onRequest", async (request, reply) => {
+    if (request.method === "POST" && request.url === "/api/runs") reply.raw.once("close", () => disconnected.resolve());
+  });
+  cleanup(() => server.close()); cleanup(async () => { release.resolve(); });
+  const address = await server.listen({ port: 0, host: "127.0.0.1" });
+  const controller = new AbortController();
+  const response = fetch(`${address}/api/runs`, {
+    method: "POST", headers: { "content-type": "application/json", "x-workflow-client": "1" },
+    body: JSON.stringify({ task: "Cancel during storage", strategy: "feature", autoApprove: true }), signal: controller.signal,
+  });
+  const rejected = assert.rejects(response, /abort/i);
+  await entered.promise;
+  controller.abort(); await rejected;
+  await disconnected.promise;
+  release.resolve();
+  let refreshed;
+  for (let tries = 0; tries < 100; tries++) {
+    refreshed = await server.inject({ method: "POST", url: "/api/models/refresh", headers });
+    if (refreshed.statusCode === 200) break;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.equal(refreshed?.statusCode, 200);
+  assert.equal(engine.list().length, 0);
+  assert.equal(engine.list(true).length, 1);
+  assert.ok(engine.list(true)[0]!.deletedAt);
+  assert.equal(approvals, 0);
+});

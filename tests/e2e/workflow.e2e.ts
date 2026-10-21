@@ -328,6 +328,43 @@ test("an action response cannot switch the UI back to a previously selected run"
   await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
 });
 
+test("a delayed task creation response preserves a newer task draft", async ({ page }) => {
+  const now = new Date().toISOString();
+  const task = {
+    id: "bf3aa485-807c-4d45-bf98-c944238d126e", createdAt: now, updatedAt: now,
+    revision: 1, status: "queued", prompt: "The earlier submitted task", attachments: [],
+    answers: [], approval: "review", suggestedBlocks: [], events: [],
+  };
+  let release!: () => void;
+  let received!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const responseReady = new Promise<void>((resolve) => { received = resolve; });
+  await page.route("**/api/tasks", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fulfill({ json: [] });
+      return;
+    }
+    received();
+    await gate;
+    await route.fulfill({ status: 202, json: task });
+  });
+  await page.route(`**/api/tasks/${task.id}`, (route) => route.fulfill({ json: task }));
+  await page.goto("/");
+  const composer = page.getByLabel("What should we work on?", { exact: true });
+  try {
+    await composer.fill(task.prompt);
+    await page.getByRole("button", { name: "Start task", exact: true }).click();
+    await responseReady;
+    await page.getByRole("button", { name: "New task", exact: true }).click();
+    await composer.fill("Keep this newer draft in focus");
+  } finally {
+    release();
+  }
+  await expect(page.locator(".task-item").filter({ hasText: task.prompt })).toBeVisible();
+  await expect(composer).toHaveValue("Keep this newer draft in focus");
+  await expect(page.getByRole("button", { name: "Start task", exact: true })).toBeEnabled();
+});
+
 test("the UI shows a draft budget estimate, execution version and configured spending limit", async ({ page, request }) => {
   await page.goto("/");
   await page.getByLabel("What should we work on?").fill("Budget display regression");

@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fixture } from "./helpers.js";
 import { loadLibrary } from "../src/library.js";
-import { LibraryProposals, validateLibraryChanges, validatePlanModels } from "../src/library-proposals.js";
+import { LibraryProposals, libraryHash, validateLibraryChanges, validatePlanModels } from "../src/library-proposals.js";
 import { generateLibraryChanges } from "../src/library-generator.js";
 import { createTemplate } from "../src/templates.js";
 import { createAiPlan } from "../src/planner.js";
@@ -50,6 +51,59 @@ test("stale or rejected library proposals preserve later manual edits", async (t
   const rejected = await store.create(await loadLibrary(project), "manual", changes, []);
   await store.reject(rejected.id);
   await assert.rejects(store.apply(rejected.id, []), /Only draft/);
+});
+
+test("deleting a block preserves dependencies imported by remaining library blocks", async t => {
+  const { project, library } = await fixture(t);
+  const store = new LibraryProposals(project);
+  const bundle = (id: string, source: string) => ({
+    definition: { id, name: id, description: "Shared code", executor: { kind: "code", source } }, skills: [],
+  });
+  const proposal = await store.create(library, "manual", { summary: "Add dependent blocks", blocks: [
+    { bundle: bundle("base", 'import {block} from "workflow"; export default block({run(){return "shared";}});'), rationale: "Reusable behavior" },
+    { bundle: bundle("composed", 'import {block} from "workflow"; import base from "../base/block.ts"; export default block({run(ctx){return base.options.run(ctx);}});'), rationale: "Reuse the base block" },
+  ] }, []);
+  await store.apply(proposal.id, []);
+  const current = await loadLibrary(project);
+  await assert.rejects(store.removeBlock("base", libraryHash(current)), /Cannot find module.*base/);
+  assert.deepEqual(await loadLibrary(project), current);
+  await store.removeBlock("composed", libraryHash(current));
+  const remaining = await loadLibrary(project);
+  assert.ok(remaining.blocks.base);
+  assert.equal(remaining.blocks.composed, undefined);
+});
+
+test("deleting a block cannot resolve its removed dependency from stale physical source", async t => {
+  const { project, library } = await fixture(t);
+  const store = new LibraryProposals(project);
+  await writeFile(path.join(project, "helper.ts"), 'export const message = "shared helper";');
+  const bundle = (id: string, source: string) => ({
+    definition: { id, name: id, description: "Shared code", executor: { kind: "code", source } }, skills: [],
+  });
+  const proposal = await store.create(library, "manual", { summary: "Add dependent blocks", blocks: [
+    { bundle: bundle("base", 'import {block} from "workflow"; import {message} from "../../../helper.ts"; export default block({run(){return "current: " + message;}});'), rationale: "Reusable behavior" },
+    { bundle: bundle("composed", 'import {block} from "workflow"; import base from "../base/block.ts"; export default block({run(ctx){return base.options.run(ctx);}});'), rationale: "Reuse the base block" },
+  ] }, []);
+  await store.apply(proposal.id, []);
+  // Applying JSON library edits retains the directory-backed version on disk.
+  const baseDirectory = path.join(project, ".workflow", "blocks", "base");
+  await mkdir(baseDirectory);
+  const stale = 'import {block} from "workflow"; export default block({run(){return "stale behavior";}});';
+  await writeFile(path.join(baseDirectory, "block.ts"), stale);
+  const current = await loadLibrary(project);
+  await assert.rejects(store.removeBlock("base", libraryHash(current)), /Cannot find module.*base/);
+  assert.deepEqual(await loadLibrary(project), current);
+  const removal = { summary: "Remove base", blocks: [], remove: ["base"] };
+  await assert.rejects(store.create(current, "manual", removal, []), /Cannot find module.*base/);
+  // Old app versions could already have persisted an invalid removal proposal.
+  const savedRemoval = { ...proposal, id: randomUUID(), baseHash: libraryHash(current), changes: removal };
+  await store["save"](savedRemoval);
+  await assert.rejects(store.apply(savedRemoval.id, []), /Cannot find module.*base/);
+  assert.deepEqual(await loadLibrary(project), current);
+  // Normal project helper imports remain valid when deleting an unrelated block.
+  await store.removeBlock("composed", libraryHash(current));
+  assert.ok((await loadLibrary(project)).blocks.base);
+  assert.equal(await readFile(path.join(baseDirectory, "block.ts"), "utf8"), stale);
 });
 
 test("model-only updates require every block and preserve instructions and limits", async (t) => {

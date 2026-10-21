@@ -129,6 +129,7 @@ export function checkProgram(
   value: unknown,
   catalog: Library["blocks"] = {},
   inspectDefinition?: (declarative: boolean) => void,
+  excludedFiles?: ReadonlySet<string>,
 ): ProgramSource {
   const source = programSourceSchema.parse(value);
   const { files: virtual, check: entry } = programFiles(
@@ -157,8 +158,9 @@ export function checkProgram(
     [...virtual.keys()].some((file) =>
       file.startsWith(path.resolve(directory) + path.sep),
     ) || !!directoryExists?.(directory);
-  host.readFile = (file) => virtual.get(path.resolve(file)) ?? read(file);
-  host.fileExists = (file) => virtual.has(path.resolve(file)) || exists(file);
+  host.readFile = (file) => excludedFiles?.has(path.resolve(file))
+    ? undefined : virtual.get(path.resolve(file)) ?? read(file);
+  host.fileExists = (file) => !excludedFiles?.has(path.resolve(file)) && (virtual.has(path.resolve(file)) || exists(file));
   host.resolveModuleNames = (names, containingFile) =>
     names.map((name) => {
       if (apiModules.has(name))
@@ -290,6 +292,7 @@ async function bundleProgram(
   project: string,
   value: unknown,
   catalog: Library["blocks"],
+  excludedFiles?: ReadonlySet<string>,
 ) {
   const parsed = programSourceSchema.parse(value);
   let declarative = false;
@@ -300,6 +303,7 @@ async function bundleProgram(
     (flag) => {
       declarative = flag;
     },
+    excludedFiles,
   );
   const { files, entry: programEntry } = programFiles(project, source, catalog);
   const built = await Bun.build({
@@ -331,7 +335,11 @@ async function bundleProgram(
             return undefined;
           });
           build.onLoad({ filter: /.*/ }, (args) => {
-            const contents = files.get(path.resolve(args.path));
+            const filename = path.resolve(args.path);
+            if (excludedFiles?.has(filename)) {
+              throw new Error(`Removed block module is unavailable: ${path.relative(project, filename)}`);
+            }
+            const contents = files.get(filename);
             return contents === undefined
               ? undefined
               : { contents, loader: "ts" };
@@ -381,8 +389,9 @@ export async function validateProgram(
   project: string,
   value: unknown,
   catalog: Library["blocks"] = {},
+  excludedFiles?: ReadonlySet<string>,
 ): Promise<ProgramSource> {
-  return (await bundleProgram(project, value, catalog)).source;
+  return (await bundleProgram(project, value, catalog, excludedFiles)).source;
 }
 
 export async function validateComposition(
@@ -401,6 +410,7 @@ export async function validateComposition(
 export async function validateCodeBlocks(
   project: string,
   blocks: Library["blocks"],
+  excludedFiles?: ReadonlySet<string>,
 ) {
   if (
     !Object.values(blocks).some(
@@ -416,6 +426,7 @@ export async function validateCodeBlocks(
         'import {workflow} from "workflow"; export default workflow({name:"Library validation",async run(){}});',
     },
     blocks,
+    excludedFiles,
   );
 }
 
