@@ -308,7 +308,7 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
   assert.equal(proposal.nodes[0]?.block, "custom-audit");
   assert.deepEqual(
     requests[3]?.tools.map((tool) => tool.function.name).sort(),
-    ["bash", "edit_file", "git_changes", "list_files", "read_file", "submit_plan", "write_file"],
+    ["submit_plan"],
   );
   assert.ok(JSON.stringify(requests[3]).includes("Available models"));
   const generated = await generateLibraryChanges({

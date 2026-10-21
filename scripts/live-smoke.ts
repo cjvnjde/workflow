@@ -221,6 +221,8 @@ async function taskFromComposer(prompt: string, attachment?: string) {
     planned.error ?? JSON.stringify(planned.question),
   );
   assert.ok(planned.runId);
+  const inspection = planned.events.filter(event => event.kind === "tool_start" && /^(bash|git_changes|read_file|list_files|edit_file|write_file|mcp_)/.test(event.message));
+  assert.deepEqual(inspection, [], "Graph composition must not inspect or execute project tools");
   return planned;
 }
 async function finish(task: TaskRequest, publicationStep?: string) {
@@ -283,13 +285,18 @@ async function approveAndFinish(
   const draft = runSchema.parse(await api(`/api/runs/${task.runId}`));
   assert.equal(draft.status, "draft", "Review mode must wait for approval");
   assert.equal(draft.attempts.length, 0);
+  assert.ok(draft.plan.nodes.length, "Generated workflows must preview all planned steps");
+  assert.equal(draft.program?.composition, "graph");
+  await expect(page.getByRole("button", { name: "Workflow", exact: true })).toHaveClass(/active/);
+  for (const node of draft.plan.nodes) await expect(page.locator(`.vue-flow__node[data-id="${node.id}"]`)).toBeVisible();
+  await page.screenshot({ path: path.join(directory, `${task.id}-graph.png`), fullPage: true });
   const publicationStep =
-    checkPublicationOrder && !draft.program
+    checkPublicationOrder && (!draft.program || draft.program.composition === "graph")
       ? draft.plan.nodes.find((node) =>
           /publish|commit|push/i.test(`${node.id} ${node.label}`),
         )
       : undefined;
-  if (checkPublicationOrder && !draft.program)
+  if (checkPublicationOrder && (!draft.program || draft.program.composition === "graph"))
     assert.ok(
       publicationStep,
       "The plan must include a dedicated publication step",
@@ -312,7 +319,7 @@ async function approveAndFinish(
   }
   return await finish(
     task,
-    draft.program && checkPublicationOrder
+    draft.program && draft.program.composition !== "graph" && checkPublicationOrder
       ? "$program-publication"
       : publicationStep?.id,
   );

@@ -13,7 +13,7 @@ import {
 import { Background } from "@vue-flow/background";
 import { Controls } from "@vue-flow/controls";
 import { resolveAgentSettings, type WorkflowRun } from "../../src/domain.js";
-import { executionLabel } from "../execution-label.js";
+import { executionLabel, isSourceWorkflow } from "../execution-label.js";
 import "@vue-flow/core/dist/style.css";
 import "@vue-flow/core/dist/theme-default.css";
 import "@vue-flow/controls/dist/style.css";
@@ -127,9 +127,11 @@ const nodes = computed<Node[]>(() => [
         maxVisits: node.maxVisits,
         label: node.label,
         model: block?.executor
-          ? executionLabel(block.executor)
+          ? block.executor.kind === "code" && node.agent?.model
+            ? `${executionLabel(block.executor)} · ${settings.model}`
+            : executionLabel(block.executor)
           : (settings.model ?? "orchestrator chooses"),
-        thinking: block?.executor ? block.executor.kind : settings.thinking,
+        thinking: block?.executor && !(block.executor.kind === "code" && node.agent?.model) ? block.executor.kind : settings.thinking,
         state,
         current,
       },
@@ -156,16 +158,16 @@ const nodes = computed<Node[]>(() => [
   },
 ]);
 const edges = computed<Edge[]>(() =>
-  (props.run.program
+  (isSourceWorkflow(props.run)
     ? [...new Map((props.run.transitions ?? []).map(edge => [`${edge.from}-${edge.to}-${edge.outcome}`, edge])).values()]
         .map(edge => ({ from: edge.from, target: edge.to, outcome: edge.outcome }))
     : props.run.plan.nodes.flatMap(node => Object.entries(node.on).map(([outcome, target]) => ({ from: node.id, target, outcome }))))
     .map(({ from, target, outcome }) => ({
-      id: props.run.program ? `${from}-${target}-${outcome}` : `${from}-${outcome}`,
+      id: isSourceWorkflow(props.run) ? `${from}-${target}-${outcome}` : `${from}-${outcome}`,
       source: from,
       target,
       type: from === target ? "default" : "smoothstep",
-      label: props.run.program && outcome === "pass" ? "next" : outcome,
+      label: isSourceWorkflow(props.run) && outcome === "pass" ? "next" : outcome,
       animated: props.run.status === "running" && props.run.cursor === from,
       markerEnd: { type: MarkerType.ArrowClosed },
       style: {

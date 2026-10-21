@@ -38,6 +38,7 @@ import { compileProgram } from "./program-compiler.js";
 import { codeOperationSchema, type CodeOperation } from "./code-schema.js";
 import { executeCodeCommand } from "./code-host.js";
 import { programSourceSchema } from "./program-schema.js";
+import { graphProgram } from "./graph-composition.js";
 import { loadOrchestration } from "./orchestration-settings.js";
 
 const activeStatuses = new Set<WorkflowRun["status"]>(["running", "pausing", "paused", "interrupted"]);
@@ -153,7 +154,7 @@ export class WorkflowEngine {
     if (this.mode === "demo") { return; }
     const settings = plan.nodes.flatMap(node => {
       const bundle = node.block ? library.blocks[node.block] : undefined;
-      return bundle?.definition.executor ? [] : [resolveAgentSettings(library.config.agent, bundle?.definition.agent, node.agent)];
+      return bundle?.definition.executor && bundle.definition.executor.kind !== "code" ? [] : [resolveAgentSettings(library.config.agent, bundle?.definition.agent, node.agent)];
     });
     for (const setting of settings) {
       if (!setting.provider || !setting.model) { continue; }
@@ -320,21 +321,7 @@ export class WorkflowEngine {
   async create(plan: WorkflowPlan, library: Library) {
     if (plan.nodes.some(node => library.blocks[node.block]?.definition.executor?.kind === "code")) {
       const checked = validatePlan(plan, library);
-      const source = `import {workflow,type Model} from "workflow";
-const plan: {title:string;task:string;entry:string;nodes:{id:string;block:string;goal:string;label:string;maxVisits:number;agent?:Model;context?:Record<string,string>;inputs:{node:string;artifact:string;as?:string;required:boolean}[];on:Record<"pass"|"retry"|"fail",string>}[]} = ${JSON.stringify(checked)};
-export default workflow({name:plan.title,async run(ctx){
-  const artifacts:Record<string,Record<string,string>>={}; let cursor=plan.entry;
-  while(cursor!=="$complete" && cursor!=="$failed"){
-    const node=plan.nodes.find(node=>node.id===cursor)!;
-    const inputs:Record<string,string>={...node.context};
-    for(const input of node.inputs){const value=artifacts[input.node]?.[input.artifact];if(value===undefined && input.required)throw new Error("Missing required input: "+input.artifact);if(value!==undefined)inputs[input.as||input.artifact]=value;}
-    const result=await ctx.stepResult(node.id,node.block,{prompt:node.goal,label:node.label,inputs,maxVisits:node.maxVisits,model:node.agent});
-    artifacts[node.id]={...result.artifacts,summary:result.summary};cursor=node.on[result.outcome];
-  }
-  if(cursor==="$failed")throw new Error("Workflow stopped on its configured failure route.");
-  return artifacts;
-}});`;
-      return this.createProgram(checked.title, checked.task, { source }, library);
+      return this.createProgram(checked.title, checked.task, { source: graphProgram(library), input: { plan: checked } }, library, undefined, checked);
     }
     return await this.mutate(async () => {
       const snapshot = structuredClone(library);
@@ -362,10 +349,12 @@ export default workflow({name:plan.title,async run(ctx){
     });
   }
 
-  async createProgram(title: string, task: string, value: unknown, library: Library, signal?: AbortSignal) {
+  async createProgram(title: string, task: string, value: unknown, library: Library, signal?: AbortSignal, graph?: WorkflowPlan) {
     return await this.mutate(async () => {
       signal?.throwIfAborted();
       const snapshot = structuredClone(library);
+      const checked = graph && validatePlan(graph, snapshot);
+      if (checked) await this.priceSnapshot(checked, snapshot);
       const prepared = await this.prepareProgram(value, snapshot);
       signal?.throwIfAborted();
       const now = new Date().toISOString(), id = randomUUID();
@@ -373,13 +362,16 @@ export default workflow({name:plan.title,async run(ctx){
         id, temporalWorkflowId: `workflow-${id}`, revision: 0,
         executionVersion: prepared.version.id, executionProtocol: 2,
         createdAt: now, updatedAt: now, mode: this.mode, status: "draft",
-        plan: { title, task, entry: "start", nodes: [] }, program: prepared.program,
-        config: snapshot.config, blocks: {}, cursor: "start", visits: {}, artifacts: {}, attempts: [],
+        plan: checked ?? { title, task, entry: "start", nodes: [] },
+        program: { ...prepared.program, composition: checked ? "graph" : undefined },
+        config: snapshot.config, blocks: checked ? snapshot.blocks : {}, cursor: checked?.entry ?? "start", visits: {}, artifacts: {}, attempts: [],
       });
       this.checkSnapshotSize(run);
       await this.store.save(run);
       this.runs.set(id, run);
-      this.emit(run, "draft", "TypeScript workflow typechecked and frozen. Review the source and inputs before approval.");
+      this.emit(run, "draft", checked
+        ? "Workflow graph composed and frozen. Review its blocks, models and connections before approval."
+        : "TypeScript workflow typechecked and frozen. Review the source and inputs before approval.");
       await this.store.flush();
       if (signal?.aborted) {
         run.deletedAt = new Date().toISOString(); run.updatedAt = run.deletedAt; run.revision++;
@@ -416,6 +408,7 @@ export default workflow({name:plan.title,async run(ctx){
     return await this.mutate(async () => {
       const run = structuredClone(this.requireRun(id));
       if (run.status !== "draft" || !run.program) throw new Error("Only a draft TypeScript workflow can be edited.");
+      if (run.program.composition === "graph") throw new Error("Edit the workflow graph; its TypeScript execution is generated automatically.");
       this.assertRevision(run, expectedRevision);
       const prepared = await this.prepareProgram(value, { config: run.config, blocks: run.program.catalog });
       signal?.throwIfAborted();
@@ -438,15 +431,21 @@ export default workflow({name:plan.title,async run(ctx){
       if (run.status !== "draft") {
         throw new Error("Only draft workflows can be edited");
       }
-      if (run.program) throw new Error("Edit this workflow's TypeScript source instead of its execution trace.");
+      if (run.program && run.program.composition !== "graph") throw new Error("Edit this workflow's TypeScript source instead of its execution trace.");
       this.assertRevision(run, expectedRevision);
       const plan = validatePlan(value, { config: run.config, blocks: run.blocks });
       if (Buffer.byteLength(JSON.stringify({ ...run, plan })) > 1_000_000) {
         throw new Error("Workflow snapshot is too large for Temporal. Reduce the graph or block resources.");
       }
       await this.priceSnapshot(plan, { config: run.config, blocks: run.blocks });
-      run.estimate = estimateBudget(plan, { config: run.config, blocks: run.blocks }, run.mode);
+      if (run.program?.composition === "graph") {
+        // Connections and defaults are inputs to the already frozen TypeScript.
+        // Do not rebuild helpers from today's files when editing a graph draft.
+        run.program.input = { ...run.program.input, plan };
+        run.estimate = undefined;
+      } else run.estimate = estimateBudget(plan, { config: run.config, blocks: run.blocks }, run.mode);
       run.plan = plan;
+      this.checkSnapshotSize(run);
       run.cursor = run.plan.entry;
       run.revision += 1;
       run.updatedAt = new Date().toISOString();
@@ -530,7 +529,7 @@ export default workflow({name:plan.title,async run(ctx){
       if (!this.environment || !run.temporalWorkflowId) {
         throw new Error("Temporal is not connected");
       }
-      if (!run.program) validatePlan(run.plan, { config: run.config, blocks: run.blocks });
+      if (!run.program || run.program.composition === "graph") validatePlan(run.plan, { config: run.config, blocks: run.blocks });
       const approved = structuredClone(run);
       approved.executionVersion ??= this.currentVersion?.id;
       approved.executionProtocol = 2;

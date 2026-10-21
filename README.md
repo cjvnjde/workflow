@@ -50,8 +50,8 @@ Open **http://127.0.0.1:4310**.
 
 1. Open **Settings → Providers & models**, connect ChatGPT (or a provider API key). In **Model profiles → Generate with AI**, describe your preferences, send the request and apply the proposed profiles. The AI selects a planning model. You can also choose a project default manually.
 2. Return to **New task**. Write the goal in the central input; attach images or text/code files, paste a screenshot, or drop files onto the composer. Press Enter to start; Shift+Enter adds a line.
-3. The orchestrator classifies the request, reads the matching task instructions and submits typechecked TypeScript. It asks a follow-up only when an essential detail is missing. There is no task-type or coordinator selector.
-4. Review the source and inputs and **Approve & start**, or select automatic execution in **Settings → Execution**. The editor supports saving, discarding, downloading `.ts`, and AI refinement. Existing JSON workflows retain their structured editor and execution history.
+3. The orchestrator classifies the request, reads the matching task instructions and composes a graph from the supplied context and block catalog. It does not inspect project files, Git, shell or MCP; investigation happens in execution blocks. It asks a follow-up only when an essential detail is missing. There is no task-type or coordinator selector.
+4. Review the complete graph and **Approve & start**, or select automatic execution in **Settings → Execution**. The editor lets you change each step’s instructions, model/thinking, routes and context handoffs. Blocks remain TypeScript; the engine compiles their connections into an internal executable workflow. Advanced imported TypeScript workflows keep their source editor and dynamic execution trace.
 5. Watch the highlighted active step and live activity. Drag blocks to arrange the graph; positions survive updates and reloads, and **Reset layout** restores the original arrangement. **Focus active step** brings running work into view.
 6. The outcome appears above the graph, including failures and blockers. Open **Results** for rendered Markdown, verification checks and artifacts; use **Copy Markdown** or **Download** on any artifact, or export the whole report. The notification bell records completions, pauses and failures received while the app is open.
 7. Active and previous tasks stay in the sidebar; reloading restores the selected task. Pause, resume or stop execution there. **Delete workflow** (also available beside a sidebar entry) removes settled tasks and drafts from history. Stop active work first. Deletion does not undo project files or erase recovery journals, attachments or Temporal execution history from disk.
@@ -105,7 +105,19 @@ Inside a block:
 - `await ctx.readFile(path)` and `await ctx.writeFile(path, text)` record file effects with recovery. `await ctx.log(message)` adds live activity.
 - `ctx.summary(markdown)` and `ctx.artifact(name, text)` publish visible results. `ctx.outcome("retry")` can mark a verification attempt while still returning structured feedback.
 
-Use stable step IDs inside loops and await operations sequentially. `timeoutMs` and `maxOperations` bound a block; node `maxVisits`, workflow `maxSteps`, and model spending limits still apply. A block may make multiple AI calls, and their usage accumulates against the same run budget. Code errors fail the block and propagate to the workflow; provider/worker interruptions retain the explicit recovery/resume boundary.
+Models resolve from the project default, then block metadata, then the graph step (or `ctx.step(id, block, { model })` option), then an explicit `ctx.ai({ model })`. In the graph’s **Editor**, select a step and use **Step model** / **Step thinking** to change its default. In block source, either inherit that choice or override individual calls:
+
+```ts
+const draft = await ctx.ai({ prompt: ctx.prompt }); // uses this step's model
+const checked = await ctx.ai({
+  prompt: `Review this result: ${draft}`,
+  model: ctx.models["reviewer"], // a configured profile, frozen with the workflow
+});
+// Or pass { provider: "openai", model: "your-connected-model", thinking: "high" }.
+// A model ID string is also accepted, inheriting the provider and other settings.
+```
+
+Use stable step IDs inside loops and await operations sequentially. `timeoutMs` and `maxOperations` bound a block; node `maxVisits`, workflow `maxSteps`, and model spending limits still apply. A block may make multiple AI calls, and their usage accumulates against the same run budget. Code errors fail the block and follow the graph’s fail route (or throw from an advanced `ctx.step` call); provider/worker interruptions retain the explicit recovery/resume boundary.
 
 Saved Settings blocks work with `ctx.step<OutputType>(id, "block-id", options)`. Their source and helper imports, like the workflow's, are frozen with the draft. Old saved agent/script definitions and old `agent()` / `script()` imports remain readable for compatibility; new authoring uses `block()`.
 
@@ -177,7 +189,7 @@ Ordinary server startup does not regenerate profiles or make background setup re
 - **Model profiles:** add multiple models with descriptions such as “careful reviewer for complex changes” or “fast helper for summaries.” The planner uses these descriptions and the connected catalog to choose models. TypeScript can also accept a model as input or override one per step. A planning-model override is optional.
 - **Task instructions:** add, edit, disable or remove cases such as bug, feature, maintenance and investigation. Each case contains a description and instructions, not a predefined graph. Add shared instructions and choose whether the planner may suggest new blocks.
 - **Blocks:** add, edit or remove reusable TypeScript blocks in CodeMirror. Define prompts, models, inputs, outputs and checks in their source. Saving typechecks without executing code; discard, copy and download controls are available. **Design with AI** supports conversational proposals for adding, updating and removing blocks. New blocks suggested while planning remain local to that workflow until you explicitly save them to the library.
-- **Skills & MCP:** add skill instructions, enable/disable them, and configure stdio or Streamable HTTP MCP servers. Enabling a server makes all its discovered tools available during planning and execution. Connect to preview the tools; there is no separate planning allowlist.
+- **Skills & MCP:** add skill instructions, enable/disable them, and configure stdio or Streamable HTTP MCP servers. Enabling a server makes all its discovered tools available to execution blocks. Connect to preview the tools. The graph coordinator never calls MCP tools.
 - **Execution:** choose review or automatic approval, project instructions, maximum steps, a spending limit and named host checks. Every AI step also has Bash for general commands, including package installation, Git staging, commits and pushes. A request such as “commit and push these changes” does not require a preconfigured command. Code blocks run commands through `ctx.exec`, with no model call or command registration.
 
 **Code without AI:** in **Blocks → Add block**, write a function using `ctx.exec`, file operations, or pure TypeScript. No model is called unless the function calls `ctx.ai`. Command stdout/stderr stream into Activity. Tests return diagnostics; workflow code decides whether to retry implementation.
@@ -199,7 +211,7 @@ For an existing draft, **Edit workflow → Tell AI what to change in this draft*
 | Mode | Planning | Execution |
 | --- | --- | --- |
 | `workflow --demo` | Explicit simulation using example graphs | Simulated agents and checks; real Temporal history |
-| `workflow` / `workflow serve` | AI writes TypeScript from task instructions, profiles and blocks | Real model sessions, scripts, configured checks and enabled MCP servers |
+| `workflow` / `workflow serve` | AI composes a graph from supplied context, task instructions, profiles and blocks | Real model sessions, scripts, configured checks and enabled MCP servers |
 
 Review is the default. Automatic mode starts the generated graph, including any task-local suggested blocks, without a review click. Only one workflow can execute in a project at a time. If automatic start cannot acquire the project, the task stays available for manual approval with an explanation. A demo draft cannot be executed in live mode; create a fresh task.
 
@@ -294,11 +306,13 @@ Create `.workflow/blocks/<id>/block.json` with a `code` executor referencing `bl
 
 Existing drafts/runs retain their original policy snapshots. Changing configuration does not silently upgrade an approved plan. Snapshots freeze prompts, loaded skill text, model settings, command arguments, inline script source and the graph. Imported or called project files are read at execution time.
 
-## Legacy graphs and handoffs
+## Graphs and handoffs
 
-Existing JSON graph clients remain supported. Graphs that reference new code blocks are compiled into TypeScript orchestration. New tasks use ordinary TypeScript functions and parameters.
+Generated tasks keep a complete graph of blocks, step goals, model defaults and connections before approval. Graphs referencing code blocks compile into TypeScript orchestration internally; execution does not replace or hide the reviewed graph. Editing a draft’s connections or model defaults preserves its frozen block code and helper imports. Advanced imported TypeScript workflows can still use arbitrary functions and bounded loops, with their trace appearing during execution.
 
-A legacy graph is a serial state machine with explicit routes for `pass`, `retry` and `fail`. It may contain cycles, bounded by both each node's `maxVisits` and the run's `maxSteps`.
+A returned TypeScript value is exposed as the `data` artifact. Passing `data` to another code block parses its JSON into `ctx.input[alias]`; other artifacts remain text. `summary` is always available. Optional feedback handoffs can be absent on the first visit. Set `ctx.outcome("retry")` or `ctx.outcome("fail")` to select a route; a field in the returned object alone does not change routing.
+
+A generated graph is a serial state machine with explicit routes for `pass`, `retry` and `fail`. It may contain cycles, bounded by both each node's `maxVisits` and the run's `maxSteps`.
 
 Example node:
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isSourceWorkflow } from "./execution-label.js";
 import { computed, defineAsyncComponent, onMounted, ref, watch } from "vue";
 import { runSchema } from "../src/domain.js";
 import { taskSchema } from "../src/task-schema.js";
@@ -350,9 +351,9 @@ function savePlan() {
     return;
   }
   void perform(async () => {
-    const saved = await request(`/api/runs/${current.id}/${current.program ? "program" : "plan"}`, runSchema, {
+    const saved = await request(`/api/runs/${current.id}/${isSourceWorkflow(current) ? "program" : "plan"}`, runSchema, {
       method: "PUT",
-      body: current.program ? edit.validProgram : JSON.parse(edit.text),
+      body: isSourceWorkflow(current) ? edit.validProgram : JSON.parse(edit.text),
       revision: edit.revision,
     });
     applyRun(saved);

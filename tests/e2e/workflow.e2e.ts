@@ -60,6 +60,59 @@ test("Prettier editor formatting supports undo, errors and protects newer typing
   await expectCode(editor, newer);
 });
 
+test("generated tasks show code blocks and all connections before approval with editable step models", async ({page,request}) => {
+  const wasConnected=(await (await request.get("/api/models")).json()).models.some((model:{provider:string})=>model.provider==="openai");
+  await ensureDesignConnection(request);
+  const headers={"x-workflow-client":"1"};
+  const library=await (await request.get("/api/library")).json();
+  const original=library.blocks.review;
+  const bundle=structuredClone(original);
+  bundle.definition.executor={kind:"code",source:'import {block} from "workflow";export default block({async run(ctx){ctx.artifact("feedback","Reviewed by code");return "Reviewed by code";}});'};
+  bundle.definition.checks=[];delete bundle.definition.agent;
+  async function save(value: unknown) {
+    const latest=await (await request.get("/api/library")).json();
+    const proposal=await request.post("/api/library/proposals",{headers,data:{kind:"manual",baseHash:latest.revision,changes:{summary:"Code graph fixture",blocks:[{bundle:value,rationale:"Browser regression"}]}}});
+    expect(proposal.ok(),await proposal.text()).toBe(true);
+    expect((await request.post(`/api/library/proposals/${(await proposal.json()).id}/apply`,{headers})).ok()).toBe(true);
+  }
+  await save(bundle);
+  try {
+    await page.goto("/");
+    await newTask(page,"Preview code graph for a bug before execution");
+    await expect(page.getByRole("button",{name:"Workflow",exact:true})).toHaveClass(/active/);
+    await expect(page.locator(".vue-flow__node")).toHaveCount(5);
+    await expect(page.locator(".vue-flow__edge")).toHaveCount(9);
+    const runs=await (await request.get("/api/runs")).json();
+    const id=runs.find((run:{task:string})=>run.task==="Preview code graph for a bug before execution").id;
+    const before=await (await request.get(`/api/runs/${id}`)).json();
+    expect(before.program.composition).toBe("graph");expect(before.attempts).toHaveLength(0);
+    await page.getByRole("button",{name:"Editor",exact:true}).click();
+    await page.getByRole("navigation",{name:"Workflow steps"}).getByRole("button",{name:/review/i}).click();
+    await page.getByLabel("Step model",{exact:true}).selectOption("openai/test-model");
+    await page.getByLabel("Step thinking",{exact:true}).selectOption("high");
+    await expect(page.getByText(/explicit.*ctx.ai/i)).toBeVisible();
+    await page.getByRole("button",{name:"Validate & save draft",exact:true}).click();
+    await expect(page.getByRole("button",{name:"Validate & save draft",exact:true})).toBeDisabled();
+    const saved=await (await request.get(`/api/runs/${id}`)).json();
+    expect(saved.plan.nodes.find((node:{id:string})=>node.id==="review").agent).toMatchObject({model:"test-model",thinking:"high"});
+    expect(saved.executionVersion).toBe(before.executionVersion);
+    expect(saved.program.input.plan).toEqual(saved.plan);
+    await page.getByRole("button",{name:"Workflow",exact:true}).click();
+    await page.locator('.vue-flow__node[data-id="review"]').click();
+    await expect(page.locator(".step-inspector")).toContainText("test-model · high");
+    await page.screenshot({path:"/tmp/workflow-planned-code-graph.png",fullPage:true});
+    await page.getByRole("button",{name:"Approve & start",exact:true}).click();
+    await expect(page.locator(".workflow-node.active")).toBeVisible();
+    await expect(page.locator(".status-pill")).toHaveText("Completed");
+    const completed=await (await request.get(`/api/runs/${id}`)).json();
+    expect(completed.plan).toEqual(saved.plan);
+    await expect(page.locator(".vue-flow__edge")).toHaveCount(9);
+  } finally {
+    await save(original);
+    if(!wasConnected) expect((await request.post("/api/auth/providers/openai/logout",{headers})).ok()).toBe(true);
+  }
+});
+
 test("TypeScript workflow import, typecheck, editable inputs, discard, download and live trace", async ({ page }) => {
   await page.goto("/");
   await page.getByText("Use a TypeScript workflow", { exact: true }).click();
@@ -179,7 +232,7 @@ test("a user can edit a draft model and reject a graph without execution", async
     .getByRole("button", { name: "Edit workflow", exact: true })
     .click();
   await page.getByRole("button", { name: "JSON", exact: true }).click();
-  const editor = page.getByLabel("Workflow graph JSON");
+  const editor = page.getByLabel("Workflow graph JSON", { exact: true });
   const plan: unknown = JSON.parse(await readCode(editor));
   // The browser edit boundary remains schema-validated by the server.
   const { planSchema } = await import("../../src/domain.js");
@@ -337,7 +390,7 @@ test("unsaved graph edits block approval and survive switching between runs", as
   }
   await page.getByRole("button", { name: "Edit workflow", exact: true }).click();
   await page.getByRole("button", { name: "JSON", exact: true }).click();
-  const editor = page.getByLabel("Workflow graph JSON");
+  const editor = page.getByLabel("Workflow graph JSON", { exact: true });
   const plan = JSON.parse(await readCode(editor));
   plan.title = "Unsaved title that must survive";
   await fillCode(editor, JSON.stringify(plan, null, 2));
@@ -410,7 +463,7 @@ test("step controls validate edits, preview the graph and save model and handoff
   await page.locator(".details-panel").screenshot({ path: "/tmp/workflow-step-editor-mobile.png" });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.getByRole("button", { name: "JSON", exact: true }).click();
-  const json = page.getByLabel("Workflow graph JSON");
+  const json = page.getByLabel("Workflow graph JSON", { exact: true });
   await expectCode(json, /previous-feedback/);
   await fillCode(json, "{invalid");
   await page.getByRole("button", { name: "Step controls", exact: true }).click();
@@ -446,7 +499,7 @@ test("a remote draft edit preserves local text and requires reviewing the latest
   await expect(page.locator(".task-request > p")).toHaveText("Concurrent browser graph review");
   await page.getByRole("button", { name: "Edit workflow", exact: true }).click();
   await page.getByRole("button", { name: "JSON", exact: true }).click();
-  const editor = page.getByLabel("Workflow graph JSON");
+  const editor = page.getByLabel("Workflow graph JSON", { exact: true });
   const plan = JSON.parse(await readCode(editor));
   const runs = await (await request.get("/api/runs")).json();
   const id = runs.find((run: { task: string }) => run.task === plan.task).id;

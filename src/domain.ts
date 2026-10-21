@@ -230,6 +230,7 @@ export const runSchema = z
     ]),
     plan: planSchema.extend({ nodes: z.array(nodeSchema).max(500) }),
     program: programSourceSchema.extend({
+      composition: z.literal("graph").optional(),
       catalog: z.record(identifierSchema, bundleSchema),
       models: z.record(z.string(), agentOverrideSchema),
     }).optional(),
@@ -340,7 +341,8 @@ export function validatePlan(value: unknown, library: Library) {
       const alias = input.as ?? input.artifact;
       if (
         !source ||
-        (input.artifact !== "summary" && !outputs?.includes(input.artifact))
+        (input.artifact !== "summary" && !outputs?.includes(input.artifact) &&
+          !(input.artifact === "data" && library.blocks[source.block]?.definition.executor?.kind === "code"))
       ) {
         throw new Error(`Invalid handoff: ${input.node}.${input.artifact}`);
       }

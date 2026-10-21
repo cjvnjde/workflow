@@ -180,15 +180,15 @@ export async function executeWorkflow(input: WorkflowRun, loadProgram?: () => Wo
         const operation = (async () => {
           const saved = typeof reference === "string" ? program.blocks?.[reference] : undefined;
           const block = saved ?? reference;
-          const node = programStep(run, id, block, options);
+          const node = programStep(run, id, run.program!.composition === "graph" ? reference : block, options);
           // Saved code keeps its reviewed metadata/resources as well as the
           // compiled function. Inline definitions derive theirs from the source.
           if (saved && typeof reference === "string") {
             const bundle = run.program!.catalog[reference]!;
-            run.blocks[id] = JSON.parse(JSON.stringify(bundle));
-            run.blocks[id]!.definition.id = id;
-            node.label = options.label ?? bundle.definition.name;
-            const executor = run.blocks[id]!.definition.executor;
+            run.blocks[node.block] = JSON.parse(JSON.stringify(bundle));
+            run.blocks[node.block]!.definition.id = node.block;
+            if (run.program!.composition !== "graph") node.label = options.label ?? bundle.definition.name;
+            const executor = run.blocks[node.block]!.definition.executor;
             if (executor?.kind === "code") {
               executor.timeoutMs = saved.options.timeoutMs ?? executor.timeoutMs;
               executor.maxOperations = saved.options.maxOperations ?? executor.maxOperations;
@@ -198,7 +198,7 @@ export async function executeWorkflow(input: WorkflowRun, loadProgram?: () => Wo
             let codeError: string | undefined;
             const result = await executeNode(node, async () => {
               const activities = proxyActivities<WorkflowActivities>({
-                startToCloseTimeout: executionTimeoutMs(run.config, run.blocks[id]!, node) + 5000,
+                startToCloseTimeout: executionTimeoutMs(run.config, run.blocks[node.block]!, node) + 5000,
                 heartbeatTimeout: "10 seconds", cancellationType: "WAIT_CANCELLATION_COMPLETED",
                 retry: { maximumAttempts: 1 },
               });
@@ -209,7 +209,7 @@ export async function executeWorkflow(input: WorkflowRun, loadProgram?: () => Wo
               codeError = completion.error;
               return { result: completion.result, checks: [] };
             });
-            if (codeError) throw new Error(codeError);
+            if (codeError && !envelope) throw new Error(codeError);
             const data = result.artifacts.data === undefined ? undefined : JSON.parse(result.artifacts.data);
             return envelope ? { ...result, data } : data;
           }

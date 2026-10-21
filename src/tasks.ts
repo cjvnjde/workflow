@@ -75,7 +75,7 @@ export class Tasks {
         task.status = "planning"; task.error = undefined; task.question = undefined;
         await this.save(task);
         controller.signal.throwIfAborted();
-        this.emit(task, "planning", "Understanding the request and inspecting the project…");
+        this.emit(task, "planning", "Composing a graph from your request, blocks and task instructions…");
         const library = await loadLibrary(this.engine.project);
         const { settings } = await loadOrchestration(this.engine.project);
         const result = this.engine.mode === "demo" ? await (async () => {

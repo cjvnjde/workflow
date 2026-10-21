@@ -148,7 +148,7 @@ export function block(
   return { kind: "code", options: definition };
 }
 export interface WorkflowContext<I> {
-  /** @deprecated Legacy graph adapter. New code uses typed ctx.step results. */
+  /** Engine graph adapter with explicit outcome routes. Block code normally uses typed ctx.step results. */
   stepResult(
     id: string,
     block: string,

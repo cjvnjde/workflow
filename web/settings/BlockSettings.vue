@@ -305,7 +305,7 @@ function download() {
               >
               returns a typed AI result. Omit <code>output</code> for Markdown.
               Set a model in code, accept one through inputs, or use
-              <code>ctx.model</code> for the workflow's choice.
+              <code>ctx.model</code> for the step’s default. Omitting <code>model</code> uses the model assigned by the orchestrator or in the workflow editor. An explicit model here takes precedence.
             </p>
             <p v-if="settings.profiles.some((profile) => profile.enabled)">
               Available profiles:

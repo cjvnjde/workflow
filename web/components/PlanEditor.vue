@@ -62,6 +62,7 @@ const node = computed(
 const executor = computed(
   () => node.value && props.run.blocks[node.value.block]?.definition.executor,
 );
+const canCallAI = computed(() => !executor.value || executor.value.kind === "code");
 const locked = computed(() => props.busy || props.run.status !== "draft");
 function edit(value: Partial<WorkflowPlan>) {
   if (plan.value) {
@@ -145,6 +146,7 @@ function artifacts(sourceId: string) {
   return [
     ...new Set([
       "summary",
+      ...(source && props.run.blocks[source.block]?.definition.executor?.kind === "code" ? ["data"] : []),
       ...(source
         ? (props.run.blocks[source.block]?.definition.outputs ?? [])
         : []),
@@ -303,7 +305,7 @@ const outcomes = ["pass", "retry", "fail"] as const;
                 @input="editNode({ maxVisits: Number(inputValue($event)) })"
             /></Field>
             <Field
-              v-if="!executor"
+              v-if="canCallAI"
               v-slot="{ id }"
               class="editor-field"
               label="Step model"
@@ -336,11 +338,15 @@ const outcomes = ["pass", "retry", "fail"] as const;
               </select></Field
             >
           </div>
-          <p v-if="executor" class="muted">
+          <p v-if="executor && !canCallAI" class="muted">
             {{ executionLabel(executor) }} · no model call
           </p>
+          <p v-if="executor?.kind === 'code'" class="muted">
+            This model is the default for ctx.ai calls in this step. An explicit
+            ctx.ai({ model: ... }) in the block source takes precedence. Code without AI calls uses no model.
+          </p>
           <Field
-            v-if="!executor"
+            v-if="canCallAI"
             v-slot="{ id }"
             class="editor-field"
             label="Step thinking"
@@ -372,7 +378,7 @@ const outcomes = ["pass", "retry", "fail"] as const;
           >
           <p
             v-if="
-              !executor &&
+              canCallAI &&
               model &&
               !model.thinkingLevels.includes(effective.thinking)
             "
@@ -508,7 +514,7 @@ const outcomes = ["pass", "retry", "fail"] as const;
           <button @click="addInput">Add handoff</button>
         </fieldset>
       </div>
-      <div v-if="!executor" class="editor-help">
+      <div v-if="canCallAI" class="editor-help">
         <span>{{
           modelError ||
           (models.length

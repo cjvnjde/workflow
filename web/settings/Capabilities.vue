@@ -76,7 +76,7 @@ function addServer() {
         <h2>MCP servers</h2>
         <p>
           Connect a local process or Streamable HTTP endpoint. All tools from
-          enabled servers are available during planning and execution.
+          enabled servers are available to execution blocks. The coordinator composes graphs from supplied context without calling MCP tools.
         </p>
       </div>
       <button @click="addServer"><Icon name="plus" />Add MCP server</button>

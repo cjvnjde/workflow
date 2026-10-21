@@ -294,7 +294,7 @@ export async function createServer(engine: WorkflowEngine, port = 4310, services
       if (run.status !== "draft") { throw new Error("Only draft workflows can be refined"); }
       const revision = expectedRevision(request.headers);
       if (revision !== undefined && run.revision !== revision) { throw new Error("Draft changed since you loaded it. Review the latest draft and try again."); }
-      if (run.program) {
+      if (run.program && run.program.composition !== "graph") {
         const program = await refineProgram({ project: engine.project, run, instructions: input.instructions,
           models: (await catalog(signal)).models, signal, emit });
         signal.throwIfAborted();

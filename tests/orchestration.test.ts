@@ -88,7 +88,7 @@ test("the coordinator classifies dynamically, reads case instructions, selects p
     assert.match(session.systemPrompt, /Careful independent review/);
     assert.match(session.systemPrompt, /Cite a file/);
     assert.equal(session.images?.length, 1);
-    assert.ok(session.tools.some((tool) => tool.name === "bash"));
+    assert.deepEqual(session.tools.map(tool => tool.name).sort(), ["ask_user", "choose_task_case", "submit_plan", "suggest_block"]);
     const plan = createTemplate(task.prompt, "bug", library);
     plan.nodes.forEach((node) => { node.agent = { provider: "test", model: "careful", thinking: "off" }; });
     await assert.rejects(call(session, "submit_plan", { json: JSON.stringify(plan), rationale: "Plan" }), /case/);
@@ -157,30 +157,28 @@ test("adapted review scope preserves the host request and rejected graphs expose
   }), /Last submission error:/);
 });
 
-test("coordinator submits TypeScript and receives type errors for automatic correction", async t => {
+test("graph composition uses only supplied context and never connects enabled MCP servers", async t => {
   const { project, library } = await fixture(t);
   library.config.agent = { ...library.config.agent, provider: "test", model: "careful", thinking: "off" };
-  const task = newRequest("Review changes with no commits");
-  const source = `import {workflow,z} from "workflow";export default workflow({name:"Working files",input:z.object({request:z.string()}),async run(ctx){
-    const review = await ctx.step("review","review",{prompt:ctx.input.request});
-    if(review.outcome !== "pass") throw new Error(review.summary);
-    return review.summary;
-  }});`;
-  const result = await planTask({ project, library, task, settings: orchestrationSchema.parse({}), models,
+  const task = newRequest("Review changes. Discover the comparison base during execution.");
+  const settings = orchestrationSchema.parse({capabilities:{mcpServers:[{
+    id:"offline",name:"Must not connect during planning",url:"http://127.0.0.1:1/mcp",enabled:true,
+  }]}});
+  const result = await planTask({ project, library, task, settings, models,
     signal: new AbortController().signal, emit: () => {} }, async session => {
-    assert.match(session.systemPrompt, /ordinary await/);
-    await call(session, "choose_task_case", { id: "investigation", reason: "Review working files" });
-    const submission = { title: "Review working files", source, input: JSON.stringify({ request: task.prompt }), rationale: "No base; inspect current files" };
-    await assert.rejects(call(session, "submit_workflow", { ...submission, source: source.replace("ctx.input.request", "ctx.input.missing") }), /missing/);
-    assert.equal(session.completion?.isComplete(), false);
-    assert.match(session.completion!.prompt(), /missing/);
-    await call(session, "submit_workflow", submission);
-    assert.equal(session.completion?.isComplete(), true);
+    assert.deepEqual(session.tools.map(tool=>tool.name).sort(),["ask_user","choose_task_case","submit_plan","suggest_block"]);
+    assert.match(session.systemPrompt,/Put all investigation and configuration checks into execution blocks/);
+    assert.match(session.systemPrompt,/ctx.ai/);
+    assert.ok(session.systemPrompt.includes(JSON.stringify(library.blocks.review!.prompt)));
+    await call(session,"choose_task_case",{id:"investigation",reason:"Review"});
+    await call(session,"submit_plan",{json:JSON.stringify({title:"Review changes",entry:"review",nodes:[{
+      id:"review",block:"review",label:"Review",goal:"Inspect the baseline, adapt to working files if absent, and review.",inputs:[],maxVisits:1,on:{pass:"$complete",retry:"$failed",fail:"$failed"},
+    }]}),rationale:"Inspection happens in the review block"});
   });
-  assert.equal(result.kind, "program");
-  if (result.kind !== "program") return;
-  assert.equal(result.program.source, source);
-  assert.equal(result.program.input.request, task.prompt);
+  assert.equal(result.kind,"plan");
+  if(result.kind!=="plan")return;
+  assert.equal(result.plan.nodes.length,1);
+  assert.equal(result.plan.task,task.prompt);
 });
 
 test("enabled MCP servers expose every discovered tool, regardless of legacy selections", async (t) => {

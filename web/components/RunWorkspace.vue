@@ -8,7 +8,7 @@ import {
 import type { PlanDraft } from "../composables/use-draft.js";
 import { currentActivity, statusLabel, stepState } from "../workflow-status.js";
 import Icon from "./Icon.vue";
-import { executionLabel } from "../execution-label.js";
+import { executionLabel, isSourceWorkflow } from "../execution-label.js";
 import MarkdownView from "./MarkdownView.vue";
 import MarkdownActions from "./MarkdownActions.vue";
 import ActivityFeed from "./ActivityFeed.vue";
@@ -34,7 +34,7 @@ const emit = defineEmits<{
   cancelRefinement: [];
   settings: [];
 }>();
-const tab = ref(props.run.program && props.run.status === "draft" ? "edit" : "workflow");
+const tab = ref(isSourceWorkflow(props.run) && props.run.status === "draft" ? "edit" : "workflow");
 const selected = ref<string>();
 const expanded = ref(false);
 const focusDialog = ref<HTMLDialogElement>();
@@ -87,7 +87,7 @@ watch(
   () => {
     if (expanded.value) closeWorkspace();
     selected.value = undefined;
-    tab.value = props.run.program && props.run.status === "draft" ? "edit" : "workflow";
+    tab.value = isSourceWorkflow(props.run) && props.run.status === "draft" ? "edit" : "workflow";
   },
 );
 watch(
@@ -602,6 +602,10 @@ function selectStep(id: string) {
                   : (agent?.model ?? "Project model")
               }}</strong>
             </div>
+            <div v-if="bundle.definition.executor?.kind === 'code' && agent?.model" class="detail-row">
+              <span>Default AI model</span><strong>{{ agent.model }} · {{ agent.thinking }}</strong>
+            </div>
+            <p v-if="bundle.definition.executor?.kind === 'code'" class="muted">Calls to ctx.ai inherit this step's model. An explicit model in the block source takes precedence.</p>
             <div class="detail-row">
               <span>Visits</span
               ><strong
@@ -674,7 +678,7 @@ function selectStep(id: string) {
             <p>No artifacts yet.</p>
           </div>
         </div>
-        <ProgramEditor v-if="tab === 'edit' && run.program" :run="run" :draft="draft" :busy="busy" :live="live"
+        <ProgramEditor v-if="tab === 'edit' && isSourceWorkflow(run)" :run="run" :draft="draft" :busy="busy" :live="live"
           :refining="refining" :activity="coordinatorActivity" @save="emit('save')" @refine="emit('refine', $event)"
           @cancel-refinement="emit('cancelRefinement')" />
         <PlanEditor

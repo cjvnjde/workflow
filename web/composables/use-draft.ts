@@ -7,6 +7,7 @@ import {
   toValue,
 } from "vue";
 import type { WorkflowRun } from "../../src/domain.js";
+import { isSourceWorkflow } from "../execution-label.js";
 import { readPlanDraft } from "../plan-draft.js";
 import {
   programSourceSchema,
@@ -23,7 +24,7 @@ type Draft = {
 const changed = (draft: Draft) =>
   draft.text !== draft.savedText || draft.inputText !== draft.savedInput;
 const fromRun = (run: WorkflowRun): Draft => {
-  const text = run.program?.source ?? JSON.stringify(run.plan, null, 2);
+  const text = isSourceWorkflow(run) ? run.program!.source : JSON.stringify(run.plan, null, 2);
   const inputText = JSON.stringify(run.program?.input ?? {}, null, 2);
   return {
     text,
@@ -50,12 +51,12 @@ export function useDraft(source: MaybeRefOrGetter<WorkflowRun | undefined>) {
     ReturnType<typeof readPlanDraft> & { validProgram?: ProgramSource }
   >(() => {
     if (!run.value || !draft.value) return {};
-    if (!run.value.program) return readPlanDraft(draft.value.text, run.value);
+    if (!isSourceWorkflow(run.value)) return readPlanDraft(draft.value.text, run.value);
     try {
       return {
         validProgram: programSourceSchema.parse({
           source: draft.value.text,
-          filename: run.value.program.filename,
+          filename: run.value.program!.filename,
           input: JSON.parse(draft.value.inputText),
         }),
       };

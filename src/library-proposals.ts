@@ -30,7 +30,8 @@ export function validateModelChoice(settings: ReturnType<typeof resolveAgentSett
 
 export function validatePlanModels(plan: WorkflowPlan, library: Library, models: AvailableModel[]) {
   for (const node of plan.nodes) {
-    if (library.blocks[node.block]?.definition.executor) { continue; }
+    const executor = library.blocks[node.block]?.definition.executor;
+    if (executor && (executor.kind !== "code" || !node.agent)) { continue; }
     validateModelChoice(resolveAgentSettings(library.config.agent, library.blocks[node.block]?.definition.agent, node.agent), models);
   }
   return plan;

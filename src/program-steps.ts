@@ -8,6 +8,11 @@ export const modelOverride = (model: Model | string | undefined) =>
 /** Materialize a step only when its TypeScript call is reached. */
 export function programStep(run: WorkflowRun, id: string, block: Block | CodeBlock<any, any> | string, options: StepOptions = {}) {
   if (!run.program) throw new Error("Missing TypeScript workflow snapshot");
+  if (run.program.composition === "graph") {
+    const node = run.plan.nodes.find(node => node.id === id);
+    if (!node || block !== node.block || run.cursor !== id) throw new Error(`Step ${id} does not match the approved graph`);
+    return node;
+  }
   let bundle;
   if (typeof block === "string") {
     const saved = run.program.catalog[block];
