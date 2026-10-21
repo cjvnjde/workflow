@@ -1,559 +1,148 @@
 # Workflow
 
-**TypeScript workflows and blocks, with durable AI and command execution and a live web UI.**
+**Turn a coding request into a workflow you can inspect, run, and resume.**
 
-Describe a task, attach context, and let the orchestrator classify it using your editable task instructions. It chooses blocks and model profiles from the supplied context and writes a TypeScript composition. Review its graph or enable automatic execution. Sequences, branches, parallel groups and bounded loops compose code blocks with optional AI calls; Temporal persists their progress. Project inspection happens inside execution blocks, after approval. Pi is an embedded model/session adapter; Workflow owns setup, tasks, settings and the web interface.
+Workflow is a local AI development tool with a browser workspace. Describe a task, attach files or screenshots, and the orchestrator composes a TypeScript workflow from your reusable blocks, task instructions, and model profiles. Review the graph, then start it—or enable automatic execution.
 
-This is a single-user desktop tool with a real Temporal backend, not a production sandbox or hosted multi-user service.
+## Why this project exists
 
-## Run locally without changing PATH
+Finishing a coding task often takes several kinds of work: understand the request, implement it, write or run tests, review the result, address feedback, and sometimes commit and push. Workflow makes those responsibilities and their connections explicit.
 
-Requires **Bun 1.4.2+**. All application and CLI source is **TypeScript**. Bun handles installation, scripts, builds, tests, and the CLI runtime; the tool does not require a separate Node.js installation.
+- **Make the process visible.** See the proposed graph before execution, the blocks currently running, and the results and logs of each attempt.
+- **Give different work to different models.** Describe model profiles for implementation, careful review, or routine work. Let the orchestrator assign them, or choose models in code.
+- **Use code for predictable operations.** A test, build, or push can run directly without a model call. AI is a capability inside a TypeScript block.
+- **Turn feedback into a controlled loop.** A test block returns diagnostics; an implementation block fixes the problem. Conditions, explicit outcomes, and visit limits decide what happens next.
+- **Keep progress across interruptions.** Temporal records execution history. Completed work is retained, and interrupted attempts have an explicit recovery and retry path.
 
-From this project's root:
+It is useful when you want a repeatable development process with autonomous execution and inspectable results. For a one-off question, there may be no reason to create a workflow.
 
-```sh
-bun install --frozen-lockfile --ignore-scripts
-bun run build
-bun run start
+## How it works
+
+```mermaid
+flowchart LR
+    Request["Request + attachments"] --> Plan["Compose TypeScript workflow"]
+    Plan --> Review["Review graph or auto-approve"]
+    Review --> Execute["Run blocks"]
+    Execute --> Results["Results, artifacts, and activity"]
 ```
 
-Open **http://127.0.0.1:4310**. The current project already includes an example `.workflow/` policy, so you do not need to initialize it again. Both `start` and `dev` use real AI. You can also execute the built command directly with `./dist/cli.js`.
+The coordinator uses the supplied request, context, task instructions, blocks, and model profiles. Repository inspection happens inside execution blocks. A task instruction such as “bug fix” describes how to approach that kind of work; it does not prescribe a fixed graph.
 
-For development with frontend hot reload, use `bun run dev` and open **http://127.0.0.1:5173**.
+| Concept | What you define |
+| --- | --- |
+| **Block** | A reusable TypeScript function with optional AI calls, commands, inputs, and outputs. |
+| **Workflow** | Steps composed into sequences, branches, parallel groups, and bounded loops. |
+| **Task instructions and model profiles** | Guidance the orchestrator uses to choose blocks and models for a particular request. |
 
-## Install the command on your PATH
+The web UI uses Vue, Vue Flow, CodeMirror, and Catppuccin Mocha. Pi provides embedded model sessions and authentication integration; Temporal provides durable execution. Workflow owns the task workspace, configuration, approval flow, and results. [Read the design rationale](docs/concepts.md) or [explore the architecture](docs/architecture.md).
 
-Run once from this tool's checkout:
+## Get started
+
+Requires **Bun 1.4.2+** and Bash. Git and your project's build/test tools must be available for blocks that use them. Workflow itself does not require a separate Node.js installation.
+
+Install from this repository:
 
 ```sh
+git clone https://github.com/cjvnjde/workflow.git
+cd workflow
 bun install --frozen-lockfile --ignore-scripts
 bun run build
 bun link
 ```
 
-This registers the **`workflow`** command on your PATH using Bun. Bun's global bin directory must be on PATH; `bun pm bin -g` reports it after linking. The CLI and its dependencies are installed/linked once, not in every project. End-user execution requires Bun, but not a TypeScript compiler or access to this tool's source files.
-
-For a distributable package instead of a development link, run `bun pm pack` in the checkout and install the resulting `.tgz` with `bun add --global --ignore-scripts <archive.tgz>`. The package contains the bundled CLI, Temporal workflow bundle and built UI, not this repository's `.workflow/`, tests, or source files. `bun pm pack` builds automatically through the prepare script unless you pass `--ignore-scripts`.
-
-## Use it from your project folder
-
-There is **no project-path argument**. The folder you run `workflow` from is the project. Configuration and run state live in that folder's `.workflow/`; the UI is served from the installed tool, not copied into your project. The CLI does not search parent directories or fall back to its installation's example configuration.
+Then run it from the project you want to work on:
 
 ```sh
-# In the project folder you want the agents to work on:
-workflow init --instructions "Use the existing test framework. Preserve public API compatibility."
+cd /path/to/your/project
+workflow init --instructions "Preserve public APIs and use the existing test framework."
 workflow
 ```
 
-Open **http://127.0.0.1:4310**.
+Open **http://127.0.0.1:4310**:
 
-1. Open **Settings → Providers & models**, connect ChatGPT (or a provider API key). In **Model profiles → Generate with AI**, describe your preferences, send the request and apply the proposed profiles. The AI selects a planning model. You can also choose a project default manually.
-2. Return to **New task**. Write the goal in the central input; attach images or text/code files, paste a screenshot, or drop files onto the composer. Press Enter to start; Shift+Enter adds a line.
-3. The orchestrator classifies the request, reads the matching task instructions and composes a graph from the supplied context and block catalog. It does not inspect project files, Git, shell or MCP; investigation happens in execution blocks. It asks a follow-up only when an essential detail is missing. There is no task-type or coordinator selector.
-4. Review the complete graph and **Approve & start**, or select automatic execution in **Settings → Execution**. The TypeScript editor lets you change steps, models, inputs and composition. Saving typechecks the source and refreshes its graph without running blocks. Legacy explicit-route graphs retain their visual editor.
-5. Watch all highlighted active steps and their separate live activity streams. Drag blocks to arrange the graph; positions survive updates and reloads, and **Reset layout** restores the original arrangement. **Focus active step** brings running work into view.
-6. The outcome appears above the graph, including failures and blockers. Open **Results** for rendered Markdown, verification checks and artifacts; use **Copy Markdown** or **Download** on any artifact, or export the whole report. The notification bell records completions, pauses and failures received while the app is open.
-7. Active and previous tasks stay in the sidebar; reloading restores the selected task. Pause, resume or stop execution there. **Delete workflow** (also available beside a sidebar entry) removes settled tasks and drafts from history. Stop active work first. Deletion does not undo project files or erase recovery journals, attachments or Temporal execution history from disk.
+1. In **Settings → Providers & models**, connect ChatGPT or a provider API key.
+2. Choose a project model and generate or edit **Model profiles**.
+3. Create a **New task**, describe the desired result, and attach useful context.
+4. Inspect the proposed graph and select **Approve & start**.
+5. Follow the active blocks and open **Results** for the outcome, checks, and downloadable artifacts.
 
-The **Activity** view and **Planning activity** drawer let you search messages, commands, files and error output, then filter AI updates, tools, checks or usage. Execution activity can also be scoped to a step. Tool arguments and full command diagnostics are preserved under **View details**; usage is presented as a readable summary instead of raw JSON.
+The current directory is the project; there is no project-path argument. `workflow init` can generate profiles if a provider is already connected; use `--no-ai` to initialize without a model request. Review is the default approval mode.
 
-Use **Expand** beside the workflow tabs for a larger workspace with the graph, step details, results, activity and editor. **Fit workflow** centers the graph without resetting dragged positions. Press **Esc** or **Close** to return; the selected step, open tab, search filters and unsaved editor changes are retained.
+[The getting-started guide](docs/getting-started.md) covers running without a PATH installation, development mode, first-task examples, and setup troubleshooting.
 
-Attachments support PNG, JPEG, WebP and GIF (up to 6 MB each), and UTF-8 text/code (up to 256 KB each); up to eight files and 20 MB per request. PDF and other binary document extraction are not implemented. Image requests need an image-capable planning model. The coordinator records relevant visual observations for steps that use text-only models. Attached content is passed to the selected model providers. Uploaded files are private project files under `.workflow/attachments/`, checked by hash before use.
+## Workflows are TypeScript
 
-Use `workflow --port 4320` for another port, or `--port 0` to select a free port and print its address.
-
-## Workflows as TypeScript
-
-The API takes inspiration from [Smithers v0.35.0](https://github.com/smithersai/smithers/tree/v0.35.0): typed blocks, persisted outputs, and code deciding what runs next. Workflow uses TypeScript functions with its existing Temporal engine and Vue interface. No React or JSX is involved. New workflows declare a composition that can be shown completely before execution. Existing imperative `run(ctx)` workflows remain supported.
+Use `step`, `sequence`, `parallel`, `when`, and `repeatUntil` to compose ordinary code blocks. This complete example runs two independent checks and collects their results without calling a model:
 
 ```ts
-import { workflow, block, step, z } from "workflow";
+import { workflow, block, step, sequence, parallel, z } from "workflow";
 
-const reviewer = block({
-  input: z.object({ request: z.string() }),
+const check = block({
+  input: z.object({ command: z.string() }),
   async run(ctx) {
-    const tests = await ctx.exec("bun test");
-    const result = await ctx.ai({
-      model: ctx.models.reviewer ?? ctx.model,
-      prompt: `Review ${ctx.input.request}. Do not edit files.\nTests: ${tests.output}`,
-      output: z.object({ approved: z.boolean(), feedback: z.string() }),
-    });
-    ctx.summary(result.feedback);
-    ctx.outcome(result.approved ? "pass" : "fail");
-    return result;
+    const result = await ctx.exec(ctx.input.command);
+    const passed = result.exitCode === 0 && !result.timedOut;
+    ctx.summary(result.output || (passed ? "Check passed." : "Check failed."));
+    ctx.outcome(passed ? "pass" : "fail");
+    return { passed, output: result.output };
   },
 });
 
-export default workflow({
-  name: "Review working files",
-  flow: step("review", reviewer, {
-    inputs: ctx => ({ request: ctx.request }),
+const tests = step("tests", check, { inputs: { command: "bun test" } });
+const types = step("types", check, { inputs: { command: "bun run typecheck" } });
+const report = step("report", block({
+  input: z.object({ tests: z.string(), types: z.string() }),
+  run(ctx) {
+    ctx.artifact("tests.txt", ctx.input.tests);
+    ctx.artifact("types.txt", ctx.input.types);
+    return "Tests and typechecking passed.";
+  },
+}), {
+  inputs: ctx => ({
+    tests: ctx.output(tests)!.output,
+    types: ctx.output(types)!.output,
   }),
 });
-```
 
-There is one block interface: `block({ input?, output?, async run(ctx) { … } })`. A block is a TypeScript function and can combine pure computation, model calls, commands and files. Composition uses `step(id, block, options)` and typed `ctx.output(step)` handoffs. In imperative `run(ctx)` workflows, `await ctx.step(id, block, { inputs, model?, maxVisits? })` returns its typed value directly. Optional Zod schemas validate inputs and outputs at runtime. There is no AI/script selector.
-
-Inside a block:
-
-- `await ctx.ai({ prompt, instructions?, model?, output? })` runs a model/tool session. An output schema returns typed data; omitting it returns Markdown. Set a model in code, accept it through inputs, or use `ctx.model` / `ctx.models[profileId]`.
-- `await ctx.exec(command, { timeoutMs?, env? })` runs Bash in the project and returns `exitCode`, `stdout`, `stderr`, `output`, and `timedOut`. Nonzero exits are values: route verification feedback back to implementation using ordinary conditions and bounded loops.
-- `await ctx.readFile(path)` and `await ctx.writeFile(path, text)` record file effects with recovery. `await ctx.log(message)` adds live activity.
-- `ctx.summary(markdown)` and `ctx.artifact(name, text)` publish visible results. `ctx.outcome("retry")` can mark a verification attempt while still returning structured feedback.
-
-Models resolve from the project default, then block metadata, then the graph step (or `ctx.step(id, block, { model })` option), then an explicit `ctx.ai({ model })`. For compositions, set `step(..., { model: { provider, model, thinking } })` in the TypeScript editor. Legacy route graphs retain the **Step model** / **Step thinking** controls. In block source, either inherit that choice or override individual calls:
-
-```ts
-const draft = await ctx.ai({ prompt: ctx.prompt }); // uses this step's model
-const checked = await ctx.ai({
-  prompt: `Review this result: ${draft}`,
-  model: ctx.models["reviewer"], // a configured profile, frozen with the workflow
-});
-// Or pass { provider: "openai", model: "your-connected-model", thinking: "high" }.
-// A model ID string is also accepted, inheriting the provider and other settings.
-```
-
-Use stable step IDs inside loops and await each block's context operations sequentially; use `parallel()` for concurrency between blocks. `timeoutMs` and `maxOperations` bound a block; node `maxVisits`, workflow `maxSteps`, and model spending limits still apply. A block may make multiple AI calls, and their usage accumulates against the same run budget. Code errors fail the block and follow its configured outcome action or graph route (or throw from an advanced `ctx.step` call); provider/worker interruptions retain the explicit recovery/resume boundary.
-
-Saved Settings blocks work with `ctx.step<OutputType>(id, "block-id", options)`. Their source and helper imports, like the workflow's, are frozen with the draft. Old saved agent/script definitions and old `agent()` / `script()` imports remain readable for compatibility; new authoring uses `block()`.
-
-Open **New task → Use a TypeScript workflow** to import or paste a `.ts` file and JSON inputs. The CodeMirror editor provides Mocha syntax highlighting, line numbers, folding, indentation, search and undo/redo. **Format** or **Shift + Alt + F** runs Prettier; workflow and block saves also format source automatically. Formatting preserves invalid input for correction and never executes source or project formatter configuration. Approved source is read-only. The CLI also accepts:
-
-```sh
-workflow run examples/implement-reviewed.ts --input '{"request":"Fix the empty-input bug"}'
-workflow run examples/scripts-only.ts --input '{"message":"hello","runtime":"bun"}' --approve
-```
-
-Without `--approve`, the CLI creates a draft for browser review. Typechecking never evaluates the module. Approval starts execution. See [the implementation/review example](examples/implement-reviewed.ts) and [the code-only command example](examples/scripts-only.ts).
-
-Workflow and block functions run in Temporal's replayable environment. Use context operations for filesystem, process and network effects. Host modules and arbitrary installed packages can run through project TypeScript/JavaScript files, for example `ctx.exec("bun scripts/check.ts")` or `ctx.exec("node scripts/publish.mjs")`. Use static imports; dynamic imports and top-level await are rejected during submission so the planner can correct them. Pure imports are frozen; called project scripts are read at execution time. A restart replays recorded operation results without rerunning completed effects. Explicitly retrying an interrupted block can repeat its effects; inspect command/Git changes before resuming. Commands and network publication are outside file-tool rollback.
-
-Open **Settings → Providers & models** in the browser. Choose **Continue with ChatGPT**, open the sign-in link, and complete the account authorization. Alternatively, expand **Use an API key** and select a provider. ChatGPT is the only account sign-in offered; other providers use API keys. Choose an available model and thinking level, then **Save project model**. No terminal setup is required.
-
-Connected ChatGPT accounts show their connection status instead of another sign-in button. The browser handles sign-in prompts, cancellation, connection status and disconnecting saved credentials. The external “Authentication successful” callback page belongs to the embedded auth SDK; close it and return to Workflow Settings to see the connected account. API-key and callback inputs are masked and cleared after submission. Credentials remain in Workflow's private local store; they are never returned by the API or stored in browser storage or run events. An unfinished sign-in survives a page reload while the server is running and expires after ten minutes. Disconnect removes local credentials; it does not revoke access at the provider. OpenAI documents the [ChatGPT authorization flow](https://developers.openai.com/siwc/token-sharing-open-source/sign-in); account eligibility and model access remain provider-controlled.
-
-Project model controls affect new proposals and preserve execution limits. Existing drafts and runs retain their snapshots. **Use shared defaults** removes the project's model/thinking overrides. Blocks and graph steps can override the project default. Refresh connections after signing in from another terminal or changing credentials elsewhere.
-
-The embedded SDK **does not** load Pi's credentials, project/global extensions, ambient skills, context files, prompt templates, default tools, or old conversations. Only explicitly configured block resources and enabled project skills/MCP tools are included. Explicit model overrides must name a provider.
-
-### Optional terminal setup and private user settings
-
-`workflow login`, `logout`, `model` and `thinking` remain available for terminal users. They use embedded Pi terminal components with the same ChatGPT/API-key connection policy. API-key input is masked. Escape cancels; Ctrl+C stops setup and restores the terminal. Browser setup is the primary onboarding path.
-
-```sh
-workflow login               # ChatGPT account or provider API key
-workflow login openai        # narrow the selector
-workflow model anthropic     # optional initial model search
-workflow auth                # credential metadata/default model, never secret values
-workflow logout openai       # confirm removal; does not revoke access at the provider
-```
-
-Login/model selection work from any folder, without initializing a project or starting a server. Interactive commands need a real terminal; they refuse piped input/output rather than accidentally exposing secrets. With no PATH changes, use `bun dist/cli.js login` from this tool's checkout.
-
-User settings live in `$XDG_CONFIG_HOME/workflow` or `~/.config/workflow`, separately from projects:
-
-- `auth.json`: private API keys/OAuth credentials, managed by the SDK.
-- `settings.json`: default provider/model/thinking and device identity.
-- `models.json`: optional advanced custom-provider configuration; not required for standard providers.
-- `model-catalog.json`: SDK model-catalog cache.
-- `cache/temporal/`: the managed Temporal executable.
-
-Credential/settings files use private permissions. `WORKFLOW_HOME` optionally changes this directory. Existing Pi credentials are not imported automatically. API-key environment variables remain an optional SDK feature, not an onboarding requirement. Never commit credentials; secure storage is currently private files, not an OS keychain.
-
-New projects inherit terminal-selected model/thinking defaults. Explicit project settings take precedence; existing drafts/runs retain their snapshots. Connecting another provider does not silently change an existing model selection.
-
-Source edits stay in the browser when switching between runs; saving refreshes a composition graph. For legacy route graphs, valid unsaved changes preview immediately, while invalid routes, duplicate aliases, and incomplete fields show validation errors before saving. Step controls and JSON share the same draft. Unsaved edits block approval and AI refinement until saved or discarded. Saves and approvals carry the reviewed revision; a stale browser cannot overwrite or approve a newer draft. If another session edits a dirty draft, your text remains visible and **Discard edits & load latest draft** loads the current version. Reloading or closing the page warns about unsaved graph edits. Live updates share one event stream and merge by revision so delayed responses cannot roll back a run or its list entry.
-
-The initial starter library detects a `test` script in `package.json`, configures `bun run test`, and accepts your project instructions. For projects without a package test script, configure commands manually. You can then generate project-specific blocks with AI or edit them yourself in the browser.
-
-### Configure how the orchestrator works
-
-All configuration lives on **Settings**. The interface uses Catppuccin Mocha. Unsaved edits have visible discard controls: cancel a new block, restore an existing block or model selection, discard settings changes, or use **Discard all edits**. Discarding does not write to the project. Attachment uploads, MCP discovery and AI workflow refinement also have cancel controls.
-
-**Design with AI** opens a chat at the bottom right, scoped to the current section: model profiles, task instructions, blocks, skills/MCP or execution settings. Describe your goal, ask questions and refine the proposal across messages. Review the proposed settings, then click **Apply changes**. Drag a chat by its header (or focus the header and use arrow keys) to move it. **New conversation** opens an independent window, including another conversation for the same settings section. Each window keeps its own messages, draft and progress. Minimize windows into the bottom dock and restore them as needed; open conversations, positions and sizes survive reloading and server restarts. Resize either bottom corner by dragging or focusing its handle and using arrow keys. Textareas grow as you type or paste, up to a bounded height, then scroll inside. Use **Stop** to cancel generation, **Discard message** to clear an unsent draft, or **Discard proposal** to dismiss a suggestion without changing settings. AI generation uses your connected provider, uses file and Bash tools to inspect the project and returns settings proposals for review. Save or discard form edits before applying; stale proposals cannot overwrite later settings changes. Workflow auto-approval and provider credentials stay in their dedicated controls.
-
-`workflow init` generates model profiles automatically when a provider is already connected, and preserves existing profiles. Otherwise, connect in the browser and use **Generate with AI**. **Regenerate with AI** prefills an editable request; add your preferences before sending. For terminal initialization or regeneration:
-
-```sh
-workflow init --no-ai         # initialize offline, without a model request
-workflow profiles --instructions "Prioritize careful review; use fast models for routine steps."
-```
-
-Ordinary server startup does not regenerate profiles or make background setup requests. Planning and settings design use the account/model configuration independently of execution spending limits.
-
-
-- **Model profiles:** add multiple models with descriptions such as “careful reviewer for complex changes” or “fast helper for summaries.” The planner uses these descriptions and the connected catalog to choose models. TypeScript can also accept a model as input or override one per step. A planning-model override is optional.
-- **Task instructions:** add, edit, disable or remove cases such as bug, feature, maintenance and investigation. Each case contains a description and instructions, not a predefined graph. Add shared instructions and choose whether the planner may suggest new blocks.
-- **Blocks:** add, edit or remove reusable TypeScript blocks in CodeMirror. Define prompts, models, inputs, outputs and checks in their source. Saving typechecks without executing code; discard, copy and download controls are available. **Design with AI** supports conversational proposals for adding, updating and removing blocks. New blocks suggested while planning remain local to that workflow until you explicitly save them to the library.
-- **Skills & MCP:** add skill instructions, enable/disable them, and configure stdio or Streamable HTTP MCP servers. Enabling a server makes all its discovered tools available to execution blocks. Connect to preview the tools. The graph coordinator never calls MCP tools.
-- **Execution:** choose review or automatic approval, project instructions, maximum steps, a spending limit and named host checks. Every AI step also has Bash for general commands, including package installation, Git staging, commits and pushes. A request such as “commit and push these changes” does not require a preconfigured command. Code blocks run commands through `ctx.exec`, with no model call or command registration.
-
-**Code without AI:** in **Blocks → Add block**, write a function using `ctx.exec`, file operations, or pure TypeScript. No model is called unless the function calls `ctx.ai`. Command stdout/stderr stream into Activity. Tests return diagnostics; workflow code decides whether to retry implementation.
-
-The starter **Push current branch** block is editable TypeScript. It selects a configured Git remote, pushes existing commits, creates the remote branch/upstream when needed, and publishes diagnostics with no AI request. There is no fixed function catalog.
-
-Opening an older block shows a TypeScript conversion without rewriting settings. Saving applies the reviewed code. Converted scripts retain their `WORKFLOW_INPUT` / `WORKFLOW_RESULT` JSON-file convention through `ctx.exec`; new code can use ordinary parameters and return values instead.
-
-MCP HTTP credentials reference a server-process environment variable containing a bearer token; plaintext tokens are not entered into settings. Local stdio servers inherit the application's environment, as Bash commands do. This is explicit project MCP configuration, not automatic discovery of Pi resources or support for every MCP authentication mechanism.
-
-Command-only code blocks run without a model request. Code can return a failed condition and diagnostics. Pass them to implementation, then repeat verification. Both node visits and total workflow steps bound the cycle. Bash, Git, check-command and MCP side effects are outside file-tool rollback.
-
-Settings are stored in `.workflow/orchestration.json` and `.workflow/config.json`. Concurrent stale edits are rejected. The reusable block library is published atomically as `.workflow/library.json`, with prior snapshots under `.workflow/libraries/`; once present, it takes precedence over the starter block directories. Removing a reusable block leaves existing workflow snapshots intact. Existing drafts/runs retain their prompts, capabilities, model settings and command definitions.
-
-For an existing draft, **Edit workflow → Tell AI what to change in this draft** refines routes, goals, handoffs and per-step models against that draft's saved library. It preserves the original request and refuses to overwrite concurrent edits. Planning, library generation and refinement are separate from the execution spending limit.
-
-### Execution modes
-
-| Mode | Planning | Execution |
-| --- | --- | --- |
-| `workflow --demo` | Explicit simulation using example graphs | Simulated agents and checks; real Temporal history |
-| `workflow` / `workflow serve` | AI composes a graph from supplied context, task instructions, profiles and blocks | Real model sessions, scripts, configured checks and enabled MCP servers |
-
-Review is the default. Automatic mode starts the generated graph, including any task-local suggested blocks, without a review click. Only one workflow can execute in a project at a time. If automatic start cannot acquire the project, the task stays available for manual approval with an explanation. A demo draft cannot be executed in live mode; create a fresh task.
-
-Planning preserves your original request; adapted scope and assumptions belong to the graph's goals and rationale. If the coordinator stops after a rejected submission or only describes its plan in prose, it gets up to two automatic continuations in the same conversation, sharing the original time and tool-call limits. Validation errors appear in planning activity. Invalid graphs never become executable just to make planning succeed. Provider errors, cancellation, exhausted limits, and unsuccessful correction can still stop planning. Stopping planning also discards a draft that finishes being created after cancellation.
-
-## Project configuration
-
-```text
-.workflow/
-├── config.json
-├── orchestration.json        # cases, profiles, skills/MCP, approval preferences
-├── design-chats/             # private settings conversations and reviewed proposals
-├── tasks/                    # request and planning history
-├── attachments/              # validated request files
-├── blocks/
-│   ├── reproduce/
-│   │   ├── block.json
-│   │   ├── prompt.md
-│   │   └── skills/             # optional explicit Markdown resources
-│   ├── fix/
-│   ├── requirements/
-│   ├── implement/
-│   ├── verify/
-│   └── review/
-├── runs/                       # private approval snapshots/projections; gitignored
-│   └── <run-id>/
-│       ├── run.json
-│       └── events.jsonl
-├── temporal/                   # private managed-server data; gitignored
-│   ├── temporal.sqlite         # authoritative execution history
-│   ├── server.json
-│   └── server.log
-├── server-lease/               # live server lease; gitignored
-└── lock                        # diagnostic owner record; gitignored
-```
-
-Commit `config.json`, blocks and prompts. Do **not** commit generated runs or Temporal state: they can contain code, task details, prompts and command output. Keep API keys out of workflow configuration.
-
-### `config.json`
-
-```json
-{
-  "version": 1,
-  "instructions": "Use the project's existing conventions.",
-  "agent": {
-    "provider": "anthropic",
-    "model": "claude-sonnet-4-5",
-    "thinking": "medium",
-    "timeoutMs": 600000,
-    "maxToolCalls": 100
-  },
-  "coordinator": {
-    "thinking": "high"
-  },
-  "commands": {
-    "test": {
-      "argv": ["bun", "test", "tests/regression.test.ts"],
-      "timeoutMs": 120000
-    },
-    "lint": {
-      "argv": ["bun", "run", "lint"],
-      "timeoutMs": 60000
-    }
-  },
-  "maxSteps": 30
-}
-```
-
-Choose host checks appropriate to your project; use `bun run test` for a package script, or `bun test <path>` for a focused Bun-native test. Named commands use fixed argument arrays from the project root without shell interpolation. AI steps can also invoke arbitrary commands with Bash; they do not need a command entry for each operation.
-
-The generated `agent: {}` inherits your terminal-selected defaults; the explicit model above is an optional project override. Settings resolve as **Workflow user defaults → explicit project defaults → block overrides → graph node overrides**. Coordinator overrides resolve against project defaults. Supported thinking levels are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`; pi clamps them to model capabilities. Both elapsed time and tool calls are bounded.
-
-### A block: `blocks/review/block.ts`
-
-Initialization creates TypeScript modules with nearby `block.json` discovery metadata. The metadata contains `id`, `name`, `description`, and `executor: { "kind": "code", "file": "block.ts" }`. The loader reads the source without evaluating it. Edit the TypeScript file to change models, prompts, schemas and behavior. The block directory matches its ID; IDs are lowercase kebab-case; artifact names also accept underscores and dots such as `review.md`. Both are at most 64 characters.
-
-Explicit `skills` resources are snapshotted and included in the block's AI sessions. Library changes from the web UI are atomically saved in `.workflow/library.json`, which takes precedence over starter directories. Download the `.ts` source from the editor when needed. Existing runs keep their saved source and resources.
-
-All AI sessions receive `bash`, `read_file`, `write_file`, `edit_file`, `list_files` and `git_changes`. Bash runs as the server user with its environment, credentials and network access; OS access rules still apply. File tools accept relative, absolute and `~/` paths, follow links and can access Git metadata and configuration. Text file tools are limited to 1 MB; Bash handles larger files, renames, deletes and other formats. Broad file lists skip generated/runtime directories for readability; explicit patterns such as `.git/**` include them.
-
-Block instructions define responsibilities: reviews inspect and report; verification returns diagnostics; implementation fixes defects; publication stages, commits and pushes when requested. Each invocation receives its current step and an overview of the workflow. The overall request provides context; implementation and verification leave commits and pushes to the publication step after checks/review pass. These are agent instructions, not enforced file globs. Legacy `permissions` fields remain readable for saved-run compatibility but are ignored and omitted from agent catalogs. The application does not sandbox local tools.
-
-`git_changes` is a bounded convenience summary of local branch/base comparisons and working changes. It reports exact HEAD/base/merge-base identifiers, labels inferred bases, disables external diffs/filters/hooks and never fetches or mutates Git. Use Bash for effective Git configuration, remote inspection, staging, commits and pushes. A repository with no commits is reported explicitly; the planner adapts review scope to working files when appropriate.
-
-Every configured host check is available to AI through `run_check`. New TypeScript blocks perform verification with `ctx.exec` and route its returned status. Older agent blocks retain automatic configured host checks after submitting their result. Failed conditions change a claimed `pass` into `retry`. Timeouts, signals and spawn errors do not satisfy an expected-failure check. Bash command output and errors are recorded in Activity.
-
-**A failing command is not proof of the intended bug.** Use a focused regression command and inspect the reproduction artifact. Likewise, a passing existing suite is not proof that every new requirement has been implemented; the independent test/review blocks and your acceptance criteria matter.
-
-### Custom blocks
-
-Create `.workflow/blocks/<id>/block.json` with a `code` executor referencing `block.ts`, plus the TypeScript module; optional `prompt.md` and explicit skills/resources provide extra context. Give the block a precise description of **when to use it** and make its instructions and checks match its role. New proposals load the updated catalog. Live task planning can use custom blocks automatically. The legacy recipe API and demo graphs expect the starter IDs.
-
-Existing drafts/runs retain their original policy snapshots. Changing configuration does not silently upgrade an approved plan. Snapshots freeze prompts, loaded skill text, model settings, command arguments, inline script source, static helper imports and the graph. Scripts invoked through `ctx.exec` are read at execution time.
-
-## Graphs and handoffs
-
-Generated tasks use a TypeScript composition as the source of truth. The graph shows sequences, parallel lanes, branch choices and loop boundaries before approval. Preview evaluates declarations in a bounded environment; it does not call blocks, deferred inputs or conditions. Declarations and callbacks must be deterministic; file, command and model effects belong inside blocks.
-
-```ts
-import { workflow, step, sequence, parallel, when, repeatUntil } from "workflow";
-
-// Saved blocks are ordinary TypeScript. Match their actual input/output contracts.
-const implement = step("implement", "implement", {
-  maxVisits: 3,
-  inputs: ctx => ({ reviewFeedback: ctx.result("review")?.summary ?? "", testFeedback: ctx.result("tests")?.summary ?? "" }),
-});
-const tests = step("tests", "verify", { maxVisits: 3, on: { retry: "repeat" } });
-const review = step("review", "review", {
-  maxVisits: 3, on: { retry: "continue" },
-});
-const report = step("report", "requirements", { prompt: "Summarize the approved work." });
 export default workflow({
-  name: "Implement and review",
-  flow: sequence(
-    repeatUntil("revision", {
-      body: sequence(implement, tests, review),
-      until: ctx => ctx.result(review)?.outcome === "pass",
-      maxIterations: 3,
-    }),
-    when("approved", ctx => ctx.result(review)?.outcome === "pass", report),
-  ),
+  name: "Verify project",
+  flow: sequence(parallel([tests, types], { concurrency: 2 }), report),
 });
 ```
 
-See [examples/composed.ts](examples/composed.ts) for self-contained blocks with typed review output and concurrent inspection.
+Use commands available in your project. Parallel blocks share its working directory; checks that rewrite the same files should run in sequence.
 
-| Primitive | Behavior |
+Import the source through **New task → Use a TypeScript workflow**, or save it in your project and run `workflow run verify.ts` while its server is running. Inside a block, `ctx.ai({ prompt, model?, output? })` adds a model session with optional typed output.
+
+For an implementation/review loop driven by `review.approved`, see [the composed workflow example](examples/composed.ts). The [workflow guide](docs/workflows.md) explains conditions, outcomes, typed handoffs, model overrides, and limits.
+
+## Documentation
+
+Start at **[docs/README.md](docs/README.md)** for reading paths and a complete index.
+
+| I want to… | Read |
 | --- | --- |
-| `step(id, blockOrSavedId, options)` | One durable invocation; accepts typed object inputs, a prompt, model default, visit cap and outcome actions. |
-| `sequence(a, b, c)` | Runs each child in order. |
-| `parallel([a, b], { concurrency: 2 })` | Runs independent branches, then joins their results. Concurrency is 1–8, with an overall eight-step cap across nested groups. |
-| `when(id, condition, thenNode, elseNode?)` | Selects one branch using a synchronous boolean. The other branch is marked skipped. |
-| `repeatUntil(id, { body, until, maxIterations })` | Runs at least once, then checks the condition. An unmet condition at the iteration limit fails. |
+| Understand why Workflow exists and its core concepts | [Concepts and design](docs/concepts.md) |
+| Install it and run my first task | [Getting started](docs/getting-started.md) |
+| Write sequences, branches, parallel groups, and loops | [Writing workflows](docs/workflows.md) |
+| Build reusable code and AI blocks | [Writing blocks](docs/blocks.md) |
+| Configure models, task instructions, skills, and MCP | [Configuration](docs/configuration.md) |
+| Understand statuses, retries, recovery, and backups | [Running and recovering workflows](docs/operations.md) |
+| Use the CLI or local HTTP API | [Command and API reference](docs/reference.md) |
+| Understand the implementation or contribute | [Architecture](docs/architecture.md) · [Development](docs/development.md) |
 
-Use `ctx.output(step)` for its latest typed return value and `ctx.result(step)` for `{outcome, summary, artifacts, data}`. Saved IDs can specify an output type; inline blocks infer it. Deferred inputs, prompts and conditions receive `ctx.request`, `ctx.input`, frozen `ctx.models`, and one-based `ctx.iteration(loopId)`. First-visit feedback is `undefined`, so handle it explicitly. Each parallel branch sees the outputs available before the fork plus its own work; sibling outputs merge after the join. A parallel group's final summary comes from its last declared executed branch, independent of completion timing.
+## Execution boundaries
 
-`pass` continues by default; `retry` and `fail` stop. A step can set `on: { retry: "continue" }` to let the loop inspect review data, or `on: { retry: "repeat" }` to skip the remainder of the body and start its nearest enclosing loop again. `ctx.outcome()` selects an explicit outcome; returned fields such as `approved` are data for conditions, not implicit outcomes. Each step's `maxVisits` and the run's `maxSteps` remain independent limits, including resumed attempts.
+Workflow is a **single-user local application**. AI tools and commands run with the server user's filesystem, environment, and network access. Approval controls when a workflow starts; it is not an OS sandbox. File-tool recovery covers managed writes, while shell commands, Git operations, and external effects need separate inspection before a retry.
 
-Parallel groups stop dispatching queued work after a failure and wait for already-running siblings. They share one working directory. Use independent reads/checks or disjoint edits; put overlapping edits, Git mutations and checks that rebuild shared outputs in sequence. Managed file writes reject another active step's claimed paths. Shell/Git/MCP effects are not isolated or rolled back by that guard. With a dollar spending limit, AI sessions serialize against the remaining budget while other operations can still overlap.
+One workflow executes per project at a time, with explicit parallelism inside it. Provider errors, failed checks, exhausted limits, and unsuccessful planning can still stop a task. [Operations and current limitations](docs/operations.md) explain what can be resumed and what must be corrected first.
 
-Earlier explicit pass/retry/fail route graphs remain executable and editable. Their cycles are bounded by visit and total step limits. In that format, a returned TypeScript value is a `data` artifact; a data handoff to a code block becomes parsed JSON under the chosen input alias. Other artifacts remain text.
-
-Example node:
-
-```json
-{
-  "id": "work",
-  "block": "fix",
-  "label": "Fix without weakening tests",
-  "goal": "Make the focused regression pass and preserve existing behavior.",
-  "inputs": [
-    { "node": "prepare", "artifact": "reproduction", "required": true },
-    {
-      "node": "review",
-      "artifact": "feedback",
-      "as": "review-feedback",
-      "required": false
-    },
-    {
-      "node": "review",
-      "artifact": "summary",
-      "as": "review-evidence",
-      "required": false
-    },
-    {
-      "node": "work",
-      "artifact": "summary",
-      "as": "previous-attempt",
-      "required": false
-    }
-  ],
-  "maxVisits": 3,
-  "agent": { "thinking": "high" },
-  "on": { "pass": "review", "retry": "work", "fail": "$failed" }
-}
-```
-
-The complete plan also has `title`, the original `task`, `entry`, and `nodes`. Routes target a node ID, `$complete`, or `$failed`. Validation checks unique IDs, known blocks/routes, reachability, declared outputs, and unique input aliases.
-
-Every attempt creates a **fresh pi session**. It receives:
-
-1. Project instructions, block prompt, and explicitly enabled skills.
-2. The task, its attachments, the node goal and its visit number.
-3. Only the named artifacts selected by `inputs`.
-4. Files and command output it explicitly requests through tools.
-
-It does not receive another agent's conversation history. Context handoffs select which artifacts enter the next prompt; they do not limit file or shell access. Artifacts are untrusted text, not executable instructions.
-
-A passing block must publish all its declared outputs through `submit_result`. Every attempt also publishes a host-owned `summary`, augmented with final check evidence. Feedback from later steps is optional on a first visit. Missing required artifacts stop execution **before** invoking the next agent. New outputs replace that node's previous output set to avoid forwarding stale feedback.
-
-## Temporal, pause/resume and recovery
-
-Temporal is the execution backend, including in demo mode. Deterministic workflows own graph routing, visit budgets, checkpoints and pause/resume signals. Agent sessions and host checks run as activities; local JSON files are the private approval record and UI projection, not a second executor.
-
-By default Workflow downloads a pinned official Temporal CLI once into its private cache, then starts a loopback **Temporal dev server with persistent SQLite**. No Docker, globally installed Temporal, separately configured service or Node process is required. The first start needs internet access for that download; cached starts do not. Local CLI management supports Linux/macOS x64/arm64 and is tested on Linux. This convenience server is not a production Temporal deployment.
+## Develop Workflow
 
 ```sh
-# While workflow is serving this project in another terminal:
-workflow runs
-workflow pause <run-id>       # finish active steps, then stop at the next boundary
-workflow resume <run-id>      # continue a paused run; no repeated completed agents
-workflow cancel <run-id>      # stop active activities and prevent subsequent steps
-workflow recover <run-id>     # retry file recovery after resolving a conflict
-# Add --port 4320 if your web server uses another port.
+bun run dev        # live backend + Vite at http://127.0.0.1:5173
+bun run test       # build + backend/integration tests
+bun run test:e2e   # build + headless browser tests
 ```
 
-The same controls are available in the web UI. Paused/interrupted runs retain ownership of the project until resumed or cancelled. Pause drains all active parallel branches before admitting more work. Resume retries interrupted branches without rerunning completed siblings; cancellation settles each active attempt separately. Stopping the application stops its worker/local server, not the durable workflow; restart in the same project and execution mode to restore it.
-
-New approvals persist a pending start receipt before contacting Temporal. If the process stops at that boundary and Temporal has no execution, startup restores a draft for review and another approval. A new execution ID prevents a late response from authorizing the old snapshot. If Temporal accepted the start, startup reconnects to that execution. Missing history for a confirmed execution (or an older execution without a receipt) still requires restoring the history.
-
-**A paused run and an interrupted activity are different:**
-
-- At a pause boundary, completed results, artifacts and the next cursor survive restart. Resume continues the remaining graph.
-- Agent/check activities have **no automatic retries**. If an activity fails or loses its worker, Temporal records the failure and the run waits as `interrupted`. Inspect partial file changes first. Explicit resume retries only that step in a fresh session and consumes another visit/step budget. It does not continue halfway through a model request. New runs restore that attempt’s file-tool changes before retrying; completed steps stay committed.
-- Transient provider request failures retry up to twice inside the same conversation, retaining completed tool results and cumulative limits. Retry progress appears in Activity. This does not restart the block or replay completed tools; a final activity failure still follows the explicit resume flow above.
-- On Linux, a server left behind after SIGKILL is verified against its executable/database and adopted; a heartbeat lease protects against two application instances. On macOS, a still-running orphan requires explicit reconnection with the printed address or stopping that process before restarting.
-- Legacy runs from the pre-Temporal engine cannot be resumed; cancel them and propose a new run.
-
-Back up the **whole `.workflow/` directory**, including approval snapshots, attempt journals, `.workflow/versions/` and the SQLite database/WAL files. Do not delete Temporal history to “reset” an active run.
-
-### File recovery
-
-New runs journal each file-tool write before publishing it. Files are replaced atomically with their original permissions. Cancellation, activity failure, an explicit fail/retry result, or a failed host verification restores only that attempt’s original bytes and removes files it created. Passing steps remain committed. Journals survive worker loss and restart.
-
-Recovery compares file hashes before restoring. Manual edits, linked paths, and check commands that rewrite an agent-edited file produce a conflict instead of being overwritten. Inspect the attempt’s recovery report, save any manual work elsewhere, and restore the file to either its original bytes or the journaled agent version. Then use **Retry file recovery** or `workflow recover <run-id>`. Resume remains blocked until conflicts are resolved. Recovery is idempotent; repeating it does not undo completed steps.
-
-The journal covers writes through Workflow’s file tools, not Bash edits, Git operations, check-command side effects, external services or directory metadata. Inspect those effects before retrying; a commit or push is not automatically undone. A system-wide power failure is outside the transactional guarantee. Existing unversioned runs retain their previous recovery behavior. To keep failed-step changes in new runs, set `recovery: {"rollbackOnFailure": false}` in project config before proposing a workflow.
-
-### Workflow versions
-
-Each new draft records a SHA-256 workflow version. Workflow archives its bundled deterministic code and SDK manifest under `.workflow/versions/`, and uses a separate task queue for each version. After an application-code upgrade, active runs continue with their archived bundle; new proposals use the new code. A frozen v1 bundle handles existing Temporal runs that predate versioning. Old runs are not silently migrated to new routing or recovery behavior.
-
-Archive content is verified before starting a worker. Missing/corrupt bundles and mismatched Temporal SDK versions stop startup safely; restore the archive or use the matching runtime. This pins workflow code within a compatible SDK and preserves the supported activity protocols. It does not provide arbitrary SDK/activity migrations or Temporal Cloud worker deployments. Temporal requires replay-compatible workflow code; see its [versioning guidance](https://docs.temporal.io/develop/typescript/workflows/versioning).
-
-To use an existing trusted Temporal endpoint instead of the managed local service:
-
-```sh
-workflow --temporal-address 127.0.0.1:7233 --temporal-namespace default
-```
-
-This currently supports address/namespace selection, not Temporal Cloud TLS/API-key onboarding. The existing service is not stopped when Workflow exits.
-
-### Execution budget
-
-The draft UI shows an expected cost on pass routes and a retry estimate using node visits, tool-call limits and the total step limit. Model prices are copied from the local model catalog into the draft, or supplied explicitly in `budget.prices` as `provider/model` keys with `input`, `output`, `cacheRead` and `cacheWrite` USD rates per million tokens. Context pricing tiers and long-retention cache writes are included. Unknown prices display as unavailable rather than zero; demo estimates are zero.
-
-Project config can include:
-
-```json
-"budget": {
-  "maxCostUsd": 5,
-  "inputTokensPerCall": 4000,
-  "outputTokensPerCall": 1000,
-  "callsPerVisit": 4
-}
-```
-
-The optional **Settings → Execution → Execution spending limit** applies to newly planned workflows. Dollar limits require an explicit provider/model and known pricing at every AI node; script blocks have zero model cost. Reported input/output/cache tokens and costs are saved for each attempt, including failed or cancelled requests, and displayed live. The engine prevents later steps when the remaining limit is exhausted; sessions abort after reported usage reaches the remaining limit. Budgeted sessions disable unmetered automatic compaction; other sessions include reported compaction usage.
-
-Estimates are assumptions, not billing guarantees: context size can grow, cached catalog prices can age, an in-flight request can exceed the limit, and providers may not report all billable usage. AI coordinator planning is separate from the execution budget. Check-command costs and subscription accounting are not calculated. Review the saved price/estimate assumptions before approval.
-
-### Safety and current limits
-
-- One active workflow and one leased server/worker per project. Temporal activities must match a locally approved snapshot and their workflow identity; an arbitrary workflow start cannot bypass workflow approval.
-- Projections use atomic JSON rename; finalized activity is appended to JSONL. Text deltas stream live but are not individually persisted.
-- Cancellation aborts the current session/check, prevents the next node, and recovers the current step’s file-tool writes when recovery is enabled. Completed steps and Bash, Git, check-command and external side effects are retained.
-- The web server binds to loopback, rejects non-loopback hosts/unapproved origins, and requires a custom header on mutations. Both it and the local Temporal dev service are **single-user local services**, not authenticated remote interfaces. Do not expose either port publicly.
-- AI steps have full local tool access as the server user. Workflow approval selects when execution starts; role instructions determine what each step should do. Cancellation and time/tool-call/spending limits still apply. Use an OS/container boundary when isolation is required.
-- No parallel fork/join, full filesystem/check sandbox rollback, arbitrary SDK migrations, Temporal Cloud worker deployments or remote sandbox workers yet.
-
-## API
-
-The web UI uses these local endpoints:
-
-- `GET /api/project`, `GET /api/runs`, `GET /api/runs/:id`
-- `GET /api/tasks`, `POST /api/tasks` with `{prompt, attachments?: [attachmentId]}`, `GET /api/tasks/:id`
-- `POST /api/tasks/:id/answer` with `{answer, revision}`, `/retry`, `/cancel`
-- `POST /api/attachments` with `{name, mimeType, data: base64}`, `GET /api/attachments/:id`
-- `GET/PUT /api/settings/orchestration` with `{revision, settings}`
-- `GET/PUT /api/settings/execution` with `{configRevision, instructions, commands, maxSteps, budget?}`
-- `POST /api/settings/mcp/inspect` with the MCP server configuration
-- `GET /api/library`, `DELETE /api/library/blocks/:id` with `{revision}`
-- Legacy/manual `POST /api/runs` with `{task, strategy: "bug" | "feature" | "ai", instructions?, autoApprove?, maxCostUsd?}`
-- `PUT /api/runs/:id/plan`
-- `POST /api/runs/:id/refine` with `{instructions}` (live draft only)
-- `GET /api/models`, `POST /api/models/refresh`
-- `GET /api/setup` (connection metadata and model defaults)
-- `PUT /api/project/model` with `{configRevision, agent: {provider, model, thinking} | null}`
-- `GET /api/auth/options`, `GET /api/auth/session`
-- `POST /api/auth/session` with `{provider, method: "oauth" | "api_key"}` (`oauth` is allowed only for `openai`)
-- `POST /api/auth/session/:id/respond` with `{promptId, value}`, `POST /api/auth/session/:id/cancel`
-- `POST /api/auth/providers/:id/logout`
-- `POST /api/library/proposals` with `{kind: "regenerate" | "models" | "manual", instructions?, allowedModels?, changes?}`
-- `GET /api/library/proposals/:id`, `POST /api/library/proposals/:id/apply`, `/reject`
-- `POST /api/runs/:id/recover`
-- `POST /api/runs/:id/approve`, `/reject`, `/pause`, `/resume`, `/cancel`
-- `GET /api/runs/:id/events`, `GET /api/stream` (SSE)
-
-All mutation requests and `/api/auth/*` reads require `X-Workflow-Client: 1`. API responses disable caching. Auth responses contain only prompts, status and sign-in instructions, never credential objects. Draft GET responses include an `ETag` containing the revision, for example `"2"`; send it as `If-Match` when saving, refining or approving. A mismatch returns 409. The browser always sends this header; it remains optional for older API clients. Project model writes require the `configRevision` returned by setup and reject concurrent config edits.
-
-Example task request (review is the default):
-
-```sh
-curl http://127.0.0.1:4310/api/tasks \
-  -H 'Content-Type: application/json' -H 'X-Workflow-Client: 1' \
-  -d '{"prompt":"Fix the empty-input bug"}'
-```
-
-## Why Pi and Temporal?
-
-They solve different problems. **Pi is the embedded model/tool/session and terminal-UI runtime. Temporal owns durable execution.** Neither automatically makes model actions safe or requirements correct. Workflow owns the approval flow, local tools, host checks, credential locations and user experience. Their composition does not require users to operate Pi or manually administer the default local Temporal service.
-
-See [the implementation plan and roadmap](docs/implementation-plan.md).
-
-## Developing the tool
-
-From this repository, `bun run dev` starts the live API, waits for its readiness endpoint, then starts the Vite UI at **http://127.0.0.1:5173** using the project’s `.workflow/` library. `bun run dev:live` is a compatibility alias; both use real agents. `bun run workflow <command>` runs the TypeScript CLI directly for development; installed users just run `workflow` in their own project.
-
-The frontend uses **Vue 3 + TypeScript**, the Composition API, and **Vue Flow**. Components use `<script setup lang="ts">` with typed props/events and `v-model` for form state. `web/App.vue` owns navigation, `web/components/` contains task/workflow/design UI, `web/settings/` contains settings sections, and `web/composables/` owns server streams, polling and unsaved drafts. Shared API validation and revision-merging helpers stay framework independent. Settings, graph controls, the editor and AI design chats load as separate chunks.
-
-`bun run typecheck` checks TypeScript **and Vue templates**, including component props, through the Vue language engine. The small `scripts/typecheck.ts` adapter calls that engine directly because the standard `vue-tsc` CLI depends on a Node loader hook that Bun does not use. `tests/typecheck.test.ts` checks that script, template and component-prop errors actually fail. No Node installation or untyped `.vue` shim is required.
-
-`scripts/build.ts` typechecks, removes stale build artifacts, builds the UI through Vite running on Bun, and bundles the backend with `bun build --target=bun`. It also prebundles the current and frozen v1 Temporal workflows with the SDK bundler. It emits executable `dist/cli.js`, `dist/workflow-bundle.js`, `dist/workflow-v1-bundle.js` and `dist/web/`. External runtime dependencies remain installed beside the tool, so this is a Bun-powered CLI package, not a dependency-free native binary. Rebuild after changing the tool when using a development link.
-
-`bun.lock` is the authoritative lockfile. TypeScript's `node:*` compatibility types and APIs do not require a Node.js process: Bun implements those interfaces.
-
-### Checks
-
-```sh
-bun run test             # builds the distribution; runs CLI, domain, engine, file/shell tools, API and SDK tests with Bun
-bun run typecheck
-bun run build
-
-# Browser tests, including approval, feedback, pause/reload/resume and rejection:
-bunx --bun playwright install chromium
-bun run test:e2e
-# Or use a preinstalled Chromium:
-WORKFLOW_CHROMIUM_PATH=/usr/bin/chromium bun run test:e2e
-```
-
-`bun run test:live` is an opt-in integration check using your existing ChatGPT sign-in. It creates a temporary project and local bare Git remote, then checks real planning on an unborn branch, browser approval, AI settings design, screenshot input, implementation/tests, commit/push, results/downloads, parallel model calls, typed joins, loop conditions and automatic execution. Chromium always runs headlessly. Set `WORKFLOW_CHROMIUM_PATH` if using a system browser, and optionally `WORKFLOW_LIVE_MODEL` (default `gpt-6-luna`). This consumes subscription usage, leaves the real project untouched, and writes its report/screenshots into the printed temporary directory.
-
-Use `WORKFLOW_LIVE_SCENARIO=cancellation bun run test:live` to check cancelling the real coordinator, stopping an executing Bash command without a late file write, persistence after browser reload, and successfully running another task afterward. `WORKFLOW_LIVE_SCENARIO=publication` runs just the screenshot-to-publication scenario.
-
-Tests use disposable projects and real local Temporal services. They cover safe pause/restart/resume, a SIGKILL/restart of the executable, no automatic replay of interrupted edits, and approval guards. Terminal tests use real Bun pseudo-terminals with no Pi/Node on PATH, dummy keys and offline catalog discovery. The SDK integration test uses a local streaming fake provider: no paid model calls or real credentials are required. Browser tests use a separate demo server on port 4311.
-
-With the pinned Temporal SDK on Bun, `v8.promiseHooks.createHook is not available` warns that workflow stack-trace collection is disabled. Execution/replay/signals work in the integration tests; this is a diagnostic limitation, not a switch to a fake/local executor.
+`dev` and `start` use real AI. Paid/subscription integration testing is a separate opt-in command, `bun run test:live`. See [Development](docs/development.md) for prerequisites, focused checks, and live-test scenarios.

@@ -1,0 +1,127 @@
+# Command and API reference
+
+[Documentation](README.md) → Command and API reference
+
+## CLI
+
+Run project commands from the target project's directory. Configuration is in that directory's `.workflow/`; there is no project-path argument. `workflow --help` prints the installed command syntax.
+
+| Command | Behavior |
+| --- | --- |
+| `workflow init [--instructions "..."] [--no-ai]` | Initialize the project. Without `--no-ai`, connected providers can generate initial profiles. |
+| `workflow profiles [--instructions "..."]` | Regenerate model profiles using AI. |
+| `workflow` or `workflow serve` | Serve this project and start its worker. |
+| `workflow run <file.ts> [--input '<JSON object>'] [--approve]` | Submit source to the running project server. Default is a draft; `--approve` starts it. |
+| `workflow runs` | List runs on the local project server. |
+| `workflow pause <run-id>` | Finish active steps, then pause new dispatch. |
+| `workflow resume <run-id>` | Continue paused work or explicitly retry interrupted steps. |
+| `workflow cancel <run-id>` | Stop active or paused execution. |
+| `workflow recover <run-id>` | Retry managed-file recovery after conflicts are resolved. |
+| `workflow login [provider]` | Optional terminal account/API-key setup. |
+| `workflow logout [provider]` | Remove locally saved credentials through the terminal UI. |
+| `workflow model [search]` | Choose shared default model settings. |
+| `workflow thinking` | Choose shared thinking defaults. |
+| `workflow auth` | Print connection metadata, never secret values. |
+
+Terminal setup commands can run outside a project. Interactive setup requires a real terminal and supports cancellation. Browser Settings provides the primary setup path.
+
+### Server options
+
+| Option | Behavior |
+| --- | --- |
+| `--port 4310` | HTTP port; 4310 is the default. Use the same option on CLI control commands. |
+| `--port 0` | Server only: choose a free port and print it. Control commands need that concrete port. |
+| `--demo` | Explicit simulation of agents/checks using real Temporal history. Normal startup and development use live AI. |
+| `--temporal-address host:port` | Connect to an existing trusted Temporal endpoint instead of the managed service. |
+| `--temporal-namespace name` | Namespace for that connection; default `default`. |
+
+An external Temporal service is not stopped when Workflow exits. The CLI currently exposes address/namespace selection, not remote authentication/TLS onboarding.
+
+`workflow run` returns the submitted run ID and state; it does not wait for completion. Source must be a project-relative `.ts` file, and `--input` must be a JSON object. The server must already be running for that same project.
+
+### Environment variables
+
+| Variable | Scope |
+| --- | --- |
+| `WORKFLOW_HOME` | Override Workflow's private user settings/credential directory. |
+| `XDG_CONFIG_HOME` | Absolute base for user configuration when `WORKFLOW_HOME` is absent. |
+| `WORKFLOW_CHROMIUM_PATH` | Test runner: use an existing Chromium executable. |
+| `WORKFLOW_LIVE_MODEL` | Live smoke test's selected model ID. |
+| `WORKFLOW_LIVE_SCENARIO` | Select a live smoke-test scenario; see [Development](development.md#real-model-smoke-tests). |
+
+Project commands and stdio MCP servers inherit the server environment. Provider-specific environment-key behavior remains an embedded SDK feature; browser credential setup does not require it.
+
+## Local HTTP API
+
+The Vue UI and CLI use the same loopback API. This is a local application interface, not a remotely authenticated public service. Request/response validation is implemented in `src/server.ts` and its imported schemas.
+
+All mutations and `/api/auth/*` reads require `X-Workflow-Client: 1`. Responses disable caching. Draft reads return a quoted revision `ETag`, such as `"2"`; send it as `If-Match` when editing, refining, or approving. Conflicts return 409. The browser supplies these headers; older clients can omit some draft revision headers, but should not rely on that for concurrent edits.
+
+Settings and library mutations carry their own required revision/hash fields. Read the current state before modifying it. Auth responses contain prompts/status/sign-in instructions rather than credential objects.
+
+### Tasks and attachments
+
+| Method and route | Purpose |
+| --- | --- |
+| `GET /api/project` | Served project, mode, and library/configuration. |
+| `GET /api/health` | Server readiness. |
+| `GET /api/tasks` | Task list. |
+| `POST /api/tasks` | Create `{ prompt, attachments?: [attachmentId] }`; returns 202 with the task. |
+| `GET /api/tasks/:id` | Task, planning events, and linked run. |
+| `POST /api/tasks/:id/answer` | Answer an essential question with `{ answer, revision }`. |
+| `POST /api/tasks/:id/retry` or `/cancel` | Retry or cancel planning. |
+| `DELETE /api/tasks/:id` | Remove a deletable task and its linked run from history. |
+| `POST /api/attachments` | Upload `{ name, mimeType, data: base64 }`. |
+| `GET /api/attachments/:id` | Read validated attachment bytes. |
+
+Example, with the server running in review mode:
+
+```sh
+curl http://127.0.0.1:4310/api/tasks \
+  -H 'Content-Type: application/json' \
+  -H 'X-Workflow-Client: 1' \
+  -d '{"prompt":"Review src/math.ts without editing; report actionable findings."}'
+```
+
+Planning is asynchronous. Poll the returned task ID or subscribe to the stream. Once the task is ready, its `runId` identifies the draft to inspect and approve.
+
+### Workflow source and execution
+
+| Method and route | Purpose |
+| --- | --- |
+| `POST /api/programs` | Create a TypeScript draft from `{ title, task, source, filename?, input? }`. |
+| `GET /api/runs` | Run summaries. |
+| `GET /api/runs/:id` | Full run and revision `ETag`. |
+| `PUT /api/runs/:id/program` | Replace draft `{ source, filename?, input? }`, using `If-Match`. |
+| `POST /api/runs/:id/refine` | Ask AI to refine a live draft with `{ instructions }`, using `If-Match`. |
+| `POST /api/runs/:id/approve` | Start the reviewed revision, using `If-Match`. |
+| `POST /api/runs/:id/reject` | Reject an unexecuted draft. |
+| `POST /api/runs/:id/pause`, `/resume`, `/cancel`, `/recover` | Execution controls. |
+| `DELETE /api/runs/:id` | Remove a deletable run and its linked task from visible history. |
+| `GET /api/runs/:id/events` | Persisted activity. |
+| `GET /api/stream` | Server-sent events for task/run updates and live activity. |
+| `POST /api/format` | Format `{ source, language, cursorOffset? }` without executing it. |
+
+`POST /api/runs` and `PUT /api/runs/:id/plan` remain for older explicit-route graphs. New task planning uses `/api/tasks`; new TypeScript imports use `/api/programs`.
+
+### Configuration and design
+
+| Routes | Purpose |
+| --- | --- |
+| `GET /api/setup` | Provider connection metadata and model defaults. |
+| `GET /api/models`, `POST /api/models/refresh` | Connected model catalog. |
+| `PUT /api/project/model` | `{ configRevision, agent }`; use `null` to clear project overrides. |
+| `GET/PUT /api/settings/orchestration` | `{ revision, settings }` for profiles, cases, capabilities, and approval. |
+| `GET/PUT /api/settings/execution` | `{ configRevision, instructions, commands, maxSteps, budget? }`. |
+| `POST /api/settings/mcp/inspect` | Discover tools from an MCP server configuration. |
+| `GET /api/library` | Active blocks, source, and revision. |
+| `DELETE /api/library/blocks/:id` | Remove a reusable block with `{ revision }`. |
+| `POST /api/library/proposals` | Create a manual or AI library proposal; not yet applied. |
+| `GET /api/library/proposals/:id`, `POST .../apply`, `POST .../reject` | Inspect/apply/reject a library proposal. |
+| `POST /api/design`, `GET /api/design/:id`, `GET /api/design/:scope/latest` | Create/read scoped settings conversations. |
+| `POST /api/design/:id/messages`, `/cancel`, `/discard`, `/apply` | Continue or control a settings conversation/proposal. |
+| `GET /api/auth/options`, `GET/POST /api/auth/session` | Connection choices and sign-in state; start `{ provider, method }`. |
+| `POST /api/auth/session/:id/respond` | Respond with `{ promptId, value }`. |
+| `POST /api/auth/session/:id/cancel`, `POST /api/auth/providers/:id/logout` | Cancel sign-in or remove local credentials. |
+
+The browser implementations in `web/api.ts`, the shared schemas, and the server routes are the detailed contract for design proposal bodies. The API has no published cross-version stability guarantee; keep integrations aligned with the installed application.
