@@ -35,7 +35,6 @@ try {
   if (!branch) throw new Error("HEAD is detached. Check out the branch to publish.");
   git(["rev-parse", "--verify", "refs/heads/" + branch]);
   const upstreamRemote = git(["config", "--get", "branch." + branch + ".remote"], true);
-  const upstreamRef = git(["config", "--get", "branch." + branch + ".merge"], true);
   const remotes = git(["remote"]).split("\\n").filter(Boolean);
   const remote = preferredRemote ||
     git(["config", "--get", "branch." + branch + ".pushRemote"], true) ||
@@ -43,8 +42,9 @@ try {
     upstreamRemote || (remotes.includes("origin") ? "origin" : remotes.length === 1 ? remotes[0] : "");
   if (!remote || !remotes.includes(remote))
     throw new Error(remote ? 'Remote "' + remote + '" is not configured.' : "No unambiguous push remote. Configure origin or set preferredRemote in this script.");
-  const destination = remote === upstreamRemote && upstreamRef ? upstreamRef : "refs/heads/" + branch;
-  if (!destination.startsWith("refs/heads/")) throw new Error("The upstream is not a branch.");
+  // A new feature branch can inherit origin/main as its fetch upstream.
+  // Publish the current branch by name, never reinterpret that base as a target.
+  const destination = "refs/heads/" + branch;
   git(["check-ref-format", destination]);
   git(["-c", "remote." + remote + ".mirror=false", "push", "--porcelain",
     "--no-force", "--no-follow-tags", "--no-mirror", "--set-upstream", "--",

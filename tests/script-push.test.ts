@@ -79,21 +79,38 @@ test("editable push script creates a remote branch/upstream, updates it, and nev
     "Already approved function snapshots retain their original executor");
 });
 
-test("editable push script respects an existing differently named upstream and rejects divergence without forcing", async (t) => {
+test("editable push script publishes by branch name despite a different fetch upstream and rejects divergence", async (t) => {
   const { project, library } = await fixture(t);
   const remote = await repository(project);
-  await commit(project);
+  const first = await commit(project);
   await git(project, "push", "--set-upstream", "origin", "HEAD:refs/heads/release");
   const second = await commit(project, "second");
   const step = execution(project, library);
   assert.equal((await runScriptBlock(step)).outcome, "pass");
-  assert.equal(await git(remote, "rev-parse", "refs/heads/release"), second);
+  assert.equal(await git(remote, "rev-parse", "refs/heads/release"), first);
+  assert.equal(await git(remote, "rev-parse", "refs/heads/feature/publish"), second);
   await git(project, "reset", "--hard", "HEAD~1");
   await commit(project, "divergent");
   const result = await runScriptBlock(step);
   assert.equal(result.outcome, "retry");
   assert.match(result.summary, /reject|non-fast-forward/i);
-  assert.equal(await git(remote, "rev-parse", "refs/heads/release"), second);
+  assert.equal(await git(remote, "rev-parse", "refs/heads/release"), first);
+  assert.equal(await git(remote, "rev-parse", "refs/heads/feature/publish"), second);
+});
+
+test("a feature branch created from origin/main cannot publish its commits to main", async (t) => {
+  const { project, library } = await fixture(t);
+  const remote = await repository(project);
+  const base = await commit(project);
+  await git(project, "push", "origin", "HEAD:refs/heads/main");
+  await git(project, "checkout", "-b", "codex/issue-4-practice", "origin/main");
+  assert.equal(await git(project, "rev-parse", "--abbrev-ref", "@{upstream}"), "origin/main");
+  const feature = await commit(project, "feature");
+  const result = await runScriptBlock(execution(project, library));
+  assert.equal(result.outcome, "pass", result.summary);
+  assert.equal(await git(remote, "rev-parse", "refs/heads/main"), base);
+  assert.equal(await git(remote, "rev-parse", "refs/heads/codex/issue-4-practice"), feature);
+  assert.equal(await git(project, "rev-parse", "--abbrev-ref", "@{upstream}"), "origin/codex/issue-4-practice");
 });
 
 test("editable push script uses an explicit configured remote and reports missing commits/remotes/detached HEAD", async (t) => {
@@ -169,7 +186,7 @@ test("editable push script follows explicit, branch and project remote preferenc
     step.bundle.definition.executor = pushScript(index === 0 ? "origin" : "");
     const result = await runScriptBlock(step);
     assert.equal(result.outcome, "pass", result.summary);
-    const destination = selected === "origin" ? "release" : "feature/publish";
+    const destination = "feature/publish";
     assert.equal(await git(remotes[selected]!, "rev-parse", `refs/heads/${destination}`), head);
     assert.equal(await git(remotes[selected]!, "for-each-ref", "--format=%(refname)", "refs/heads/"), `refs/heads/${destination}`);
   }

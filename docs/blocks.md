@@ -101,7 +101,7 @@ An AI session has file tools, Bash, Git inspection, configured checks, and enabl
 
 To use host APIs or installed packages, call a project script, for example `ctx.exec("bun scripts/check.ts")` or `ctx.exec("node scripts/publish.mjs")`. The requested runtime must exist. Pure TypeScript imports can be bundled, but block code cannot directly import `node:fs`, spawn processes, or perform arbitrary network effects outside context operations.
 
-A deterministic commit/push procedure can be a code block. The starter **Push current branch** block runs Git without a model call and can create the remote branch/upstream when needed. It is editable source. Keep publication after verification and include it only when the task requests it.
+A deterministic commit/push procedure can be a code block. The starter **Push current branch** block runs Git without a model call and publishes to the same branch name on the selected remote, creating that remote branch/upstream when needed. A differently named fetch upstream (for example, a feature branch created from `origin/main`) is not a push destination. It is editable source; existing saved blocks and approved snapshots keep their source until explicitly updated. Keep publication after verification and include it only when the task requests it.
 
 Shell commands run with the server environment plus explicit `env` overrides. Shell edits, Git operations, and network effects are outside managed-file rollback; account for this when designing retries.
 
