@@ -149,8 +149,9 @@ async function inspect() {
     <button v-if="busy" @click="cancel">Cancel discovery</button>
     <p v-if="error" class="inline-error" role="alert">{{ error }}</p>
     <p class="muted">
-      All tools from an enabled server are available during planning and
-      execution. Local servers inherit the application’s environment.
+      All tools from an enabled server are available to execution blocks. The
+      coordinator does not call MCP tools while planning. Local servers inherit
+      the application’s environment.
     </p>
     <div v-if="tools.length" class="mcp-tools">
       <div v-for="tool in tools" :key="tool.name">
