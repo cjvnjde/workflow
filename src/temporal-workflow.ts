@@ -7,6 +7,7 @@ import {
   defineSignal,
   isCancellation,
   proxyActivities,
+  patched,
   setHandler,
 } from "@temporalio/workflow";
 import { executionTimeoutMs, resolveInputs, runSchema, type BlockResult, type CheckResult, type WorkflowRun, type WorkflowNode, type RecoveryResult, type UsageTotals } from "./domain.js";
@@ -265,9 +266,10 @@ export async function executeWorkflow(input: WorkflowRun, loadProgram?: () => Wo
       let output: unknown;
       try {
         output = await scope.run(() => program.flow ? executeFlow({
+          recordDecisions: patched("flow-decision-evidence-v1"),
           flow: program.flow, structure: run.program!.structure!, input, request: run.plan.task, models,
           step: (node, options, stopped) => step(node.id, node.block, options, true, stopped),
-          group: async (id, state) => { (run.groups ??= {})[id] = { ...run.groups?.[id], ...state }; await checkpoint("group_state", `${id}: ${state.state}${state.iteration ? ` · iteration ${state.iteration}` : ""}`, id); },
+          group: async (id, state) => { (run.groups ??= {})[id] = { ...run.groups?.[id], ...state }; await checkpoint("group_state", `${id}: ${state.state}${state.iteration ? ` · iteration ${state.iteration}` : ""}`, id); if (state.decision) await checkpoint("flow_decision", JSON.stringify({ groupId: id, iteration: state.iteration, ...state.decision }), id); },
         }) : program.run!({ input, request: run.plan.task, models, step, stepResult: (id, block, options) => step(id, block, options, true) }));
         if (pending.size) throw new Error("The workflow returned before its step finished. Await every ctx.step call.");
       } catch (error) {

@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 import type { TaskRequest } from "../../src/task-schema.js";
 import type { TaskStream } from "../composables/use-workflow-data.js";
+import { describeActivity } from "../activity.js";
 import Icon from "./Icon.vue";
 import ActivityFeed from "./ActivityFeed.vue";
 const props = defineProps<{
@@ -118,7 +119,9 @@ const stages = [
       <span class="live-dot" /><span>{{
         stream?.activity && !["queued", "planning"].includes(stream.activity)
           ? stream.activity.slice(0, 220)
-          : (task.events.at(-1)?.message ?? "Waiting for the coordinator…")
+          : task.events.at(-1)
+            ? describeActivity(task.events.at(-1)!).preview
+            : "Waiting for the coordinator…"
       }}</span>
     </div>
     <details v-if="task.events.length || stream?.text" class="planning-logs">

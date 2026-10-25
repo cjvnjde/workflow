@@ -120,6 +120,7 @@ const nodes = computed<Node[]>(() => [
       data: {
         label: node.label,
         detail: node.detail,
+        condition: node.condition,
         state: props.run.groups?.[node.id],
         horizontal: true,
       },
@@ -347,12 +348,19 @@ function returnPath(edge: EdgeProps) {
     </template>
     <template #node-group="{ data }">
       <div class="composition-heading">
-        <strong>{{ data.label }}</strong
+        <strong
+          :title="data.condition ? `Predicate: ${data.condition}` : undefined"
+          >{{ data.label }}</strong
         ><span>{{ data.detail }}</span
         ><small v-if="data.state"
           >{{ data.state.state
           }}<template v-if="data.state.iteration">
             · round {{ data.state.iteration }}</template
+          ><template v-if="data.state.decision">
+            · {{ data.state.decision.route
+            }}<template v-if="data.state.decision.result !== undefined">
+              ({{ data.state.decision.result }})</template
+            ></template
           ></small
         >
       </div>

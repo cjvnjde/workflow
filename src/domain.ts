@@ -111,6 +111,10 @@ export const blockSchema = z
         writeDeny: z.array(z.string()).default([]),
       })
       .strict().optional(),
+    contract: z.object({
+      inputs: z.string().max(2000).default(""), outputs: z.string().max(2000).default(""),
+      effects: z.string().max(2000).default(""), failure: z.string().max(2000).default(""),
+    }).strict().optional(),
     skills: z.array(z.string()).default([]),
     outputs: z
       .array(artifactNameSchema)
@@ -253,7 +257,7 @@ export const runSchema = z
     blocks: z.record(identifierSchema, bundleSchema),
     cursor: z.string(),
     activeNodes: z.array(identifierSchema).max(8).optional(),
-    groups: z.record(z.string(), z.object({ state: z.enum(["running", "completed", "failed", "skipped"]), iteration: z.number().int().optional(), branch: z.enum(["then", "otherwise"]).optional() }).strict()).optional(),
+    groups: z.record(z.string(), z.object({ state: z.enum(["running", "completed", "failed", "skipped"]), iteration: z.number().int().optional(), branch: z.enum(["then", "otherwise"]).optional(), decision: z.object({ result: z.boolean().optional(), route: z.enum(["then", "otherwise", "repeat", "exit", "limit"]), reason: z.string() }).strict().optional() }).strict()).optional(),
     visits: z.record(z.string(), z.number()),
     artifacts: z.record(z.string(), z.record(z.string(), z.string())),
     attempts: z.array(

@@ -17,6 +17,7 @@ Workflow turns a development request into an inspectable TypeScript graph, then 
 | [Concepts and design](concepts.md) | The problem Workflow solves; task, case, block, step, workflow, and run; why code, models, and durable execution fit together. |
 | [Getting started](getting-started.md) | Installation, project initialization, browser setup, first task, and importing TypeScript. |
 | [Writing workflows](workflows.md) | The composition primitives, typed data, conditions, outcomes, loops, parallel scheduling, and older workflow formats. |
+| [Block contracts and evidence](block-contracts-and-evidence.md) | Single-block testing, enforced ownership roles, selective skills/MCP, decisions and actual model sessions. |
 | [Writing blocks](blocks.md) | `block()`, context operations, AI outputs, model overrides, command results, artifacts, and reusable library modules. |
 | [Configuration](configuration.md) | Providers, model profiles, task instructions, AI settings chats, skills, MCP, limits, and stored configuration. |
 | [Running and recovering workflows](operations.md) | Statuses, activity, pause/resume, cancellation, file recovery, version archives, backups, and troubleshooting. |

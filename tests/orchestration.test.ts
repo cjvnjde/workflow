@@ -91,8 +91,10 @@ test("the coordinator classifies dynamically, reads case instructions, selects p
   const result = await planTask(options, async (session) => {
     assert.equal(session.settings.thinking, "high");
     assert.match(session.systemPrompt, /Careful independent review/);
-    assert.match(session.systemPrompt, /Cite a file/);
-    assert.match(session.systemPrompt, /project evidence marker/);
+    assert.match(session.systemPrompt, /Require evidence/);
+    assert.match(session.systemPrompt, /Project evidence/);
+    assert.doesNotMatch(session.systemPrompt, /Cite a file for every finding/);
+    assert.doesNotMatch(session.systemPrompt, /Preserve the project evidence marker/);
     assert.match(session.systemPrompt, /project-reference/);
     assert.equal(session.images?.length, 1);
     assert.ok((session.tools.find(tool => tool.name === "submit_plan")!.parameters as { required?: string[] }).required?.includes("attachmentSummary"));
@@ -224,6 +226,17 @@ test("enabled MCP servers expose every discovered tool, regardless of legacy sel
   const disabled = await mcpTools({ skills: [], mcpServers: [{ ...config, enabled: false }] }, project, signal);
   assert.equal(disabled.tools.length, 0);
   assert.deepEqual(calls, ["read"]);
+  const selected = await mcpTools({ skills: [], mcpServers: [config] }, project, signal, {mcp:{fixture:["read"]}});
+  try { assert.equal(selected.tools.length,1); assert.match(selected.tools[0]!.name,/read/); } finally { await selected.close(); }
+  const excluded = await mcpTools({ skills: [], mcpServers: [config] }, project, signal, {mcp:{}});
+  assert.equal(excluded.tools.length,0); await excluded.close();
+  await assert.rejects(mcpTools({skills:[],mcpServers:[config]},project,signal,{mcp:{fixture:["missing"]}}),/tool unavailable/);
+  await assert.rejects(mcpTools({skills:[],mcpServers:[config]},project,signal,{mcp:{unknown:["read"]}}),/server is unavailable/);
+  const broken = {...config,id:"broken",transport:"stdio" as const,command:"/nonexistent/workflow-mcp"};
+  const warnings:string[]=[];
+  const optional = await mcpTools({skills:[],mcpServers:[broken,config]},project,signal,{optionalMcp:["broken"]},message=>warnings.push(message));
+  try { assert.equal(optional.tools.length,2); assert.equal(warnings.length,1); } finally { await optional.close(); }
+  await assert.rejects(mcpTools({skills:[],mcpServers:[broken]},project,signal),/Could not connect/);
   // Tokens are environment references, never serialized credential values.
   assert.ok(!(await readFile(path.join(project, ".workflow", "config.json"), "utf8")).includes("Authorization"));
 });

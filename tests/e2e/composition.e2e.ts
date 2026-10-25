@@ -170,6 +170,7 @@ test("parallel steps highlight together, loops show rounds, and final results ar
   await expect(
     page.locator('.composition-group[data-id="review-cycle"]'),
   ).toContainText("round 2");
+  await expect(page.locator('.composition-group[data-id="review-cycle"]')).toContainText("exit (true)");
   await expect(page.locator('.workflow-node[data-id="blocked"]')).toContainText(
     "skipped",
   );
@@ -179,6 +180,8 @@ test("parallel steps highlight together, loops show rounds, and final results ar
   await page
     .getByRole("button", { name: "View full results", exact: false })
     .click();
+  await expect(page.locator(".results-panel")).toContainText("Exit predicate evaluated");
+  await expect(page.locator(".results-panel")).toContainText("false → repeat");
   await expect(
     page.getByRole("heading", { name: "Ready to publish", exact: true }),
   ).toBeVisible();

@@ -10,6 +10,7 @@ export type LayoutNode = {
   height: number;
   label?: string;
   detail?: string;
+  condition?: string;
   /** Absolute bounds of the nearest group; keep dragged blocks inside it. */
   extent?: [[number, number], [number, number]];
 };
@@ -77,7 +78,7 @@ export function compositionLayout(root: FlowStructure): Box {
       nodes.push(...shifted(child, x, y));
       edges.push(...shiftedEdges(child, y));
       if (index)
-        edges.push({ from: children[index - 1]!.exit, to: child.entry });
+        edges.push({ from: children[index - 1]!.exit, to: child.entry, label: root.children[index - 1]?.kind === "loop" ? "true → continue" : undefined });
       x += child.width + 96;
     });
     return {
@@ -113,9 +114,10 @@ export function compositionLayout(root: FlowStructure): Box {
           : root.kind === "when"
             ? "Condition"
             : root.label,
+      condition: root.condition,
       detail:
         root.kind === "loop"
-          ? `Up to ${root.maxIterations} iterations`
+          ? `True: exit · false: repeat · limit ${root.maxIterations}: fail`
           : root.kind === "parallel"
             ? `Up to ${root.concurrency} at once`
             : root.id,
@@ -167,7 +169,7 @@ export function compositionLayout(root: FlowStructure): Box {
     edges.push({
       from: exit,
       to: entry,
-      label: "repeat",
+      label: "false → repeat (within limit)",
       repeat: true,
       returnY: 68,
       returnSide: "top",

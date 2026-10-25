@@ -29,6 +29,7 @@ import type { FlowStructure } from "./composition-sdk.js";
 
 export type BlockExecution = {
   tools?: "none";
+  capabilities?: { skills?: string[]; mcp?: Record<string, string[]>; optionalMcp?: string[] };
   protectedPaths?: string[];
   writablePaths?: string[];
   absoluteJournalPaths?: boolean;
@@ -239,7 +240,14 @@ export const runPiBlock: BlockRunner = async (execution) => {
   const attachments = await new Attachments(execution.attachmentProject ?? project).context(
     config.attachments ?? [],
   );
-  const external = execution.tools === "none" ? { tools: [], close: async () => {} } : await mcpTools(config.capabilities, project, signal);
+  const selectedSkills = (config.capabilities?.skills ?? []).filter(skill => skill.enabled && (execution.capabilities?.skills === undefined || execution.capabilities.skills.includes(skill.id)));
+  for (const id of execution.capabilities?.skills ?? []) if (!selectedSkills.some(skill => skill.id === id)) throw new Error(`Selected skill is unavailable: ${id}`);
+  if (selectedSkills.length) tools.push(defineTool({
+    name: "load_skill", label: "Load project skill", description: "Load a skill from the project catalog before following its instructions. Relative resource and script paths use the source directory documented in the skill.",
+    parameters: Type.Object({ id: Type.String() }),
+    async execute(_id, { id }) { const skill = selectedSkills.find(item => item.id === id); if (!skill) throw new Error(`Unavailable skill: ${id}`); emit("skill_loaded", id); return textResult(skill.content); },
+  }));
+  const external = execution.tools === "none" ? { tools: [], close: async () => {} } : await mcpTools(config.capabilities, project, signal, execution.capabilities, message => emit("capability_warning", message));
   try {
     await runAgentSession({
       project,
@@ -307,12 +315,9 @@ export const runPiBlock: BlockRunner = async (execution) => {
         ...bundle.skills.map(
           (skill) => `Explicit block skill (${skill.path}):\n${skill.content}`,
         ),
-        ...(config.capabilities?.skills ?? [])
-          .filter((skill) => skill.enabled)
-          .map(
-            (skill) =>
-              `Enabled project skill (${skill.name}):\n${skill.content}`,
-          ),
+        ...(execution.tools === "none" ? selectedSkills.map(skill => `Selected project skill (${skill.name}):\n${skill.content}`) : [
+          `Project skill catalog (call load_skill when relevant): ${JSON.stringify(selectedSkills.map(({ id, name, description }) => ({ id, name, description })))}`,
+        ]),
       ].join("\n\n"),
       prompt: JSON.stringify(
         {

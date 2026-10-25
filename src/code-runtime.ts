@@ -80,6 +80,8 @@ export async function executeCode(options: {
     ai: (async (args: {
       prompt: string;
       tools?: "none";
+      role?: "test-author" | "repair" | "verification" | "review";
+      capabilities?: { skills?: string[]; mcp?: Record<string, string[]>; optionalMcp?: string[] };
       instructions?: string;
       protectedPaths?: string[];
       writablePaths?: string[];
@@ -95,6 +97,8 @@ export async function executeCode(options: {
         options.operation({
           kind: "ai",
           tools: args.tools,
+          role: args.role,
+          capabilities: args.capabilities,
           prompt: args.prompt,
           instructions: args.instructions,
           protectedPaths: args.protectedPaths,

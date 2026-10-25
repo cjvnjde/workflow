@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { RunEvent, WorkflowRun } from "../../src/domain.js";
+import { runReport } from "../run-report.js";
 import { executionEvidence } from "../execution-evidence.js";
 const props = defineProps<{
   run: WorkflowRun;
   events: RunEvent[];
   now: number;
 }>();
+const report = computed(() => runReport(props.run, props.events));
 const evidence = computed(() => executionEvidence(props.run, props.now));
 const files = computed(() =>
   props.events
@@ -29,13 +31,19 @@ const files = computed(() =>
 );
 const ownership = computed(() =>
   props.events.filter((event) =>
-    ["ownership_evidence", "ownership_violation"].includes(event.kind),
+    [
+      "ownership_evidence",
+      "ownership_violation",
+      "ownership_contract",
+    ].includes(event.kind),
   ),
 );
 function ownershipText(event: RunEvent) {
   if (event.kind === "ownership_violation") return event.message;
   try {
     const value = JSON.parse(event.message);
+    if (event.kind === "ownership_contract")
+      return `Assigned role: ${value.role}. Allowed writes: ${value.writablePaths === undefined ? "outside protected patterns" : value.writablePaths.join(", ") || "none"}. Protected: ${value.protectedPaths?.join(", ") || "all paths outside the allowlist"}.`;
     return `${value.checkedFileCount ?? value.checkedFiles?.length ?? 0} protected files verified unchanged. Allowed writes: ${value.writablePaths === undefined ? "not restricted by an allowlist" : value.writablePaths.join(", ") || "none"}. Protected patterns: ${value.protectedPaths.join(", ") || "all paths outside the allowlist"}.`;
   } catch {
     return "Ownership evidence is incomplete; inspect activity.";
@@ -52,6 +60,98 @@ function ownershipText(event: RunEvent) {
       valid failing tests; acceptance depends on the workflow’s checks and
       review.
     </p>
+    <h3>Result summary</h3>
+    <p>
+      {{ report.accepted.length }} latest step results explicitly accepted;
+      {{ report.unresolved.length }} latest results unresolved.
+      {{ report.checks.length }} host checks recorded.
+    </p>
+    <p v-if="!report.accepted.length">
+      No explicit acceptance result recorded. A completed workflow alone does
+      not establish verified acceptance.
+    </p>
+    <ul>
+      <li v-for="attempt in report.unresolved" :key="attempt.nodeId">
+        <details>
+          <summary>
+            {{ attempt.nodeId }} ·
+            {{
+              attempt.result?.disposition ||
+              attempt.result?.outcome ||
+              "Execution error"
+            }}
+          </summary>
+          <pre>{{ attempt.error || attempt.result?.summary }}</pre>
+        </details>
+      </li>
+    </ul>
+    <details v-if="report.checks.length">
+      <summary>Host check evidence</summary>
+      <ul>
+        <li v-for="(check, index) in report.checks" :key="index">
+          {{ check.nodeId }} · visit {{ check.visit }} · {{ check.command }} ·
+          expected {{ check.expected }} · exit {{ check.exitCode }} ·
+          {{ check.matched ? "matched" : "NOT matched" }}
+          <pre>{{ check.output }}</pre>
+        </li>
+      </ul>
+    </details>
+    <h3>Decisions</h3>
+    <p v-if="!report.decisions.length">
+      No predicate evaluations recorded. Older runs retain their group state but
+      not decision history.
+    </p>
+    <ol v-else>
+      <li v-for="decision in report.decisions" :key="decision.id">
+        {{ decision.groupId
+        }}<template v-if="decision.iteration">
+          · round {{ decision.iteration }}</template
+        >:
+        {{ decision.result === undefined ? "not evaluated" : decision.result }}
+        → <strong>{{ decision.route }}</strong
+        >. {{ decision.reason }}
+      </li>
+    </ol>
+    <details
+      v-if="events.some((event) => event.kind === 'capability_warning')"
+      open
+    >
+      <summary>Capability warnings</summary>
+      <ul>
+        <li
+          v-for="event in events.filter(
+            (event) => event.kind === 'capability_warning',
+          )"
+          :key="event.id"
+        >
+          {{ event.message }}
+        </li>
+      </ul>
+    </details>
+    <h3>Actual model calls</h3>
+    <p v-if="!report.calls.length">
+      No detailed model-session records. See agent-start activity for older
+      runs; step defaults may differ from inner calls.
+    </p>
+    <details v-for="call in report.calls" :key="call.id">
+      <summary>
+        {{ call.nodeId }} · {{ call.description
+        }}<template v-if="call.durationMs !== undefined">
+          · {{ (call.durationMs / 1000).toFixed(1) }}s</template
+        >
+      </summary>
+      <p>Exposed tools: {{ call.tools.join(", ") || "none" }}</p>
+      <p v-if="call.usage">
+        {{ call.usage.inputTokens }} input /
+        {{ call.usage.outputTokens }} output tokens ·
+        {{ call.usage.requests }} requests ·
+        {{
+          call.usage.unpricedRequests
+            ? "cost incomplete"
+            : "$" + call.usage.costUsd.toFixed(4)
+        }}
+      </p>
+    </details>
     <div style="overflow-x: auto">
       <table>
         <thead>
@@ -83,6 +183,26 @@ function ownershipText(event: RunEvent) {
       <li v-for="(overlap, index) in evidence.overlaps" :key="index">
         {{ overlap.first }} + {{ overlap.second }}:
         {{ overlap.seconds.toFixed(1) }}s overlap
+      </li>
+    </ul>
+    <p>
+      Overlapping attempts prove scheduling overlap, not simultaneous model
+      calls or safe integration. Inspect separate workspaces and the
+      verification after the join before accepting concurrent edits.
+    </p>
+    <h3>Concurrent model sessions</h3>
+    <p v-if="!report.modelOverlaps.length">
+      No completed overlapping model sessions recorded.
+    </p>
+    <ul v-else>
+      <li v-for="(overlap, index) in report.modelOverlaps" :key="index">
+        {{ overlap.first }} + {{ overlap.second }}:
+        {{ overlap.seconds.toFixed(1) }}s ·
+        {{
+          overlap.isolated
+            ? "different execution workspaces"
+            : "workspace isolation not established"
+        }}
       </li>
     </ul>
     <h3>Execution workspaces</h3>

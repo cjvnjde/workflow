@@ -176,7 +176,7 @@ export async function planTask(options: TaskPlannerOptions, session: typeof runA
       `Configured commands:\n${JSON.stringify(library.config.commands)}`,
       `Block catalog:\n${JSON.stringify(blocksForAgent(library.blocks))}`,
       `Available MCP servers for execution: ${JSON.stringify(settings.capabilities.mcpServers.filter(server => server.enabled).map(({ id, name }) => ({ id, name })))}`,
-      ...settings.capabilities.skills.filter((skill) => skill.enabled).map((skill) => `Enabled skill (${skill.name}):\n${skill.content}`),
+      `Project skills available to execution (select relevant IDs; execution loads instructions with load_skill): ${JSON.stringify(settings.capabilities.skills.filter(skill => skill.enabled).map(({id,name,description}) => ({id,name,description})))}`,
     ].join("\n\n"),
     prompt: JSON.stringify({ request: task.prompt, answers: task.answers, attachments: context.texts, recovery: options.recovery ? { runId: options.recovery.id, status: options.recovery.status, error: options.recovery.error, attempts: options.recovery.attempts.map(({nodeId, visit, result, error, checks, recovery}) => ({nodeId, visit, result, error, checks, recovery})), artifacts: options.recovery.artifacts } : undefined }),
   });

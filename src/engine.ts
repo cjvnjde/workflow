@@ -788,6 +788,18 @@ export class WorkflowEngine {
     try {
       let result: unknown;
       if (operation.kind === "ai") {
+        const ownershipError = (operation.role === "verification" || operation.role === "review") && operation.writablePaths?.length
+          ? `${operation.role} must be read-only; assign corrections to their owning author`
+          : operation.role === "test-author" && !operation.writablePaths?.length
+            ? "Test authoring requires an explicit writablePaths test/harness allowlist"
+            : operation.role === "repair" && !operation.protectedPaths?.length
+              ? "Production repair requires protectedPaths naming the reproduction tests owned by the test author" : undefined;
+        if (ownershipError) {
+          emit("operation_error", ownershipError);
+          return { outcome: "fail", summary: ownershipError, artifacts: {} };
+        }
+        if (operation.role === "verification" || operation.role === "review") operation.writablePaths = [];
+        if (operation.role) emit("ownership_contract", JSON.stringify({role:operation.role,protectedPaths:operation.protectedPaths,writablePaths:operation.writablePaths}));
         const model = operation.model ? agentOverrideSchema.parse(operation.model) : undefined;
         run.blocks[node.block] = bundleSchema.parse({
           ...bundle,
@@ -829,7 +841,7 @@ export class WorkflowEngine {
           try { audit = await ProtectedPaths.capture(workspace, ["**/*"]); }
           catch { emit("file_evidence_unavailable", "File scan unavailable or exceeds limits; unchanged files have not been established."); }
           emit("execution_workspace", workspace);
-          const completion = await this.executeBlock(run, "value", operation.protectedPaths, operation.writablePaths, workspace, operation.tools);
+          const completion = await this.executeBlock(run, "value", operation.protectedPaths, operation.writablePaths, workspace, operation.tools, operation.capabilities);
           result = completion.result;
         } finally {
           try {
@@ -870,9 +882,9 @@ export class WorkflowEngine {
     finally { clearInterval(heartbeat); }
   }
 
-  private async executeBlock(value: WorkflowRun, resultMode?: "value", protectedPaths?: string[], writablePaths?: string[], workspace = this.project, tools?: "none") {
+  private async executeBlock(value: WorkflowRun, resultMode?: "value", protectedPaths?: string[], writablePaths?: string[], workspace = this.project, tools?: "none", capabilities?: import("./workflow-sdk.js").AIOptions["capabilities"]) {
     const node = value.plan.nodes.find(node => node.id === value.cursor);
-    if (value.config.budget?.maxCostUsd === undefined || (node && value.blocks[node.block]?.definition.executor)) return this.executeBlockNow(value, resultMode, protectedPaths, writablePaths, workspace, tools);
+    if (value.config.budget?.maxCostUsd === undefined || (node && value.blocks[node.block]?.definition.executor)) return this.executeBlockNow(value, resultMode, protectedPaths, writablePaths, workspace, tools, capabilities);
     // Only budgeted model sessions serialize. Otherwise siblings may spend the
     // same stale remaining balance. Compute and unbudgeted AI stay parallel.
     const before = this.budgetQueue;
@@ -887,7 +899,7 @@ export class WorkflowEngine {
       signal.throwIfAborted();
       await Promise.race([before, new Promise<never>((_, reject) => { onAbort = () => reject(signal.reason); signal.addEventListener("abort", onAbort, {once:true}); })]);
       signal.throwIfAborted();
-      return await this.executeBlockNow(value, resultMode, protectedPaths, writablePaths, workspace, tools);
+      return await this.executeBlockNow(value, resultMode, protectedPaths, writablePaths, workspace, tools, capabilities);
     } finally {
       clearInterval(heartbeat);
       if (onAbort) signal.removeEventListener("abort", onAbort);
@@ -895,7 +907,7 @@ export class WorkflowEngine {
     }
   }
 
-  private async executeBlockNow(value: WorkflowRun, resultMode?: "value", protectedPaths?: string[], writablePaths?: string[], workspace = this.project, tools?: "none") {
+  private async executeBlockNow(value: WorkflowRun, resultMode?: "value", protectedPaths?: string[], writablePaths?: string[], workspace = this.project, tools?: "none", capabilities?: import("./workflow-sdk.js").AIOptions["capabilities"]) {
     const run = runSchema.parse(value);
     this.assertActivity(run);
     if (run.mode !== this.mode) {
@@ -932,7 +944,7 @@ export class WorkflowEngine {
         : bundle.definition.executor.kind === "function" ? runFunctionBlock : runCommandBlock;
       const isolated = workspace !== this.project && workspace !== await realpath(this.project);
       const result = validateBlockResult(await runner({
-        project: workspace, attachmentProject: this.project, absoluteJournalPaths: isolated, config: run.config, bundle, node, protectedPaths, writablePaths, tools, task: run.plan.task, workflow: run.plan, composition: run.program?.structure,
+        project: workspace, attachmentProject: this.project, absoluteJournalPaths: isolated, config: run.config, bundle, node, protectedPaths, writablePaths, tools, capabilities, task: run.plan.task, workflow: run.plan, composition: run.program?.structure,
         inputs: resolveInputs(node, run), visit: run.visits[node.id] ?? 1,
         settings, signal, journal, maxCostUsd: remainingCost, resultMode,
         onUsage: async (sessionUsage) => { const usage = addUsage(previousUsage, sessionUsage); await saveUsage(directory, usage); this.usageByAttempt.set(`${run.id}/${node.id}/${run.visits[node.id] ?? 1}`, { ...usage }); this.emit(run, "usage", JSON.stringify(usage), node.id); },

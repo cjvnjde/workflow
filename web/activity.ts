@@ -87,7 +87,31 @@ export function describeActivity(event: RunEvent): ActivityItem {
     icon: "spark",
     markdown: false,
   };
-  if (event.kind === "usage") {
+  if (event.kind === "model_session" || event.kind === "model_session_end") {
+    const data = object(event.message);
+    item.category = "usage";
+    item.title =
+      event.kind === "model_session"
+        ? "Actual model session"
+        : "Model session finished";
+    item.preview =
+      event.kind === "model_session" && data
+        ? `${data.provider}/${data.model} · thinking ${data.thinking}`
+        : data && typeof data.durationMs === "number"
+          ? `${(data.durationMs / 1000).toFixed(1)}s · usage recorded`
+          : "Session evidence recorded";
+    item.detail = data ? JSON.stringify(data, null, 2) : event.message;
+  } else if (event.kind === "flow_decision") {
+    const data = object(event.message);
+    item.title = "Routing decision";
+    item.preview = data
+      ? `${data.groupId}: ${data.result === undefined ? "predicate not evaluated" : data.result} → ${data.route}`
+      : firstLine;
+    item.detail = data ? JSON.stringify(data, null, 2) : event.message;
+  } else if (event.kind === "capability_warning") {
+    item.title = "Optional capability unavailable";
+    item.tone = "warning";
+  } else if (event.kind === "usage") {
     item.category = "usage";
     item.title = "Reported model usage";
     item.icon = "chart";
@@ -163,9 +187,20 @@ export function describeActivity(event: RunEvent): ActivityItem {
   } else if (event.kind.startsWith("script_")) {
     item.category = "tools";
     item.icon = "terminal";
-    item.tone = event.kind === "script_error" || /condition NOT met/.test(firstLine) ? "error"
-      : event.kind === "script_end" ? "success" : undefined;
-    item.state = event.kind === "script_start" ? "Started" : event.kind === "script_end" ? (item.tone === "error" ? "Not met" : "Finished") : undefined;
+    item.tone =
+      event.kind === "script_error" || /condition NOT met/.test(firstLine)
+        ? "error"
+        : event.kind === "script_end"
+          ? "success"
+          : undefined;
+    item.state =
+      event.kind === "script_start"
+        ? "Started"
+        : event.kind === "script_end"
+          ? item.tone === "error"
+            ? "Not met"
+            : "Finished"
+          : undefined;
   } else if (event.kind === "check" || event.kind === "check_start") {
     item.category = "checks";
     item.icon = "shield";

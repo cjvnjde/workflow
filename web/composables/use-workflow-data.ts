@@ -1,3 +1,4 @@
+import { describeActivity } from "../activity.js";
 import { onMounted, onScopeDispose, shallowRef } from "vue";
 import { z } from "zod";
 import {
@@ -259,7 +260,7 @@ export function useWorkflowData() {
             activity:
               event.kind === "text_delta"
                 ? (previous?.activity ?? "Understanding your request…")
-                : event.message,
+                : describeActivity(event).preview,
             text:
               event.kind === "text_delta"
                 ? ((previous?.text ?? "") + event.message).slice(-8000)
@@ -284,7 +285,10 @@ export function useWorkflowData() {
             -8000,
           );
         } else {
-          coordinatorActivity.value = event.message.slice(0, 2000);
+          coordinatorActivity.value = describeActivity(event).preview.slice(
+            0,
+            2000,
+          );
           if (event.kind === "agent_message") {
             coordinatorText.value = event.message.slice(-8000);
           }

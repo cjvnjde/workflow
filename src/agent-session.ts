@@ -182,6 +182,7 @@ export async function runAgentSession(options: {
       );
     }
   });
+  const sessionStartedAt = Date.now();
   combinedSignal.addEventListener("abort", abort, { once: true });
   try {
     combinedSignal.throwIfAborted();
@@ -189,6 +190,7 @@ export async function runAgentSession(options: {
       "agent_start",
       `${model.provider}/${model.id} · thinking ${session.thinkingLevel}`,
     );
+    emit("model_session", JSON.stringify({ provider: model.provider, model: model.id, thinking: session.thinkingLevel, tools: options.tools.map(tool => tool.name) }));
     const prompt = async (message: string, images?: ImageContent[]) => {
       modelFailure = undefined;
       await session.prompt(message, { images });
@@ -214,6 +216,7 @@ export async function runAgentSession(options: {
       await abortPromise;
       await usageWrites;
     } finally {
+      emit("model_session_end", JSON.stringify({ durationMs: Date.now() - sessionStartedAt, usage }));
       session.dispose();
     }
   }

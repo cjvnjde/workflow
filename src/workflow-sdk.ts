@@ -71,6 +71,8 @@ export type ExecResult = {
 export type AIOptions<S extends z.ZodType = z.ZodType> = {
   /** Text-only transformation: only the structured-result tool is available. */
   tools?: "none";
+  role?: "test-author" | "repair" | "verification" | "review";
+  capabilities?: { skills?: string[]; mcp?: Record<string, string[]>; optionalMcp?: string[] };
   /** Project-relative globs owned by other steps; checked before accepting this call. */
   protectedPaths?: string[];
   writablePaths?: string[];

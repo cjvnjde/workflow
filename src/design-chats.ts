@@ -80,7 +80,7 @@ export class DesignChats {
               session.toolActivity = session.toolActivity.slice(-100);
             }
             if (kind === "text_delta") { session.text = (session.text + message).slice(-8000); }
-            else if (kind !== "usage") { session.activity = message.slice(0, 1000); }
+            else if (!["usage", "model_session", "model_session_end"].includes(kind)) { session.activity = message.slice(0, 1000); }
           },
         });
         controller.signal.throwIfAborted();

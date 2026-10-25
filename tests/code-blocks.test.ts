@@ -354,3 +354,31 @@ test("large inherited step inputs are referenced without changing a focused AI p
   await engine.approve(draft.id); await engine.waitForIdle();
   assert.equal(engine.get(draft.id).status,"completed",engine.get(draft.id).error);
 });
+
+test("ownership roles enforce author boundaries before starting a model and preserve capability selection", async t => {
+  const { project, library, cleanup } = await fixture(t);
+  const calls: { writable?: string[]; protected?: string[]; capabilities?: unknown }[] = [];
+  const engine = new WorkflowEngine(project,"live",async execution => {
+    calls.push({writable:execution.writablePaths,protected:execution.protectedPaths,capabilities:execution.capabilities});
+    return {outcome:"pass",summary:"Checked",artifacts:{}};
+  });
+  cleanup(()=>engine.shutdown());await engine.initialize();
+  for (const [options, valid] of [
+    [{role:"repair"},false],
+    [{role:"test-author"},false],
+    [{role:"review",writablePaths:["src/**"]},false],
+    [{role:"verification",capabilities:{skills:[],mcp:{}}},true],
+    [{role:"repair",protectedPaths:["tests/**"]},true],
+    [{role:"test-author",writablePaths:["tests/**"]},true],
+  ] as const) {
+    const source=wrap(`const work=block({async run(ctx){return ctx.ai({prompt:"Inspect",...${JSON.stringify(options)}});}});`);
+    const run=await engine.createProgram("Ownership","Check boundaries",{source},library);
+    await engine.approve(run.id);await engine.waitForIdle();
+    assert.equal(engine.get(run.id).status,valid?"completed":"failed",engine.get(run.id).error);
+  }
+  assert.equal(calls.length,3);
+  assert.deepEqual(calls[0]?.writable,[]);
+  assert.deepEqual(calls[0]?.capabilities,{skills:[],mcp:{}});
+  assert.deepEqual(calls[1]?.protected,["tests/**"]);
+  assert.deepEqual(calls[2]?.writable,["tests/**"]);
+});

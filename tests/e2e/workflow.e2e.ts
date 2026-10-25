@@ -1579,3 +1579,26 @@ repeatUntil("repair",{body:parallel([step("d",job),step("e",job)]),until:()=>tru
   })).toBe(0);
   await page.screenshot({path:"/tmp/workflow-routing-nested.png",fullPage:true});
 });
+
+test("saved block playground validates JSON and creates a reviewable single-step run", async ({page}) => {
+  await page.goto("/");
+  await settings(page,"Blocks");
+  await page.getByRole("button",{name:"Add block",exact:true}).click();
+  await page.getByLabel("Block name",{exact:true}).fill("Playground contract");
+  await fillCode(page.getByLabel("Block TypeScript",{exact:true}), 'import {block,z} from "workflow"; export default block({input:z.object({name:z.string()}),output:z.object({greeting:z.string()}),run(ctx){return {greeting:"Hello "+ctx.input.name};}});');
+  await page.getByText("Block contract",{exact:true}).click();
+  await page.getByRole("button",{name:"Add contract notes",exact:true}).click();
+  await page.getByLabel("Required inputs",{exact:true}).fill("name: string");
+  await page.getByRole("button",{name:"Save block",exact:true}).click();
+  await expect(page.getByText(/Block saved. New workflows/)).toBeVisible();
+  await page.getByText("Test this block",{exact:true}).click();
+  await page.getByLabel("Input JSON",{exact:true}).fill("invalid");
+  await page.getByRole("button",{name:"Create block test",exact:true}).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await page.getByLabel("Input JSON",{exact:true}).fill('{"name":"Workflow"}');
+  await page.getByRole("button",{name:"Create block test",exact:true}).click();
+  await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
+  await expect(page.locator(".workflow-node")).toHaveCount(1);
+  await page.getByRole("button",{name:"Approve & start",exact:true}).click();
+  await expect(page.locator(".status-pill")).toHaveText("Completed",{timeout:15000});
+});

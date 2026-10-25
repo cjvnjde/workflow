@@ -11,6 +11,7 @@ export type GroupState = {
   state: "running" | "completed" | "failed" | "skipped";
   iteration?: number;
   branch?: "then" | "otherwise";
+  decision?: { result?: boolean; route: "then" | "otherwise" | "repeat" | "exit" | "limit"; reason: string };
 };
 type State = {
   results: Map<string, StepResult>;
@@ -25,6 +26,7 @@ export class FlowDispatchStopped extends Error {}
 
 /** Execute the declared tree. Branch-local results merge only after a parallel join. */
 export async function executeFlow(options: {
+  recordDecisions?: boolean;
   flow: FlowNode;
   structure: FlowStructure;
   input: Record<string, unknown>;
@@ -204,6 +206,7 @@ export async function executeFlow(options: {
         await options.group(shape.id, {
           state: "running",
           branch: yes ? "then" : "otherwise",
+          ...(options.recordDecisions === false ? {} : { decision: { result: yes, route: yes ? "then" as const : "otherwise" as const, reason: "Branch predicate evaluated" } }),
         });
         const selected = yes ? node.then : node.otherwise;
         const skipped = shape.children[yes ? 1 : 0];
@@ -230,9 +233,12 @@ export async function executeFlow(options: {
               error.message !== node.id
             )
               throw error;
+            if (options.recordDecisions !== false) await options.group(shape.id, { state: "running", iteration, decision: { route: iteration === node.maxIterations ? "limit" : "repeat", reason: "Step outcome requested another iteration; exit predicate was not evaluated" } });
             continue;
           }
-          if (predicate(node.until, state)) {
+          const satisfied = predicate(node.until, state);
+          if (options.recordDecisions !== false) await options.group(shape.id, { state: "running", iteration, decision: { result: satisfied, route: satisfied ? "exit" : iteration === node.maxIterations ? "limit" : "repeat", reason: "Exit predicate evaluated" } });
+          if (satisfied) {
             done = true;
             break;
           }

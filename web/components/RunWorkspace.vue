@@ -7,6 +7,7 @@ import {
 } from "../../src/domain.js";
 import type { PlanDraft } from "../composables/use-draft.js";
 import { currentActivity, statusLabel, stepState } from "../workflow-status.js";
+import { recoveryAdvice } from "../run-report.js";
 import ExecutionEvidence from "./ExecutionEvidence.vue";
 import Icon from "./Icon.vue";
 import { executionLabel, isSourceWorkflow } from "../execution-label.js";
@@ -331,6 +332,11 @@ function selectStep(id: string) {
         }}</span
       >
     </div>
+    <aside v-if="recoveryAdvice(run)" class="setup-notice">
+      <strong>{{ recoveryAdvice(run)?.category }}</strong>
+      <p>{{ recoveryAdvice(run)?.action }}</p>
+      <p>{{ recoveryAdvice(run)?.reuse }}</p>
+    </aside>
     <div class="workflow-actions">
       <template v-if="run.status === 'draft'">
         <button

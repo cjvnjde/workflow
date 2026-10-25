@@ -11,6 +11,7 @@ import {
 import { z } from "zod";
 import {
   bundleSchema,
+  runSchema,
   identifierSchema,
   type BlockBundle,
   type Library,
@@ -104,6 +105,22 @@ async function perform(action: () => Promise<void>) {
     busy.value = false;
     emit("busy", false);
   }
+}
+const testInput = ref("{}"),
+  testPrompt = ref("Test this block with the supplied inputs.");
+async function playground() {
+  const inputs = z
+    .record(z.string(), z.json())
+    .parse(JSON.parse(testInput.value));
+  const run = await request("/api/programs", runSchema, {
+    method: "POST",
+    body: {
+      title: `Test ${definition.value!.name}`,
+      task: testPrompt.value,
+      source: `import {workflow,step} from "workflow"; export default workflow({name:${JSON.stringify(`Test ${definition.value!.name}`)},flow:step("test-block",${JSON.stringify(selected.value)},{inputs:${JSON.stringify(inputs)},prompt:${JSON.stringify(testPrompt.value)}})});`,
+    },
+  });
+  window.location.hash = `run=${run.id}`;
 }
 const template = `import { block, z } from "workflow";
 
@@ -271,6 +288,61 @@ function download() {
               :rows="2"
             />
           </Field>
+          <details class="script-contract block-code-help">
+            <summary>Block contract</summary>
+            <p>
+              Document the handoff and effects for callers. Input/output schemas
+              and capability/ownership restrictions in TypeScript enforce the
+              contract; these notes describe it.
+            </p>
+            <button
+              v-if="!definition.contract"
+              class="quiet"
+              @click="
+                definition.contract = {
+                  inputs: '',
+                  outputs: '',
+                  effects: '',
+                  failure: '',
+                }
+              "
+            >
+              Add contract notes
+            </button>
+            <template v-if="definition.contract">
+              <Field v-slot="{ id }" label="Required inputs">
+                <textarea
+                  :id="id"
+                  v-model="definition.contract.inputs"
+                  maxlength="2000"
+                />
+              </Field>
+              <Field v-slot="{ id }" label="Returned outputs">
+                <textarea
+                  :id="id"
+                  v-model="definition.contract.outputs"
+                  maxlength="2000"
+                />
+              </Field>
+              <Field
+                v-slot="{ id }"
+                label="Tools, file ownership and side effects"
+              >
+                <textarea
+                  :id="id"
+                  v-model="definition.contract.effects"
+                  maxlength="2000"
+                />
+              </Field>
+              <Field v-slot="{ id }" label="Failure and retry behavior">
+                <textarea
+                  :id="id"
+                  v-model="definition.contract.failure"
+                  maxlength="2000"
+                />
+              </Field>
+            </template>
+          </details>
           <div class="editor-actions">
             <strong>Block TypeScript</strong>
             <button class="quiet" @click="copy">
@@ -288,6 +360,32 @@ function download() {
             :min-lines="12"
             :max-lines="32"
           />
+          <details class="script-contract block-code-help">
+            <summary>Test this block</summary>
+            <p>
+              Create a one-step draft using the saved block. Review and approve
+              it before execution. This uses real project tools and records
+              outputs, checks and model calls in the run history.
+            </p>
+            <Field v-slot="{ id }" label="Test request">
+              <textarea :id="id" v-model="testPrompt" />
+            </Field>
+            <Field v-slot="{ id }" label="Input JSON">
+              <textarea
+                :id="id"
+                v-model="testInput"
+                rows="5"
+                spellcheck="false"
+              />
+            </Field>
+            <button
+              :disabled="busy || dirty || !baseline || !testPrompt.trim()"
+              @click="perform(playground)"
+            >
+              Create block test
+            </button>
+            <p v-if="dirty">Save changes before testing this version.</p>
+          </details>
           <details class="script-contract block-code-help">
             <summary>Block API & examples</summary>
             <p>

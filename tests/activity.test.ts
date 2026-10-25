@@ -43,3 +43,9 @@ test("usage summaries include caches once and malformed or truncated data remain
   }
   assert.equal(describeActivity(event("usage", '{"requests":-1,"costUsd":"unknown"}')).preview, '{"requests":-1,"costUsd":"unknown"}');
 });
+
+test("structured session and decision events have human readable previews", () => {
+  const event = {id:"x",runId:"run",time:"2026-10-25",kind:"model_session",message:JSON.stringify({provider:"openai",model:"gpt-6-luna",thinking:"low",tools:["submit_result"]})};
+  assert.equal(describeActivity(event).preview,"openai/gpt-6-luna · thinking low");
+  assert.equal(describeActivity({...event,kind:"flow_decision",message:'{"groupId":"repair","result":false,"route":"repeat"}'}).preview,"repair: false → repeat");
+});

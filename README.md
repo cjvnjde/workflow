@@ -125,7 +125,7 @@ Start at **[docs/README.md](docs/README.md)** for reading paths and a complete i
 | Understand why Workflow exists and its core concepts | [Concepts and design](docs/concepts.md) |
 | Install it and run my first task | [Getting started](docs/getting-started.md) |
 | Write sequences, branches, parallel groups, and loops | [Writing workflows](docs/workflows.md) |
-| Build reusable code and AI blocks | [Writing blocks](docs/blocks.md) |
+| Build reusable code and AI blocks | [Writing blocks](docs/blocks.md) · [Contracts, testing and evidence](docs/block-contracts-and-evidence.md) |
 | Configure models, task instructions, skills, and MCP | [Configuration](docs/configuration.md) |
 | Understand statuses, retries, recovery, and backups | [Running and recovering workflows](docs/operations.md) |
 | Use the CLI or local HTTP API | [Command and API reference](docs/reference.md) |

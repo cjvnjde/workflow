@@ -36,6 +36,7 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
   let requestCount = 0;
   let structuredContinuation = -1;
   let valueSubmission: unknown;
+  let loadSkill = false;
   const server = createServer((request, response) => {
     const chunks: Buffer[] = [];
     request.on("data", (chunk: Buffer) => {
@@ -113,6 +114,7 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
         }
         if (valueSubmission !== undefined) {
           call = { name: "submit_result", arguments: JSON.stringify({ value: valueSubmission }) };
+          if (loadSkill) { loadSkill=false; call={name:"load_skill",arguments:JSON.stringify({id:"reference"})}; }
         }
         response.writeHead(200, { "content-type": "text/event-stream" });
         const chunk = {
@@ -404,5 +406,21 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
   });
   assert.equal(textOnly.summary, valueSubmission);
   assert.deepEqual(requests.at(-1)!.tools.map(tool => tool.function.name), ["submit_result"]);
+  const sessionEvents: {kind:string;message:string}[]=[];
+  const skillRequestIndex = requests.length; loadSkill = true;
+  await runPiBlock({
+    project, config: {...library.config,capabilities:{skills:[{id:"reference",name:"Reference",description:"Use for API details",content:"SKILL_BODY_SENTINEL",enabled:true}],mcpServers:[]}},
+    bundle:customAudit,node,task:"Inspect reference",inputs:{},visit:1,settings,signal:AbortSignal.timeout(10000),resultMode:"value",
+    capabilities:{skills:["reference"],mcp:{}},emit:(kind,message)=>sessionEvents.push({kind,message}),
+  });
+  assert.ok(requests.at(-1)!.tools.some(tool=>tool.function.name==="load_skill"));
+  assert.match(JSON.stringify(requests.at(-1)),/Use for API details/);
+  assert.doesNotMatch(JSON.stringify(requests[skillRequestIndex]),/SKILL_BODY_SENTINEL/);
+  assert.match(JSON.stringify(requests.at(-1)),/SKILL_BODY_SENTINEL/);
+  assert.ok(sessionEvents.some(event=>event.kind==="skill_loaded"));
+  assert.match(sessionEvents.find(e=>e.kind==="model_session")!.message,/local-test/);
+  const end=JSON.parse(sessionEvents.find(e=>e.kind==="model_session_end")!.message);
+  assert.ok(end.durationMs>=0);assert.ok(end.usage.requests>0);
+
 
 });
