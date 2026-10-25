@@ -143,3 +143,13 @@ The folder and block ID must match. Optional `prompt.md` and explicit skill reso
 Web library edits are published atomically to `.workflow/library.json`. Once that file exists it takes precedence over the block directories, so editing a directory file alone will not change the active web-managed library. Keep using the web editor or deliberately manage the active library representation. Existing drafts retain their saved source and resources.
 
 [Next: compose blocks into workflows](workflows.md) · [Configure the project](configuration.md)
+
+### Protecting files owned by another step
+
+A production repair can call `ctx.ai({prompt, protectedPaths: ["**/*.test.ts", "**/*_test.go"]})` to preserve independent regression tests. Add project-specific test paths; new default `implement` and `fix` blocks include common test patterns. Existing saved blocks are not silently migrated.
+
+Matching managed writes are rejected before editing. The host also compares protected files before and after the AI call and rejects completion if files were added, removed, changed, or had their mode changed, including through Bash or MCP. Tool sessions check integrity between calls. Return invalid-test diagnostics to a separate test-authoring step; do not give the production step permission to repair tests. Run acceptance checks again after either owner makes a correction.
+
+This is an integrity check, not process isolation. It does not undo shell/MCP side effects, detect edits restored before inspection, or inspect external paths and `.git`, `.workflow`, `node_modules`, `dist`, `test-results`, or `playwright-report` trees. Symbolic links are recorded but their external targets are not audited. Scans fail closed above 100,000 entries or 64 MB of protected content. Do not run a protected call alongside another step authorized to edit its protected files. Review an integrity failure before continuing; do not blindly retry on the modified baseline.
+
+New default `verify` blocks complete test authoring rather than acceptance: valid tests are retained even when they expose a production defect. The separate `checks` block runs acceptance checks and blocks completion on failure. Production blocks likewise hand test-only defects to the test author; they do not own test repair. Existing saved libraries retain their reviewed contracts until explicitly updated.

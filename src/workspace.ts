@@ -6,16 +6,18 @@ import { minimatch } from "minimatch";
 import { atomicWrite } from "./atomic-file.js";
 import { fileHash, type FileJournal, type FileSnapshot } from "./recovery.js";
 
+import type { ProtectedPaths } from "./protected-paths.js";
+
 const largeDirectories = new Set([".git", ".workflow", "node_modules", "dist", "test-results", "playwright-report"]);
 const maxFileBytes = 1_000_000;
 
 export class Workspace {
   private constructor(
     readonly root: string,
-    private readonly options: { journal?: FileJournal; signal?: AbortSignal } = {},
+    private readonly options: { journal?: FileJournal; signal?: AbortSignal; protect?: ProtectedPaths } = {},
   ) {}
 
-  static async create(root: string, options: { journal?: FileJournal; signal?: AbortSignal } = {}) {
+  static async create(root: string, options: { journal?: FileJournal; signal?: AbortSignal; protect?: ProtectedPaths } = {}) {
     return new Workspace(await realpath(root), options);
   }
 
@@ -38,6 +40,7 @@ export class Workspace {
   private async checkedPath(input: string, operation: "read" | "write", links = 0): Promise<string> {
     if (links > 40) { throw new Error("Too many symbolic links"); }
     this.options.signal?.throwIfAborted();
+    if (operation === "write") this.options.protect?.assertWritable(this.resolve(input));
     const filename = await this.physicalPath(this.resolve(input));
     try {
       const info = await lstat(filename);
@@ -49,6 +52,7 @@ export class Workspace {
     } catch (error) {
       if (!(operation === "write" && error instanceof Error && "code" in error && error.code === "ENOENT")) { throw error; }
     }
+    if (operation === "write") this.options.protect?.assertWritable(filename);
     return filename;
   }
 

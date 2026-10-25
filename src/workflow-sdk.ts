@@ -68,6 +68,8 @@ export type ExecResult = {
   result?: StepResult;
 };
 export type AIOptions<S extends z.ZodType = z.ZodType> = {
+  /** Project-relative globs owned by other steps; checked before accepting this call. */
+  protectedPaths?: string[];
   prompt: string;
   instructions?: string;
   model?: Model | string;

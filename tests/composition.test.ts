@@ -572,3 +572,32 @@ test("parallel composition treats an undefined thrown value as a failure", async
   assert.equal(rejected, true);
   assert.deepEqual(calls, []);
 });
+
+test("failure diagnosis routes test repairs and production repairs to different owners before rechecking", async t => {
+  const { project, library, cleanup } = await fixture(t);
+  const engine = new WorkflowEngine(project, "live", async () => { throw new Error("This ownership fixture needs no model"); });
+  cleanup(() => engine.shutdown()); await engine.initialize();
+  for (const broken of ["test", "production"] as const) {
+    const testText = broken === "test" ? 'export const expected = ;' : 'export const expected = 2;';
+    await writeFile(path.join(project, "fixture-test.mjs"), testText);
+    await writeFile(path.join(project, "fixture-production.mjs"), `export const actual = ${broken === "production" ? 1 : 2};`);
+    const checkCommand = "node --input-type=module -e 'try { const t=await import(\"./fixture-test.mjs\"); const p=await import(\"./fixture-production.mjs\"); console.log(t.expected===p.actual?\"pass\":\"production\"); } catch(e) { console.log(e instanceof SyntaxError?\"test\":\"blocked\"); }'";
+    const source = `${header}
+      const gateBlock=block({async run(ctx){
+        const checked=await ctx.exec(${JSON.stringify(checkCommand)});
+        return {owner:checked.exitCode===0?checked.stdout.trim():"blocked"};
+      }});
+      const assess=step("assess",gateBlock);
+      const tests=step("test-author",block({async run(ctx){await ctx.writeFile("fixture-test.mjs","export const expected = 2;");return "Corrected invalid fixture without weakening the expected value";}}));
+      const fix=step("production-owner",block({async run(ctx){await ctx.writeFile("fixture-production.mjs","export const actual = 2;");return "Corrected production";}}));
+      const gate=step("final-gate",gateBlock);
+      const acceptance=step("acceptance",block({async run(ctx){if(ctx.input.owner!=="pass")throw new Error("Checks still fail");return "Accepted";}}),{inputs:c=>({owner:c.output(gate)?.owner})});
+      export default workflow({name:"Repair ownership",flow:sequence(assess,when("invalid-test",c=>c.output(assess)?.owner==="test",tests),when("production-defect",c=>c.output(assess)?.owner==="production",fix),gate,acceptance)});`;
+    const draft = await engine.createProgram("Ownership fixture", "Repair the failing check", {source}, library);
+    await engine.approve(draft.id); await engine.waitForIdle();
+    const run = engine.get(draft.id);
+    assert.equal(run.status,"completed",run.error);
+    assert.deepEqual(run.attempts.map(a=>a.nodeId),["assess",broken === "test" ? "test-author" : "production-owner","final-gate","acceptance"]);
+    if (broken === "production") assert.equal(await readFile(path.join(project,"fixture-test.mjs"),"utf8"),testText);
+  }
+});

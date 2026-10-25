@@ -192,9 +192,9 @@ export async function initializeProject(project: string, instructions = "", form
       id: "implement",
       name: "Implement feature",
       description:
-        "Implement a feature against agreed requirements. Production code only; send verification issues back here.",
+        "Implement agreed production changes. Test-only failures belong to the test author; require a separate acceptance gate.",
       outputs: ["implementation"],
-      checks: successChecks,
+      checks: [],
       prompt:
         "Implement the agreed requirements using production code only. Read verification/review feedback and correct production defects. Do not create or edit tests, including test-code type errors; describe any required test correction in the implementation artifact for the independent test-authoring step. Preserve independent test expectations. Update source, dependencies and configuration when the task requires it, without weakening checks. Use the smallest coherent change and run relevant checks. Publish implementation with what changed, the check results, and any test-only repair still needed. Return retry if production work is unfinished. If only an identified test-code repair remains, return pass to hand off to test authoring, explicitly noting that acceptance checks have not passed; the workflow must still require verification and passing checks before publication.",
     },
@@ -204,19 +204,27 @@ export async function initializeProject(project: string, instructions = "", form
       description:
         "Fix a reproduced bug until regression tests pass, preserving the regression test's expectations.",
       outputs: ["implementation"],
-      checks: successChecks,
+      checks: [],
       prompt:
-        "Fix the bug described by the reproduction and any review feedback. Never change tests to obtain a pass. Read tests and modify production code only. Run the allowed check. Publish implementation describing the root cause, fix, and evidence. Return retry if the checks still fail.",
+        "Fix the bug described by the reproduction and any review feedback. Never change tests to obtain a pass. Read tests and modify production code only. Run the allowed check. Publish implementation describing the root cause, fix, and evidence. Return retry if production repair is incomplete. If only invalid test code or test compilation needs correction, report the exact diagnostics and return pass to hand off to the independent test author; this is not acceptance. Require the separate acceptance gate afterward.",
     },
     {
       id: "verify",
       name: "Write independent tests",
       description:
-        "Independently verify a feature by adding tests. Tests only; return retry with feedback if implementation is wrong.",
+        "Author independent tests and validate their correctness. Pass preserves authored tests; it is not acceptance. Follow with acceptance checks.",
+      outputs: ["feedback"],
+      checks: [],
+      prompt:
+        "Write focused tests proving the acceptance criteria. Do not change production code. Run the project's applicable test-code typechecking or compilation as well as the tests; fix errors in newly authored test code before reporting success. If valid tests expose an implementation defect, publish feedback with the violated criterion and failure evidence, but return pass for completed test authoring so recovery preserves the tests. Do not weaken tests to pass. Return retry only when test authoring itself is incomplete or invalid. A completed authoring step is not passing acceptance; a separate acceptance check must run next and block publication on failure.",
+    },
+    {
+      id: "checks",
+      name: "Run acceptance checks",
+      description: "Run existing acceptance checks without edits. Passing test authoring is not passing acceptance; classify failures for the correct repair owner.",
       outputs: ["feedback"],
       checks: successChecks,
-      prompt:
-        "Write focused tests proving the acceptance criteria. Do not change production code. Run the project's applicable test-code typechecking or compilation as well as the tests; fix errors in newly authored test code before reporting success. If valid tests expose an implementation defect, publish feedback with the violated criterion and failure evidence and return retry to implementation. Do not weaken tests to pass. Return pass only when the criteria and checks pass.",
+      prompt: "Run the applicable existing tests, test-code typechecking or compilation and other required acceptance checks. Do not edit any files. Report exact commands and outcomes. Return pass only when required checks pass. Return retry for production defects or invalid test code, distinguishing their evidence and repair owner; return fail for unavailable infrastructure or missing evidence. Never accept a test-authoring pass as acceptance evidence.",
     },
     {
       id: "review",
@@ -241,6 +249,9 @@ export async function initializeProject(project: string, instructions = "", form
       executor: specification.executor,
     });
     if (format === "code") definition = (await formatBlock(codeBundle({ definition, prompt: specification.prompt, skills: [] }, config.commands))).definition;
+    if (definition.executor?.kind === "code" && ["implement", "fix"].includes(specification.id)) {
+      definition.executor.source = definition.executor.source.replace("await ctx.ai({", 'await ctx.ai({ protectedPaths: ["**/*.{test,spec}.*", "**/*_test.go", "**/test_*.py", "**/{test,tests,__tests__,e2e}/**"],');
+    }
     let savedDefinition: unknown = definition;
     if (definition.executor?.kind === "code") {
       const { source, ...executor } = definition.executor;

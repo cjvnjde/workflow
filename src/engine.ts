@@ -1,3 +1,4 @@
+import { ProtectedPaths, ProtectedPathsChangedError } from "./protected-paths.js";
 import { createHash, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import path from "node:path";
@@ -774,8 +775,17 @@ export class WorkflowEngine {
         node.agent = undefined;
         node.goal = operation.prompt.slice(0, 8000);
         node.context = { ...node.context, "call-prompt": operation.prompt };
-        const completion = await this.executeBlock(run, "value");
-        result = completion.result;
+        const protection = operation.protectedPaths?.length ? await ProtectedPaths.capture(this.project, operation.protectedPaths) : undefined;
+        try {
+          const completion = await this.executeBlock(run, "value", operation.protectedPaths);
+          result = completion.result;
+        } finally {
+          try { await protection?.assertUnchanged(); }
+          catch (error) {
+            if (!(error instanceof ProtectedPathsChangedError)) throw error;
+            result = { outcome: "fail", summary: error.message, artifacts: {} };
+          }
+        }
       } else if (this.mode === "demo") {
         result = operation.kind === "exec" ? { exitCode: 0, stdout: "DEMO", stderr: "", output: "DEMO: no command was executed.", timedOut: false }
           : operation.kind === "read" ? "DEMO: no file was read." : null;
@@ -796,9 +806,9 @@ export class WorkflowEngine {
     finally { clearInterval(heartbeat); }
   }
 
-  private async executeBlock(value: WorkflowRun, resultMode?: "value") {
+  private async executeBlock(value: WorkflowRun, resultMode?: "value", protectedPaths?: string[]) {
     const node = value.plan.nodes.find(node => node.id === value.cursor);
-    if (value.config.budget?.maxCostUsd === undefined || (node && value.blocks[node.block]?.definition.executor)) return this.executeBlockNow(value, resultMode);
+    if (value.config.budget?.maxCostUsd === undefined || (node && value.blocks[node.block]?.definition.executor)) return this.executeBlockNow(value, resultMode, protectedPaths);
     // Only budgeted model sessions serialize. Otherwise siblings may spend the
     // same stale remaining balance. Compute and unbudgeted AI stay parallel.
     const before = this.budgetQueue;
@@ -813,7 +823,7 @@ export class WorkflowEngine {
       signal.throwIfAborted();
       await Promise.race([before, new Promise<never>((_, reject) => { onAbort = () => reject(signal.reason); signal.addEventListener("abort", onAbort, {once:true}); })]);
       signal.throwIfAborted();
-      return await this.executeBlockNow(value, resultMode);
+      return await this.executeBlockNow(value, resultMode, protectedPaths);
     } finally {
       clearInterval(heartbeat);
       if (onAbort) signal.removeEventListener("abort", onAbort);
@@ -821,7 +831,7 @@ export class WorkflowEngine {
     }
   }
 
-  private async executeBlockNow(value: WorkflowRun, resultMode?: "value") {
+  private async executeBlockNow(value: WorkflowRun, resultMode?: "value", protectedPaths?: string[]) {
     const run = runSchema.parse(value);
     this.assertActivity(run);
     if (run.mode !== this.mode) {
@@ -857,7 +867,7 @@ export class WorkflowEngine {
         : bundle.definition.executor.kind === "script" ? runScriptBlock
         : bundle.definition.executor.kind === "function" ? runFunctionBlock : runCommandBlock;
       const result = validateBlockResult(await runner({
-        project: this.project, config: run.config, bundle, node, task: run.plan.task, workflow: run.plan, composition: run.program?.structure,
+        project: this.project, config: run.config, bundle, node, protectedPaths, task: run.plan.task, workflow: run.plan, composition: run.program?.structure,
         inputs: resolveInputs(node, run), visit: run.visits[node.id] ?? 1,
         settings, signal, journal, maxCostUsd: remainingCost, resultMode,
         onUsage: async (sessionUsage) => { const usage = addUsage(previousUsage, sessionUsage); await saveUsage(directory, usage); this.usageByAttempt.set(`${run.id}/${node.id}/${run.visits[node.id] ?? 1}`, { ...usage }); this.emit(run, "usage", JSON.stringify(usage), node.id); },

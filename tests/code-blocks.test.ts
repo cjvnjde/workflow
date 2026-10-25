@@ -205,3 +205,50 @@ test("submission bundling resolves SDK dependencies and rejects missing runtime 
   await writeFile(path.join(project,"phantom.d.ts"),'declare module "missing-runtime-module" {export const value:string;}');
   await assert.rejects(validateProgram(project,{source:'/// <reference path="./phantom.d.ts" />\nimport {value} from "missing-runtime-module";'+source.replace('return "ok"','return value')}),/could not be bundled|missing-runtime-module/);
 });
+
+test("protected regression changes cannot be accepted even when an AI runner reports success", async t => {
+  const { project, library, cleanup } = await fixture(t);
+  await writeFile(path.join(project, "regression.test.ts"), "original assertions");
+  const engine = new WorkflowEngine(project, "live", async execution => {
+    assert.deepEqual(execution.protectedPaths, ["**/*.test.ts"]);
+    // Simulate a shell/MCP write bypassing managed file tools.
+    await writeFile(path.join(project, "regression.test.ts"), "weakened assertions");
+    return {outcome:"pass", summary:"claimed success", artifacts:{}};
+  });
+  cleanup(()=>engine.shutdown()); await engine.initialize();
+  const source = wrap('const work=block({async run(ctx){return await ctx.ai({prompt:"Fix production",protectedPaths:["**/*.test.ts"]});}});');
+  const draft = await engine.createProgram("Ownership", "Fix", {source}, library);
+  await engine.approve(draft.id); await engine.waitForIdle();
+  const run = engine.get(draft.id);
+  assert.equal(run.status, "failed");
+  assert.match(JSON.stringify(run.attempts), /Protected files changed/);
+  // Unmanaged edits are reported, never silently overwritten by recovery.
+  assert.equal(await readFile(path.join(project,"regression.test.ts"),"utf8"), "weakened assertions");
+});
+
+test("default test authoring preserves a valid failing regression while acceptance remains blocked", async t => {
+  const { project, cleanup } = await fixture(t);
+  const { initializeProject } = await import("../src/library.js");
+  const { mkdir } = await import("node:fs/promises");
+  const { Workspace } = await import("../src/workspace.js");
+  const child = path.join(project,"authoring-project");
+  await mkdir(child);
+  await writeFile(path.join(child,"package.json"),JSON.stringify({scripts:{test:"bun regression.test.ts"}}));
+  await writeFile(path.join(child,"production.ts"),"export const actual = 1;\n");
+  const library = await initializeProject(child);
+  const engine = new WorkflowEngine(child,"live",async execution=>{
+    if(execution.bundle.definition.name === "Write independent tests") {
+      const workspace=await Workspace.create(child,{journal:execution.journal});
+      await workspace.write("regression.test.ts",'import assert from "node:assert/strict"; import { actual } from "./production.ts"; assert.equal(actual, 2);\n' );
+    }
+    return {outcome:"pass",summary:"Authoring completed; product check fails",artifacts:{data:JSON.stringify({outcome:"pass",summary:"Role complete",artifacts:{feedback:"Valid assertion exposes product defect"}})}};
+  });
+  cleanup(()=>engine.shutdown()); await engine.initialize();
+  const source='import {workflow,step,sequence} from "workflow";export default workflow({name:"Independent tests",flow:sequence(step("author","verify"),step("gate","checks"))});';
+  const draft=await engine.createProgram("Authoring","Check behavior",{source},library);
+  await engine.approve(draft.id); await engine.waitForIdle();
+  const run=engine.get(draft.id);
+  assert.equal(run.status,"failed");
+  assert.deepEqual(run.attempts.map(a=>a.result?.outcome),["pass","retry"]);
+  assert.match(await readFile(path.join(child,"regression.test.ts"),"utf8"),/assert.equal\(actual, 2\)/);
+});

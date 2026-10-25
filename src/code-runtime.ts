@@ -79,6 +79,7 @@ export async function executeCode(options: {
     ai: (async (args: {
       prompt: string;
       instructions?: string;
+      protectedPaths?: string[];
       model?: Parameters<typeof modelOverride>[0];
       output?: z.ZodType;
     }) => {
@@ -90,6 +91,7 @@ export async function executeCode(options: {
           kind: "ai",
           prompt: args.prompt,
           instructions: args.instructions,
+          protectedPaths: args.protectedPaths,
           model: modelOverride(args.model),
           outputSchema,
         }),
