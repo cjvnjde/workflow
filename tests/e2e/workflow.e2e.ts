@@ -1547,3 +1547,35 @@ test("only the global designer remains and each message captures its settings se
     {page:"settings",section:"blocks",blockId:"review"}, {page:"settings",section:"execution"},
   ]);
 });
+
+test("nested graph connections clear rendered cards with long titles", async ({page,request}) => {
+  const source=`import {workflow,block,step,sequence,parallel,when,repeatUntil} from "workflow";
+const job=block({run:()=>null});
+export default workflow({name:"Routing regression",flow:sequence(
+step("start",job),parallel([
+sequence(step("a",job,{label:"A long implementation title that wraps across several lines without changing the reserved card bounds"}),step("b",job)),
+when("choice",()=>true,step("c",job)),
+repeatUntil("repair",{body:parallel([step("d",job),step("e",job)]),until:()=>true,maxIterations:3})
+]),step("finish",job))});`;
+  const response=await request.post("/api/programs",{headers:{"x-workflow-client":"1"},data:{title:"Routing regression",task:"Inspect nested branches",source}});
+  expect(response.ok(),await response.text()).toBe(true);
+  const run=await response.json();
+  await page.goto(`/#run=${run.id}`);
+  await page.getByRole("button",{name:"Expand workspace",exact:true}).click();
+  await expect(page.locator(".workflow-node")).toHaveCount(7);
+  await expect.poll(()=>page.locator(".vue-flow__edge-path").count()).toBeGreaterThan(10);
+  await expect.poll(()=>page.locator(".workflow-graph").evaluate(root=>{
+    const cards=[...root.querySelectorAll(".workflow-node")].map(el=>el.getBoundingClientRect());
+    let collisions=0;
+    for(const path of root.querySelectorAll<SVGPathElement>(".vue-flow__edge-path")){
+      const matrix=path.getScreenCTM();if(!matrix)continue;
+      const length=path.getTotalLength();
+      for(let at=1;at<length;at+=4){
+        const p=path.getPointAtLength(at);const screen=new DOMPoint(p.x,p.y).matrixTransform(matrix);
+        if(cards.some(r=>screen.x>r.left+2&&screen.x<r.right-2&&screen.y>r.top+2&&screen.y<r.bottom-2))collisions++;
+      }
+    }
+    return collisions;
+  })).toBe(0);
+  await page.screenshot({path:"/tmp/workflow-routing-nested.png",fullPage:true});
+});

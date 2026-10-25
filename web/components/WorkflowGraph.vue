@@ -12,6 +12,7 @@ import {
   type NodeDragEvent,
   useVueFlow,
 } from "@vue-flow/core";
+import RoutedEdge from "./RoutedEdge.vue";
 import { Background } from "@vue-flow/background";
 import { Controls } from "@vue-flow/controls";
 import { resolveAgentSettings, type WorkflowRun } from "../../src/domain.js";
@@ -23,7 +24,7 @@ import "@vue-flow/core/dist/theme-default.css";
 import "@vue-flow/controls/dist/style.css";
 const props = defineProps<{ run: WorkflowRun }>();
 const emit = defineEmits<{ select: [id: string] }>();
-const { fitView, dimensions } = useVueFlow();
+const { fitView, dimensions, getNodes } = useVueFlow();
 const motionDuration = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 250;
 let focusedNodes: string[] | undefined;
@@ -166,13 +167,16 @@ const nodes = computed<Node[]>(() => [
         horizontal: !!layout.value,
       },
       class: `workflow-node ${layout.value ? "composition-step" : ""} ${state}`,
-      style: { width: `${placement?.width ?? 260}px` },
+      style: {
+        width: `${placement?.width ?? 260}px`,
+        height: `${placement?.height ?? 184}px`,
+      },
     };
   }),
   {
     id: "$complete",
     position: positions.value.$complete ?? {
-      x: layout.value ? layout.value.width + 48 : 60,
+      x: layout.value ? layout.value.width + 96 : 60,
       y: layout.value
         ? (() => {
             const exit = layout.value.nodes.find(
@@ -181,7 +185,7 @@ const nodes = computed<Node[]>(() => [
             return exit.position.y + exit.height / 2 - 20;
           })()
         : Math.max(0, ...Object.values(routed.value).map((point) => point.y)) +
-          205,
+          280,
     },
     data: {},
     label: "✓ Complete",
@@ -192,7 +196,14 @@ const nodes = computed<Node[]>(() => [
     ? [
         {
           id: "$failed",
-          position: positions.value.$failed ?? { x: 720, y: 150 },
+          position: positions.value.$failed ?? {
+            x:
+              Math.max(
+                0,
+                ...Object.values(routed.value).map((point) => point.x),
+              ) + 380,
+            y: 0,
+          },
           data: {},
           label: "× Stop / failed",
           class: "terminal failed",
@@ -200,6 +211,22 @@ const nodes = computed<Node[]>(() => [
       ]
     : []),
 ]);
+const obstacles = computed(() =>
+  nodes.value.map((node) => {
+    const measured = getNodes.value.find((item) => item.id === node.id);
+    const position = measured?.computedPosition ?? node.position;
+    const style = node.style as { width?: string; height?: string } | undefined;
+    return {
+      x: position.x,
+      y: position.y,
+      width: measured?.dimensions.width || parseFloat(style?.width ?? "160"),
+      height:
+        node.type === "group"
+          ? 48
+          : measured?.dimensions.height || parseFloat(style?.height ?? "40"),
+    };
+  }),
+);
 const edges = computed<Edge[]>(() =>
   (layout.value
     ? [...layout.value.edges, { from: layout.value.exit, to: "$complete" }].map(
@@ -239,9 +266,7 @@ const edges = computed<Edge[]>(() =>
     type:
       "returnY" in extra && extra.returnY !== undefined
         ? "loop-return"
-        : from === target
-          ? "default"
-          : "smoothstep",
+        : "obstacle",
     sourceHandle:
       "returnY" in extra && extra.returnY !== undefined
         ? `return-output-${"returnSide" in extra ? extra.returnSide : "top"}`
@@ -250,7 +275,10 @@ const edges = computed<Edge[]>(() =>
       "returnY" in extra && extra.returnY !== undefined
         ? `return-input-${"returnSide" in extra ? extra.returnSide : "top"}`
         : undefined,
-    data: { returnY: "returnY" in extra ? extra.returnY : undefined },
+    data: {
+      returnY: "returnY" in extra ? extra.returnY : undefined,
+      obstacles: obstacles.value,
+    },
     selectable: false,
     focusable: false,
     interactionWidth: 0,
@@ -302,6 +330,7 @@ function returnPath(edge: EdgeProps) {
     @node-click="emit('select', $event.node.id)"
     @node-drag-stop="remember"
   >
+    <template #edge-obstacle="edge"><RoutedEdge v-bind="edge" /></template>
     <template #edge-loop-return="edge">
       <BaseEdge
         :id="edge.id"
@@ -357,7 +386,7 @@ function returnPath(edge: EdgeProps) {
             data.maxVisits
           }}
           visits</small
-        ><strong>{{ data.label }}</strong
+        ><strong :title="data.label">{{ data.label }}</strong
         ><span
           >{{ data.model
           }}<template v-if="data.thinking !== 'code'">

@@ -51,15 +51,15 @@ const shiftedEdges = (box: Box, y: number): LayoutEdge[] =>
 export function compositionLayout(root: FlowStructure): Box {
   if (root.kind === "step")
     return {
-      width: 240,
-      height: 124,
+      width: 260,
+      height: 184,
       nodes: [
         {
           id: root.id,
           kind: "step",
           position: { x: 0, y: 0 },
-          width: 240,
-          height: 124,
+          width: 260,
+          height: 184,
         },
       ],
       edges: [],
@@ -78,10 +78,10 @@ export function compositionLayout(root: FlowStructure): Box {
       edges.push(...shiftedEdges(child, y));
       if (index)
         edges.push({ from: children[index - 1]!.exit, to: child.entry });
-      x += child.width + 48;
+      x += child.width + 96;
     });
     return {
-      width: x - 48,
+      width: x - 96,
       height,
       nodes,
       edges,
@@ -92,10 +92,10 @@ export function compositionLayout(root: FlowStructure): Box {
   const contentWidth = Math.max(...children.map((child) => child.width));
   const contentHeight =
     children.reduce((total, child) => total + child.height, 0) +
-    32 * (children.length - 1);
-  const contentTop = root.kind === "loop" ? 82 : 64;
+    64 * (children.length - 1);
+  const contentTop = root.kind === "loop" ? 108 : 88;
   const bypass = root.kind === "when" && children.length === 1;
-  const width = contentWidth + 96,
+  const width = contentWidth + 192,
     height = contentHeight + contentTop + (bypass ? 52 : 28);
   const middle = contentTop + contentHeight / 2;
   const entry = `$group:${root.id}:start`,
@@ -138,7 +138,7 @@ export function compositionLayout(root: FlowStructure): Box {
   const edges: LayoutEdge[] = [];
   let y = contentTop;
   children.forEach((child, index) => {
-    const positioned = shifted(child, 48 + (contentWidth - child.width) / 2, y);
+    const positioned = shifted(child, 96 + (contentWidth - child.width) / 2, y);
     for (const node of positioned)
       if (node.kind === "step" && !node.extent)
         node.extent = [
@@ -150,11 +150,10 @@ export function compositionLayout(root: FlowStructure): Box {
     edges.push({
       from: entry,
       to: child.entry,
-      label:
-        root.kind === "when" ? (index === 0 ? "yes" : "no") : undefined,
+      label: root.kind === "when" ? (index === 0 ? "yes" : "no") : undefined,
     });
     edges.push({ from: child.exit, to: exit });
-    y += child.height + 32;
+    y += child.height + 64;
   });
   if (bypass)
     edges.push({
@@ -170,7 +169,7 @@ export function compositionLayout(root: FlowStructure): Box {
       to: entry,
       label: "repeat",
       repeat: true,
-      returnY: 58,
+      returnY: 68,
       returnSide: "top",
     });
   return { width, height, nodes, edges, entry, exit };
@@ -202,7 +201,7 @@ export function routedPositions(plan: WorkflowPlan): Record<string, Point> {
   }
   return Object.fromEntries(
     [...rows].flatMap(([depth, row]) =>
-      row.map((id, index) => [id, { x: index * 330, y: depth * 205 }]),
+      row.map((id, index) => [id, { x: index * 380, y: depth * 280 }]),
     ),
   );
 }

@@ -130,3 +130,9 @@ svg { vertical-align: middle; }
   }
   .design-chat .chat-resize-handle { display: none; }
 }
+/* Card bounds are part of the graph layout contract. Keep long labels inside them. */
+.workflow-node .graph-label { height: 100%; padding: 14px; display: flex; flex-direction: column; gap: 6px; overflow: hidden; }
+.workflow-node .graph-label strong { font-size: 15px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; flex-shrink: 0; }
+.workflow-node .graph-label > span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; }
+.workflow-node .graph-label small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
+.workflow-node .graph-label b { margin-top: auto; flex-shrink: 0; }
