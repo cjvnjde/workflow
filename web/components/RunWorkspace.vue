@@ -185,6 +185,12 @@ const skipped = computed(
       (node) => stepState(props.run, node.id) === "skipped",
     ).length,
 );
+const activeStepCount = computed(
+  () =>
+    props.run.plan.nodes.filter(
+      (node) => stepState(props.run, node.id) === "running",
+    ).length,
+);
 const running = computed(
   () =>
     ["running", "pausing"].includes(props.run.status) ||
@@ -390,7 +396,9 @@ function selectStep(id: string) {
         >{{ run.plan.nodes.length }} blocks · {{ run.attempts.length }}/{{
           run.config.maxSteps
         }}
-        step visits</span
+        step visits<span v-if="activeStepCount > 1">
+          · {{ activeStepCount }} steps running in parallel</span
+        ></span
       >
     </div>
     <div v-if="draft.dirty" class="draft-notice" role="status">

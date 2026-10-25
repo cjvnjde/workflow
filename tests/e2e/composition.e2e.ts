@@ -143,6 +143,7 @@ test("parallel steps highlight together, loops show rounds, and final results ar
     .getByRole("button", { name: "Approve & start", exact: true })
     .click();
   await expect(page.locator(".workflow-node.active")).toHaveCount(2);
+  await expect(page.locator(".workflow-counts")).toContainText("2 steps running in parallel");
   await expect(page.locator('.workflow-node[data-id="frontend"]')).toHaveClass(
     /active/,
   );
@@ -162,6 +163,7 @@ test("parallel steps highlight together, loops show rounds, and final results ar
   await expect(page.locator(".status-pill")).toHaveText("Completed", {
     timeout: 20_000,
   });
+  await expect(page.locator(".workflow-counts")).not.toContainText("running in parallel");
   await expect(page.locator('.workflow-node[data-id="review"]')).toContainText(
     "2/2 visits",
   );
