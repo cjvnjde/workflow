@@ -196,7 +196,7 @@ export async function initializeProject(project: string, instructions = "", form
       outputs: ["implementation"],
       checks: successChecks,
       prompt:
-        "Implement the agreed requirements. Read verification/review feedback and correct it. Preserve independent test expectations; put new verification into the test step. Update source, dependencies and configuration when the task requires it. Use the smallest coherent change and run relevant checks. Publish implementation with what changed and how each acceptance criterion is met. Return retry if unfinished.",
+        "Implement the agreed requirements using production code only. Read verification/review feedback and correct production defects. Do not create or edit tests, including test-code type errors; describe any required test correction in the implementation artifact for the independent test-authoring step. Preserve independent test expectations. Update source, dependencies and configuration when the task requires it, without weakening checks. Use the smallest coherent change and run relevant checks. Publish implementation with what changed, the check results, and any test-only repair still needed. Return retry if production work is unfinished. If only an identified test-code repair remains, return pass to hand off to test authoring, explicitly noting that acceptance checks have not passed; the workflow must still require verification and passing checks before publication.",
     },
     {
       id: "fix",
@@ -216,7 +216,7 @@ export async function initializeProject(project: string, instructions = "", form
       outputs: ["feedback"],
       checks: successChecks,
       prompt:
-        "Write focused tests proving the acceptance criteria. Do not change production code. If valid tests expose an implementation defect, publish feedback with the violated criterion and failure evidence and return retry to implementation. Do not weaken tests to pass. Return pass only when the criteria and checks pass.",
+        "Write focused tests proving the acceptance criteria. Do not change production code. Run the project's applicable test-code typechecking or compilation as well as the tests; fix errors in newly authored test code before reporting success. If valid tests expose an implementation defect, publish feedback with the violated criterion and failure evidence and return retry to implementation. Do not weaken tests to pass. Return pass only when the criteria and checks pass.",
     },
     {
       id: "review",
