@@ -31,7 +31,7 @@ const stage = computed(() =>
 );
 const stages = [
   "Read the request & attachments",
-  "Classify and inspect the project",
+  "Match project task instructions",
   "Compose blocks, models & handoffs",
   "Validate the workflow",
 ];
