@@ -78,6 +78,6 @@ Workflow uses its own credential storage and explicit project resources. It does
 
 Workflow is a local, single-user tool. One workflow owns a project at a time; explicit groups can run blocks concurrently inside that workflow. Parallel blocks share the project directory.
 
-AI tools and commands have the server user's access. Roles such as “read-only reviewer” are instructions, not filesystem permission sandboxes. The project currently provides workflow approval, execution limits, managed-file recovery, and local HTTP request guards. Separate workspaces, remote workers, and OS isolation are not supplied by the composition API.
+AI tools and commands have the server user's access. Roles such as “read-only reviewer” are instructions, not filesystem permission sandboxes. The project currently provides workflow approval, execution limits, managed-file recovery, and local HTTP request guards. AI calls can select existing same-repository Git worktrees; the workflow must create and integrate them explicitly. Remote workers and OS isolation are not supplied by the composition API.
 
 [Next: run your first task](getting-started.md) · [Write a workflow](workflows.md)

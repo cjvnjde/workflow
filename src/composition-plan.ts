@@ -7,6 +7,7 @@ import {
   type WorkflowPlan,
 } from "./domain.js";
 import { modelOverride } from "./program-steps.js";
+import { validateCompositionOwnership } from "./composition-ownership.js";
 
 /** Build the UI's step catalog; execution follows the composition, not these legacy route fields. */
 export function compositionPlan(
@@ -59,6 +60,7 @@ export function compositionPlan(
     for (const child of item.children) visit(child);
   };
   visit(structure);
+  validateCompositionOwnership(structure, blocks);
   if (!nodes.length)
     throw new Error("Composition must contain at least one step");
   return {

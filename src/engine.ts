@@ -48,7 +48,7 @@ import { loadOrchestration } from "./orchestration-settings.js";
 const activeStatuses = new Set<WorkflowRun["status"]>(["running", "pausing", "paused", "interrupted"]);
 
 export class WorkflowEngine {
-  private readonly executionWorkspaces = new Set<string>();
+  private readonly executionWorkspaces = new Map<string, { token: symbol; access: "read" | "write" | "legacy" }[]>();
   private readonly usageByAttempt = new Map<string, UsageTotals>();
   private readonly runs = new Map<string, WorkflowRun>();
   private readonly emitter = new EventEmitter();
@@ -802,16 +802,18 @@ export class WorkflowEngine {
         node.context = { ...node.context, "call-prompt": operation.prompt };
         const workspace = await executionWorkspace(this.project, operation.workspace, signal);
         const isolated = operation.workspace !== undefined && workspace !== await realpath(this.project);
-        if (isolated) {
-          if (this.executionWorkspaces.has(workspace)) {
-            const summary = "Another AI call owns this worktree; use a distinct worktree for each concurrent writer";
-            emit("operation_error", summary);
-            // This is a rejected operation with no effects, not a lost activity
-            // that needs interruption/recovery and an explicit resume.
-            return { outcome: "fail", summary, artifacts: {} };
-          }
-          this.executionWorkspaces.add(workspace);
+        const readOnly = operation.writablePaths?.length === 0 || operation.protectedPaths?.includes("**/*");
+        const access = readOnly ? "read" : isolated || operation.writablePaths !== undefined || operation.protectedPaths?.length ? "write" : "legacy";
+        const owners = this.executionWorkspaces.get(workspace) ?? [];
+        if (owners.some(owner => access === "write" || owner.access === "write" || owner.access !== access)) {
+          const summary = "Another AI call owns this worktree; use a distinct worktree for each concurrent writer";
+          emit("operation_error", summary);
+          // This is a rejected operation with no effects, not a lost activity
+          // that needs interruption/recovery and an explicit resume.
+          return { outcome: "fail", summary, artifacts: {} };
         }
+        const token = Symbol("workspace-call");
+        this.executionWorkspaces.set(workspace, [...owners, { token, access }]);
         let protection: ProtectedPaths | undefined;
         let audit: ProtectedPaths | undefined;
         try {
@@ -835,7 +837,9 @@ export class WorkflowEngine {
               result = { outcome: "fail", summary: error.message, artifacts: {} };
             }
           } finally {
-            if (isolated) this.executionWorkspaces.delete(workspace);
+            const remaining = (this.executionWorkspaces.get(workspace) ?? []).filter(owner => owner.token !== token);
+            if (remaining.length) this.executionWorkspaces.set(workspace, remaining);
+            else this.executionWorkspaces.delete(workspace);
           }
         }
       } else if (this.mode === "demo") {

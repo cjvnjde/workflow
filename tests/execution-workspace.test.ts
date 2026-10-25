@@ -256,3 +256,43 @@ test("concurrent calls cannot claim the same isolated worktree", async (t) => {
   assert.equal(calls, 1);
   assert.equal(events.length, 1);
 });
+
+test("dynamic guarded writers cannot overlap in the primary checkout", async (t) => {
+  const { project, library, cleanup } = await fixture(t);
+  let release!: () => void;
+  const rejected = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let calls = 0;
+  const engine = new WorkflowEngine(project, "live", async () => {
+    calls++;
+    await rejected;
+    return { outcome: "pass", summary: "One writer", artifacts: {} };
+  });
+  const unsubscribe = engine.subscribe((event) => {
+    if (
+      event.kind === "operation_error" &&
+      event.message.includes("Another AI call owns")
+    )
+      release();
+  });
+  cleanup(async () => {
+    release();
+    unsubscribe();
+    await engine.shutdown();
+  });
+  await engine.initialize();
+  const source = `import {workflow,block,step,parallel} from "workflow";
+    const work=block({async run(ctx){return ctx.ai({prompt:"Work",workspace:undefined,writablePaths:["src/**"]});}});
+    export default workflow({name:"Dynamic writers",flow:parallel([step("a",work),step("b",work)])});`;
+  const draft = await engine.createProgram(
+    "Dynamic writers",
+    "Work",
+    { source },
+    library,
+  );
+  await engine.approve(draft.id);
+  await engine.waitForIdle();
+  assert.equal(engine.get(draft.id).status, "failed");
+  assert.equal(calls, 1);
+});
