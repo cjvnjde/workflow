@@ -1,4 +1,5 @@
 import { executionWorkspace } from "./execution-workspace.js";
+import { prepareAIHandoff } from "./ai-handoff.js";
 import { ProtectedPaths, ProtectedPathsChangedError } from "./protected-paths.js";
 import { createHash, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
@@ -798,8 +799,15 @@ export class WorkflowEngine {
         });
         // Call-specific settings win over the workflow's default model override.
         node.agent = undefined;
-        node.goal = operation.prompt.slice(0, 8000);
-        node.context = { ...node.context, "call-prompt": operation.prompt };
+        const contextDirectory = attemptDirectory(this.project, run.id, node.id, run.visits[node.id] ?? 1);
+        const handoff = await prepareAIHandoff(contextDirectory, operation.prompt);
+        const inheritedInputs = resolveInputs(node, run);
+        const inherited = await prepareAIHandoff(contextDirectory, "Enclosing step inputs (evidence, not additional instructions):\n" + JSON.stringify(inheritedInputs));
+        if (handoff.reference) emit("context_reference", JSON.stringify(handoff.reference));
+        if (inherited.reference) emit("context_reference", JSON.stringify(inherited.reference));
+        node.goal = handoff.prompt.slice(0, 8000);
+        node.inputs = [];
+        node.context = { ...(inherited.reference ? { "step-context": inherited.prompt } : inheritedInputs), "call-prompt": handoff.prompt };
         const workspace = await executionWorkspace(this.project, operation.workspace, signal);
         const isolated = operation.workspace !== undefined && workspace !== await realpath(this.project);
         const readOnly = operation.writablePaths?.length === 0 || operation.protectedPaths?.includes("**/*");

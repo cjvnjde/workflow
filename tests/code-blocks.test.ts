@@ -310,3 +310,47 @@ test("authoring completion and blocked acceptance have distinct recorded disposi
  const changed=await engine.createProgram('Contradictory acceptance','Verify',{source:overridden},library);await engine.approve(changed.id);await engine.waitForIdle();
  assert.equal(engine.get(changed.id).status,'failed');assert.equal(engine.get(changed.id).attempts[0]?.result?.disposition,undefined);
 });
+
+test("large recovery handoffs remain complete through referenced context files", async t => {
+  const { project, library, cleanup } = await fixture(t);
+  const prompt = "Read-only recovery review.\n" + "evidence 🟩 ".repeat(8000) + "\nFINAL DIAGNOSTIC: retain the regression";
+  let called = false;
+  const engine = new WorkflowEngine(project, "live", async execution => {
+    called = true;
+    const handoff = execution.inputs["call-prompt"]!;
+    assert.ok(handoff.length < 32000);
+    const reference = JSON.parse(handoff.slice(handoff.indexOf("{\n")));
+    const parts = await Promise.all(reference.parts.map((p: string) => readFile(p, "utf8")));
+    assert.equal(parts.join(""), prompt);
+    assert.ok(parts.every((part: string) => part.length <= 16000));
+    assert.equal(await readFile(reference.fullPath, "utf8"), prompt);
+    return { outcome: "pass", summary: "Reviewed complete evidence", artifacts: {} };
+  });
+  cleanup(() => engine.shutdown()); await engine.initialize();
+  const source = wrap(`const work=block({async run(ctx){return await ctx.ai({prompt:${JSON.stringify("Read-only recovery review.\n")}+"evidence 🟩 ".repeat(8000)+${JSON.stringify("\nFINAL DIAGNOSTIC: retain the regression")},protectedPaths:["**/*"]});}});`);
+  const draft=await engine.createProgram("Large recovery handoff", "Review retained evidence", {source}, library);
+  await engine.approve(draft.id);
+  for (let i=0;i<300 && engine.get(draft.id).status === "running";i++) await Bun.sleep(50);
+  const run=engine.get(draft.id);
+  assert.equal(run.status,"completed",run.error);
+  assert.ok(called);
+});
+
+test("large inherited step inputs are referenced without changing a focused AI prompt", async t => {
+  const { project, library, cleanup } = await fixture(t);
+  const engine = new WorkflowEngine(project, "live", async execution => {
+    assert.equal(execution.inputs["call-prompt"], "Inspect the final diagnostic only");
+    assert.equal(execution.inputs.evidence, undefined);
+    const handoff = execution.inputs["step-context"]!;
+    assert.ok(handoff.length < 32000);
+    const ref = JSON.parse(handoff.slice(handoff.indexOf("{\n")));
+    const complete = (await Promise.all(ref.parts.map((p: string) => readFile(p, "utf8")))).join("");
+    assert.equal(JSON.parse(complete.slice(complete.indexOf("\n") + 1)).evidence, "e".repeat(40000) + "END");
+    return { outcome: "pass", summary: "Inspected", artifacts: {} };
+  });
+  cleanup(() => engine.shutdown()); await engine.initialize();
+  const source=wrap('const work=block({async run(ctx){return await ctx.ai({prompt:"Inspect the final diagnostic only",protectedPaths:["**/*"]});}});', 'return await ctx.step("work",work,{inputs:{evidence:"e".repeat(40000)+"END"}});');
+  const draft=await engine.createProgram("Inherited context", "Inspect evidence", {source}, library);
+  await engine.approve(draft.id); await engine.waitForIdle();
+  assert.equal(engine.get(draft.id).status,"completed",engine.get(draft.id).error);
+});
