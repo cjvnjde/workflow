@@ -41,6 +41,8 @@ Several profiles can use the same model with different roles or thinking levels.
 
 Use **Generate with AI** for initial setup or **Regenerate with AI** to start a refinement conversation. `workflow init` can generate profiles when a provider is already connected and preserves existing profiles. `workflow profiles --instructions "..."` explicitly regenerates them. Ordinary application startup does not regenerate profiles or spend model usage on setup.
 
+Without an explicit coordinator, planning prefers `openai/gpt-6.1-sol` with high reasoning when available. Explicit coordinator profiles override this default. Model profile cards are configured roles, not the connected provider’s full catalog; use **Add model profile** to select another available model such as Terra.
+
 ## Task instructions
 
 Cases contain a description and instructions, not a graph. The coordinator chooses a relevant enabled case, reads its instructions, then composes blocks for the specific request. Add, edit, disable, or remove cases as your process changes.
@@ -63,7 +65,13 @@ Settings designers can inspect the project through tools to inform configuration
 
 ## Skills and MCP
 
-Skills are explicit instruction resources with names, descriptions, and content. Enable those relevant to your project. They provide guidance, not executable permission boundaries. Block-specific resource files can also be captured with a block.
+Workflow discovers project skills from `.agents/skills`, `.claude/skills`, `.codex/skills`, and `.pi/skills` (in that precedence order). It reads `SKILL.md` metadata and instructions, preserving the source directory for referenced resources. Skills marked `disable-model-invocation` remain disabled. Settings shows discovered source paths; edit those files to update them.
+
+Skills are instruction resources with names, descriptions, and content. Enable those relevant to your project. They provide guidance, not executable permission boundaries. Block-specific resource files can also be captured with a block.
+
+MCP definitions are discovered from `.mcp.json` (`mcpServers`), `.codex/config.toml` (`mcp_servers`), `.vscode/mcp.json` (`servers`), and `.pi/mcp.json` (`mcpServers`), in that order. Disabled definitions remain disabled. `${workspaceFolder}` is resolved in local commands and arguments. JSON must be strict JSON. HTTP `bearer_token_env_var` references are supported; literal `env` values and custom headers are not imported and produce a visible diagnostic instead of copying credentials into run snapshots. Local servers inherit Workflow’s environment.
+
+Project discovery does not start servers. New tasks resolve and freeze capabilities; existing runs retain their snapshot. Manually configured entries with the same ID override discovered entries, including disabled overrides. Discovery is project-local and does not import global agent configuration or arbitrary extensions.
 
 MCP servers support HTTP and local stdio transports. Configure an endpoint or command/arguments, inspect its tools, and enable it. Enabled servers expose their discovered tools to execution sessions. The task graph coordinator never invokes MCP tools.
 

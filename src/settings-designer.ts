@@ -1,3 +1,4 @@
+import { planningAgent } from "./planning-model.js";
 import { Type } from "@earendil-works/pi-ai";
 import { blockInstructions } from "./code-schema.js";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
@@ -40,7 +41,7 @@ export function validateDesign(value: unknown, options: Pick<DesignOptions, "sco
 export function designAgent(library: Library, settings: OrchestrationSettings, models: AvailableModel[]) {
   if (!models.length) { throw new Error("Connect ChatGPT or another provider in Settings → Providers & models first."); }
   const profile = settings.profiles.find((item) => item.enabled && item.id === settings.coordinatorProfile);
-  const agent = resolveAgentSettings(library.config.agent, library.config.coordinator, profile?.agent);
+  const agent = planningAgent(library.config.agent, profile?.agent ?? library.config.coordinator, models);
   if (agent.provider && agent.model) { validateModelChoice(agent, models); return agent; }
   // Bootstrap setup can run before the user has chosen project defaults.
   const model = models.find((item) => item.provider === "openai" && item.reasoning) ?? models.find((item) => item.reasoning) ?? models[0]!;

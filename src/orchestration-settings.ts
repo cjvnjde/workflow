@@ -1,3 +1,4 @@
+import { discoverProjectCapabilities } from "./project-capabilities.js";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -15,7 +16,7 @@ async function contents(project: string) {
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 export async function loadOrchestration(project: string) {
   const text = await contents(project);
-  return { revision: hash(text), settings: orchestrationSchema.parse(text ? JSON.parse(text) : {}) };
+  return { revision: hash(text), settings: orchestrationSchema.parse(text ? JSON.parse(text) : {}), projectCapabilities: await discoverProjectCapabilities(project) };
 }
 export async function saveOrchestration(project: string, value: unknown, models: AvailableModel[]) {
   const input = orchestrationStateSchema.parse(value);

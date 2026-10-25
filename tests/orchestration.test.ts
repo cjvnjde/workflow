@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
-import { readFile, writeFile, symlink, unlink } from "node:fs/promises";
+import { mkdir, readFile, writeFile, symlink, unlink } from "node:fs/promises";
 import path from "node:path";
 import { fixture } from "./helpers.js";
 import { Attachments } from "../src/attachments.js";
@@ -77,6 +77,9 @@ test("the coordinator classifies dynamically, reads case instructions, selects p
   const { project, library } = await fixture(t);
   library.config.agent = { ...library.config.agent, provider: "test", model: "careful", thinking: "off" };
   library.config.commands.verify = { argv: [process.execPath, "--version"], timeoutMs: 1000 };
+  await mkdir(path.join(project, ".agents/skills/local-evidence"), { recursive: true });
+  await writeFile(path.join(project, ".agents/skills/local-evidence/SKILL.md"), "---\nname: local-evidence\ndescription: Project evidence\n---\nPreserve the project evidence marker.");
+  await writeFile(path.join(project, ".mcp.json"), JSON.stringify({ mcpServers: { "project-reference": { command: "must-not-launch-during-planning" } } }));
   const settings = orchestrationSchema.parse({ profiles: [{ id: "reviewer", name: "Reviewer", description: "Careful independent review", agent: { provider: "test", model: "careful", thinking: "high" } }], coordinatorProfile: "reviewer", capabilities: { skills: [{ id: "evidence", name: "Evidence", description: "Require evidence", content: "Cite a file for every finding." }] } });
   const task = newRequest("Investigate the failure with a screenshot");
   const store = new Attachments(project);
@@ -87,6 +90,8 @@ test("the coordinator classifies dynamically, reads case instructions, selects p
     assert.equal(session.settings.thinking, "high");
     assert.match(session.systemPrompt, /Careful independent review/);
     assert.match(session.systemPrompt, /Cite a file/);
+    assert.match(session.systemPrompt, /project evidence marker/);
+    assert.match(session.systemPrompt, /project-reference/);
     assert.equal(session.images?.length, 1);
     assert.ok((session.tools.find(tool => tool.name === "submit_plan")!.parameters as { required?: string[] }).required?.includes("attachmentSummary"));
     assert.deepEqual(session.tools.map(tool => tool.name).sort(), ["ask_user", "choose_task_case", "submit_plan", "submit_workflow", "suggest_block"]);
@@ -111,6 +116,9 @@ test("the coordinator classifies dynamically, reads case instructions, selects p
   assert.equal(result.kind, "plan");
   if (result.kind !== "plan") { return; }
   assert.equal(result.caseId, "investigation");
+  assert.equal(result.library.config.capabilities?.mcpServers[0]?.id, "project-reference");
+  assert.ok(result.library.config.capabilities?.skills.some(skill => skill.id === "local-evidence"));
+  assert.equal(settings.capabilities.mcpServers.length, 0);
   assert.match(result.library.config.instructions, /empty error dialog/);
   assert.equal(result.suggestedBlocks[0]?.id, "verify-command");
   assert.equal(library.blocks["verify-command"], undefined);

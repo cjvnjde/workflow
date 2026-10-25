@@ -13,7 +13,10 @@ const props = defineProps<{ models: AvailableModel[]; busy: boolean }>();
 const emit = defineEmits<{ generate: [prompt: string] }>();
 type Profile = OrchestrationSettings["profiles"][number];
 function add() {
-  const model = props.models[0];
+  const model =
+    props.models.find(
+      (item) => item.provider === "openai" && item.id === "gpt-6.1-sol",
+    ) ?? props.models[0];
   if (!model) {
     return;
   }
@@ -27,7 +30,9 @@ function add() {
       provider: model.provider,
       model: model.id,
       thinking: agentSchema.shape.thinking.parse(
-        model.thinkingLevels[0] ?? "off",
+        model.thinkingLevels.includes("high")
+          ? "high"
+          : (model.thinkingLevels[0] ?? "off"),
       ),
     },
   });
@@ -81,8 +86,10 @@ function generate() {
       <div>
         <h2>A model for each kind of work</h2>
         <p>
-          Describe what each model is good at. The orchestrator uses these
-          descriptions to assign steps.
+          {{ settings.profiles.length }} configured role profiles ·
+          {{ models.length }} models available from connected providers. Add a
+          profile to use another model, such as Terra. These cards are roles,
+          not the full model catalog.
         </p>
       </div>
       <button :disabled="busy || !models.length" @click="add">
@@ -117,7 +124,7 @@ function generate() {
         label="Planning model"
         help="This model classifies requests and builds the workflow. It chooses execution models from your enabled profiles."
         ><select :id="id" v-model="settings.coordinatorProfile">
-          <option value="">Use project default</option>
+          <option value="">Automatic · Sol 6.1 when available</option>
           <option
             v-for="profile in settings.profiles.filter((item) => item.enabled)"
             :key="profile.id"

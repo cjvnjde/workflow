@@ -38,6 +38,7 @@ export const orchestrationSchema = z.object({
     ctx.addIssue({ code: "custom", path: ["coordinatorProfile"], message: "Choose an enabled coordinator profile" });
   }
 });
-export const orchestrationStateSchema = z.object({ revision: z.string(), settings: orchestrationSchema });
+export const projectCapabilitiesSchema = z.object({ capabilities: capabilitiesSchema, sources: z.array(z.object({ kind: z.enum(["skill", "mcp"]), id: z.string(), path: z.string() })), warnings: z.array(z.string()) });
+export const orchestrationStateSchema = z.object({ revision: z.string(), settings: orchestrationSchema, projectCapabilities: projectCapabilitiesSchema.optional() });
 export type OrchestrationSettings = z.infer<typeof orchestrationSchema>;
 export type OrchestrationState = z.infer<typeof orchestrationStateSchema>;

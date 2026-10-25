@@ -1,7 +1,7 @@
+import { planningAgent } from "./planning-model.js";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import {
-  resolveAgentSettings,
   blocksForAgent,
   validatePlan,
   type Library,
@@ -44,7 +44,7 @@ export async function createAiPlan(options: {
       };
     },
   });
-  const settings = resolveAgentSettings(library.config.agent, library.config.coordinator);
+  const settings = planningAgent(library.config.agent, library.config.coordinator, models);
   await session({
     project: options.project,
     settings,

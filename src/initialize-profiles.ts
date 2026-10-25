@@ -10,13 +10,13 @@ export async function initializeProfiles(project: string, options: { instruction
   if (state.settings.profiles.length && !options.regenerate) { return { status: "existing" as const, count: state.settings.profiles.length }; }
   const { models } = await (services.catalog ?? availableModels)(signal);
   if (!models.length) { return { status: "unconnected" as const, count: 0 }; }
-  const request = `${options.regenerate ? "Regenerate" : "Initialize"} model profiles for this project using the connected catalog. Inspect the project, create a concise set of useful model roles with descriptions, and select a planning profile. Produce a complete proposal without asking questions; use reasonable defaults. ${options.instructions ?? ""}`;
+  const request = `${options.regenerate ? "Regenerate" : "Initialize"} model profiles for this project using the connected catalog. Inspect the project, create a concise set of useful model roles with descriptions, and select a planning profile. Prefer openai/gpt-6.1-sol with high thinking for planning when available. Include gpt-5.6-terra as a balanced execution option when available. Produce a complete proposal without asking questions; use reasonable defaults. ${options.instructions ?? ""}`;
   const context = { project, scope: "profiles" as const, library, settings: state.settings, models, messages: [{ role: "user" as const, content: request, time: new Date().toISOString() }], signal, emit: options.emit ?? (() => {}) };
   const result = await (services.design ?? designSettings)(context);
   signal.throwIfAborted();
   const proposal = validateDesign(result.proposal, context);
   if (proposal.scope !== "profiles" || !proposal.profiles.some((profile) => profile.enabled)) { throw new Error("Initialization must produce at least one enabled model profile"); }
-  const coordinatorProfile = proposal.coordinatorProfile || proposal.profiles.find((profile) => profile.enabled)!.id;
+  const coordinatorProfile = proposal.profiles.find(profile => profile.enabled && profile.agent.provider === "openai" && profile.agent.model === "gpt-6.1-sol")?.id || proposal.coordinatorProfile || proposal.profiles.find((profile) => profile.enabled)!.id;
   await saveOrchestration(project, { ...state, settings: { ...state.settings, profiles: proposal.profiles, coordinatorProfile } }, models);
   return { status: "generated" as const, count: proposal.profiles.length };
 }

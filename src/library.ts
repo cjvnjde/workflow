@@ -1,3 +1,4 @@
+import { discoverProjectCapabilities, mergeCapabilities } from "./project-capabilities.js";
 import {
   lstat,
   mkdir,
@@ -30,6 +31,7 @@ export async function loadLibrary(project: string): Promise<Library> {
   );
   const defaults = (await loadUserSettings()).agent;
   const config = configSchema.parse({ ...raw, agent: resolveAgentSettings(defaults, raw.agent) });
+  config.capabilities = mergeCapabilities((await discoverProjectCapabilities(project)).capabilities, config.capabilities ?? { skills: [], mcpServers: [] });
   try {
     const saved = approvedLibrarySchema.parse(JSON.parse(await readFile(path.join(directory, "library.json"), "utf8")));
     validateLibraryResources(saved.blocks, config.commands);

@@ -1,3 +1,5 @@
+import { planningAgent } from "./planning-model.js";
+import { discoverProjectCapabilities, mergeCapabilities } from "./project-capabilities.js";
 import { Type } from "@earendil-works/pi-ai";
 import { blockInstructions } from "./code-schema.js";
 import { scriptBundle } from "./script-migration.js";
@@ -29,7 +31,11 @@ export type TaskPlannerOptions = {
   models: AvailableModel[]; signal: AbortSignal; emit: ActivitySink;
 };
 export async function planTask(options: TaskPlannerOptions, session: typeof runAgentSession = runAgentSession): Promise<TaskPlanResult> {
-  const { task, settings, signal, emit } = options;
+  const { task, signal, emit } = options;
+  const settings = structuredClone(options.settings);
+  const discovered = await discoverProjectCapabilities(options.project);
+  settings.capabilities = mergeCapabilities(discovered.capabilities, settings.capabilities);
+  for (const warning of discovered.warnings) emit("capability_warning", warning);
   const library = structuredClone(options.library);
   library.config.capabilities = settings.capabilities;
   library.config.attachments = task.attachments;
@@ -37,8 +43,9 @@ export async function planTask(options: TaskPlannerOptions, session: typeof runA
   const models = profiles.length ? options.models.filter((model) => profiles.some((profile) => profile.agent.provider === model.provider && profile.agent.model === model.id)) : options.models;
   if (!models.length) { throw new Error("No enabled model profiles are available. Connect a provider and configure models in Settings."); }
   const coordinator = profiles.find((profile) => profile.id === settings.coordinatorProfile);
-  const agent = resolveAgentSettings(library.config.agent, library.config.coordinator, coordinator?.agent);
+  const agent = planningAgent(library.config.agent, coordinator?.agent ?? library.config.coordinator, options.models);
   validateModelChoice(agent, options.models);
+  library.config.coordinator = agent;
   const cases = settings.cases.filter((item) => item.enabled);
   let chosen: typeof cases[number] | undefined;
   let classified = false;
@@ -164,6 +171,7 @@ export async function planTask(options: TaskPlannerOptions, session: typeof runA
       `Project instructions:\n${library.config.instructions}\n${settings.instructions}`,
       `Configured commands:\n${JSON.stringify(library.config.commands)}`,
       `Block catalog:\n${JSON.stringify(blocksForAgent(library.blocks))}`,
+      `Available MCP servers for execution: ${JSON.stringify(settings.capabilities.mcpServers.filter(server => server.enabled).map(({ id, name }) => ({ id, name })))}`,
       ...settings.capabilities.skills.filter((skill) => skill.enabled).map((skill) => `Enabled skill (${skill.name}):\n${skill.content}`),
     ].join("\n\n"),
     prompt: JSON.stringify({ request: task.prompt, answers: task.answers, attachments: context.texts }),

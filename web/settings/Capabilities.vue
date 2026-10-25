@@ -3,6 +3,11 @@ import type { OrchestrationSettings } from "../../src/orchestration-schema.js";
 import Field from "../components/Field.vue";
 import Icon from "../components/Icon.vue";
 import McpSettings from "./McpSettings.vue";
+defineProps<{
+  projectCapabilities?: import("zod").infer<
+    typeof import("../../src/orchestration-schema.js").projectCapabilitiesSchema
+  >;
+}>();
 const capabilities = defineModel<OrchestrationSettings["capabilities"]>({
   required: true,
 });
@@ -32,6 +37,38 @@ function addServer() {
 
 <template>
   <section>
+    <article class="settings-card">
+      <h2>From this project</h2>
+      <p>
+        Skills are discovered from .agents/skills, .claude/skills, .codex/skills
+        and .pi/skills. MCP servers come from .mcp.json, .codex/config.toml,
+        .vscode/mcp.json and .pi/mcp.json. New runs reload these files; existing
+        runs keep their snapshot.
+      </p>
+      <p>
+        Entries below with the same ID override project files, including
+        disabling them. Edit discovered entries in their source files.
+      </p>
+      <p v-if="!projectCapabilities?.sources.length">
+        No project skills or MCP servers found.
+      </p>
+      <ul v-else>
+        <li
+          v-for="source in projectCapabilities.sources"
+          :key="source.kind + source.id"
+        >
+          <strong>{{ source.id }}</strong> · {{ source.kind }} ·
+          {{ source.path }}
+        </li>
+      </ul>
+      <p
+        v-for="warning in projectCapabilities?.warnings"
+        :key="warning"
+        role="status"
+      >
+        {{ warning }}
+      </p>
+    </article>
     <div class="settings-section-title">
       <div>
         <h2>Skills</h2>
@@ -76,7 +113,8 @@ function addServer() {
         <h2>MCP servers</h2>
         <p>
           Connect a local process or Streamable HTTP endpoint. All tools from
-          enabled servers are available to execution blocks. The coordinator composes graphs from supplied context without calling MCP tools.
+          enabled servers are available to execution blocks. The coordinator
+          composes graphs from supplied context without calling MCP tools.
         </p>
       </div>
       <button @click="addServer"><Icon name="plus" />Add MCP server</button>

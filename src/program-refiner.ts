@@ -1,7 +1,8 @@
+import { planningAgent } from "./planning-model.js";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { runAgentSession, type ActivitySink } from "./agent-session.js";
-import { resolveAgentSettings, type WorkflowRun } from "./domain.js";
+import { type WorkflowRun } from "./domain.js";
 import { programInstructions, type ProgramSource } from "./program-schema.js";
 import { validateProgram } from "./program-compiler.js";
 import { textResult } from "./block-runner.js";
@@ -30,7 +31,7 @@ export async function refineProgram(options: {
       }
     },
   });
-  const settings = resolveAgentSettings(run.config.agent, run.config.coordinator);
+  const settings = planningAgent(run.config.agent, run.config.coordinator, options.models);
   await session({
     project, settings, signal: AbortSignal.any([signal, AbortSignal.timeout(settings.timeoutMs)]), emit,
     tools: [submit],

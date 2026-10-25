@@ -300,6 +300,7 @@ function reload() {
       <Capabilities
         v-if="tab === 'capabilities'"
         v-model="state.settings.capabilities"
+        :project-capabilities="state.projectCapabilities"
       />
       <ExecutionSettings
         v-if="tab === 'execution' && execution"
