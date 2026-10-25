@@ -100,6 +100,16 @@ const busy = ref(false);
 const automatic = ref(false);
 const settingsDirty = ref(false);
 const designRequest = ref<DesignRequest>();
+const settingsContext = ref<{
+  section:
+    | "providers"
+    | "profiles"
+    | "cases"
+    | "blocks"
+    | "capabilities"
+    | "execution";
+  blockId?: string;
+}>({ section: "providers" });
 const settingsRevision = ref(0);
 const applyingDesign = ref(false);
 const designChatCount = ref(0);
@@ -691,6 +701,7 @@ async function designApplied() {
           :design-revision="settingsRevision"
           :applying-design="applyingDesign"
           @dirty="settingsDirty = $event"
+          @context="settingsContext = $event"
           @design="design"
         />
         <div v-else-if="!selectedEntry" class="task-home">
@@ -864,7 +875,9 @@ async function designApplied() {
       :requested="designRequest"
       :page-context="{
         page: view,
-        ...(view === 'task' ? { taskId: task?.id, runId: run?.id } : {}),
+        ...(view === 'task'
+          ? { taskId: task?.id, runId: run?.id }
+          : settingsContext),
       }"
       :has-unsaved-settings="settingsDirty"
       :on-applied="designApplied"

@@ -865,7 +865,6 @@ test("AI settings chat generates profiles, refines with context, reviews before 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.reload();
   await page.getByRole("navigation", { name: "Settings sections" }).getByRole("button", { name: "Model profiles", exact: true }).click();
-  await page.getByRole("button", { name: "Design with AI", exact: true }).click();
   await expect(chat.getByText("One profile for project leadership", { exact: true })).toBeVisible();
   let release!: () => void; let received!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
@@ -889,8 +888,8 @@ test("AI blocks chat applies reviewed instructions and blocks applying over unsa
   await ensureDesignConnection(request);
   const before = await (await request.get("/api/project")).json();
   await page.goto("/"); await settings(page, "Blocks");
-  await page.getByRole("button", { name: "Design with AI", exact: true }).click();
-  const chat = page.getByRole("dialog", { name: "Design blocks with AI", exact: true });
+  await page.getByRole("button", { name: "Open AI designer", exact: true }).click();
+  const chat = page.getByRole("dialog", { name: "Design workflow with AI", exact: true });
   const instructions = "Review acceptance criteria and cite exact files for every finding. Keep review separate from implementation.";
   await chat.getByLabel("Message AI designer", { exact: true }).fill(instructions);
   await chat.getByRole("button", { name: "Send to AI designer", exact: true }).click();
@@ -902,12 +901,12 @@ test("AI blocks chat applies reviewed instructions and blocks applying over unsa
   await chat.getByRole("button", { name: "Minimize design chat", exact: true }).click();
   await page.getByRole("button", { name: /Independent review/ }).click();
   await fillCode(page.getByLabel("Block TypeScript", { exact: true }), "// Unsaved manual review instructions");
-  await page.getByLabel("Design chats").getByRole("button", { name: "Blocks", exact: true }).click();
+  await page.getByLabel("Design chats").getByRole("button", { name: "Workflow", exact: true }).click();
   await expect(apply).toBeDisabled();
   await expect(chat.getByText(/Save or discard your form edits/)).toBeVisible();
   await chat.getByRole("button", { name: "Minimize design chat", exact: true }).click();
   await page.getByRole("button", { name: "Discard block changes", exact: true }).click();
-  await page.getByLabel("Design chats").getByRole("button", { name: "Blocks", exact: true }).click();
+  await page.getByLabel("Design chats").getByRole("button", { name: "Workflow", exact: true }).click();
   await expect(apply).toBeEnabled(); await apply.click();
   await expect(chat.getByText("Changes applied", { exact: true })).toBeVisible();
   expect((await (await request.get("/api/project")).json()).blocks.review.prompt).toBe(instructions);
@@ -916,17 +915,17 @@ test("AI blocks chat applies reviewed instructions and blocks applying over unsa
   await expectCode(page.getByLabel("Block TypeScript", { exact: true }), new RegExp(instructions.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });
 
-test("AI design scopes keep distinct conversations and can configure cases, skills and execution", async ({ page, request }) => {
+test("global designer follows the settings section in the same conversation", async ({ page, request }) => {
   await ensureDesignConnection(request);
   await page.goto("/"); await settings(page, "Task instructions");
-  for (const [tab, label, prompt] of [
+  for (const [tab, , prompt] of [
     ["Task instructions", "task instructions", "For release readiness, inspect tests and changelog. Do not publish."],
     ["Skills & MCP", "skills & mcp", "Prefer existing TypeScript conventions and focused changes."],
     ["Execution", "execution settings", "Limit each workflow to 15 steps."],
   ]) {
     await page.getByRole("navigation", { name: "Settings sections" }).getByRole("button", { name: tab, exact: true }).click();
-    await page.getByRole("button", { name: "Design with AI", exact: true }).click();
-    const chat = page.getByRole("dialog", { name: `Design ${label} with AI`, exact: true });
+    await page.getByRole("button", { name: "Open AI designer", exact: true }).click();
+    const chat = page.getByRole("dialog", { name: "Design workflow with AI", exact: true });
     await chat.getByLabel("Message AI designer", { exact: true }).fill(prompt!);
     await chat.getByRole("button", { name: "Send to AI designer", exact: true }).click();
     await expect(chat.getByRole("button", { name: "Apply changes", exact: true })).toBeEnabled();
@@ -938,10 +937,10 @@ test("AI design scopes keep distinct conversations and can configure cases, skil
   expect(saved.cases.find((item: { id: string }) => item.id === "release-ai").instructions).toContain("Do not publish");
   expect(saved.capabilities.skills.find((item: { id: string }) => item.id === "conventions-ai").content).toContain("TypeScript");
   expect((await (await request.get("/api/settings/execution")).json()).maxSteps).toBe(15);
-  await page.getByLabel("Design chats").getByRole("button", { name: "Task instructions", exact: true }).click();
-  const chat = page.getByRole("dialog", { name: "Design task instructions with AI", exact: true });
+  await page.getByLabel("Design chats").getByRole("button", { name: "Workflow", exact: true }).click();
+  const chat = page.getByRole("dialog", { name: "Design workflow with AI", exact: true });
   await expect(chat).toContainText("For release readiness, inspect tests and changelog.");
-  await expect(chat).not.toContainText("Prefer existing TypeScript conventions");
+  await expect(chat).toContainText("Prefer existing TypeScript conventions");
   await chat.getByLabel("Message AI designer", { exact: true }).fill("Explain what the proposal changed.");
   await chat.getByRole("button", { name: "Send to AI designer", exact: true }).click();
   await expect(chat.getByText("The proposal uses your connected catalog and preserves the other settings sections.", { exact: true })).toBeVisible();
@@ -1046,8 +1045,8 @@ test("same-scope AI chats stay independent, draggable and restorable", async ({ 
   await ensureDesignConnection(request);
   await page.setViewportSize({ width: 1500, height: 1000 });
   await page.goto("/"); await settings(page, "Blocks");
-  await page.getByRole("button", { name: "Design with AI", exact: true }).click();
-  const dialogs = page.getByRole("dialog", { name: "Design blocks with AI", exact: true });
+  await page.getByRole("button", { name: "Open AI designer", exact: true }).click();
+  const dialogs = page.getByRole("dialog", { name: "Design workflow with AI", exact: true });
   await expect(dialogs).toHaveCount(1);
   const firstId = await dialogs.first().getAttribute("id");
   const first = page.locator(`#${firstId}`);
@@ -1071,7 +1070,7 @@ test("same-scope AI chats stay independent, draggable and restorable", async ({ 
   await first.getByLabel("Message AI designer", { exact: true }).fill("Unsent follow-up A");
   await first.getByRole("button", { name: "Minimize design chat", exact: true }).click();
   await expect(first).toBeHidden(); await expect(second).toBeVisible();
-  await page.getByLabel("Design chats").getByRole("button", { name: "Blocks", exact: true }).click();
+  await page.getByLabel("Design chats").getByRole("button", { name: "Workflow", exact: true }).click();
   await expect(first.getByLabel("Message AI designer", { exact: true })).toHaveValue("Unsent follow-up A");
   const position = (await first.boundingBox())!;
   await page.reload();
@@ -1211,13 +1210,16 @@ test("discard controls restore blocks, model defaults and settings without savin
   const originalLibrary = await (await request.get("/api/library")).json();
   await page.getByRole("button", { name: "Add block", exact: true }).click();
   await page.getByLabel("Block name", { exact: true }).fill("Discard this new block");
-  await page.getByRole("button", { name: "Design with AI", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("Save or discard");
+  await page.getByRole("button", { name: "Open AI designer", exact: true }).click();
+  const opened = page.getByRole("dialog", {name:"Design workflow with AI",exact:true});
+  await expect(opened).toBeVisible();
+  await expect(page.getByLabel("Block name", {exact:true})).toHaveValue("Discard this new block");
+  await opened.getByRole("button", {name:"Close design chat",exact:true}).click();
   await page.getByRole("button", { name: "Cancel new block", exact: true }).click();
   await expect(page.getByLabel("Block name", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("alert")).toHaveCount(0);
-  await page.getByRole("button", { name: "Design with AI", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Design blocks with AI", exact: true });
+  await page.getByRole("button", { name: "Open AI designer", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Design workflow with AI", exact: true });
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Close design chat", exact: true }).click();
   await page.locator(".block-catalog button").filter({ hasText: "Independent review" }).click();
@@ -1321,8 +1323,8 @@ test("floating chats resize independently, retain dimensions and stay usable on 
   await ensureDesignConnection(request);
   await page.setViewportSize({ width: 1600, height: 1100 });
   await page.goto("/"); await settings(page, "Blocks");
-  await page.getByRole("button", { name: "Design with AI", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Design blocks with AI", exact: true });
+  await page.getByRole("button", { name: "Open AI designer", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Design workflow with AI", exact: true });
   await expect(dialog).toBeVisible();
   const id = await dialog.getAttribute("id");
   const header = (await dialog.locator("header").boundingBox())!;
@@ -1337,7 +1339,7 @@ test("floating chats resize independently, retain dimensions and stay usable on 
   expect(resized.height).toBeCloseTo(before.height + 80, 0);
   await dialog.getByRole("button", { name: "New design conversation", exact: true }).click();
   const first = page.locator(`#${id}`);
-  const all = page.getByRole("dialog", { name: "Design blocks with AI", exact: true });
+  const all = page.getByRole("dialog", { name: "Design workflow with AI", exact: true });
   await expect(all).toHaveCount(2);
   expect((await all.last().boundingBox())!.width).toBe(440);
   await page.reload();
@@ -1363,8 +1365,8 @@ test("chat resizing keeps the opposite edges fixed at minimum and viewport limit
   await ensureDesignConnection(request);
   await page.setViewportSize({ width: 1400, height: 1000 });
   await page.goto("/"); await settings(page, "Blocks");
-  await page.getByRole("button", { name: "Design with AI", exact: true }).click();
-  const chat = page.getByRole("dialog", { name: "Design blocks with AI", exact: true });
+  await page.getByRole("button", { name: "Open AI designer", exact: true }).click();
+  const chat = page.getByRole("dialog", { name: "Design workflow with AI", exact: true });
   const header = (await chat.locator("header").boundingBox())!;
   await page.mouse.move(header.x + 80, header.y + 20); await page.mouse.down();
   await page.mouse.move(400, 70, { steps: 8 }); await page.mouse.up();
@@ -1397,8 +1399,8 @@ test("an AI proposal can be discarded without applying and its conversation stay
   await ensureDesignConnection(request);
   const before = await (await request.get("/api/library")).json();
   await page.goto("/"); await settings(page, "Blocks");
-  await page.getByRole("button", { name: "Design with AI", exact: true }).click();
-  const chat = page.getByRole("dialog", { name: "Design blocks with AI", exact: true });
+  await page.getByRole("button", { name: "Open AI designer", exact: true }).click();
+  const chat = page.getByRole("dialog", { name: "Design workflow with AI", exact: true });
   await chat.getByRole("button", { name: "New design conversation", exact: true }).click();
   // Creation is asynchronous: filling .last() before the new window exists
   // writes to the previous chat and then tries to send the new empty one.
@@ -1509,4 +1511,36 @@ test("global AI designer retains conversation and drafts across task, settings a
   expect(context.taskId).toMatch(/^[a-f0-9-]{36}$/);
   expect(context.runId).toMatch(/^[a-f0-9-]{36}$/);
   await expect(chat.getByText("The proposal uses your connected catalog and preserves the other settings sections.", {exact:true})).toBeVisible();
+});
+
+test("only the global designer remains and each message captures its settings section and block", async ({ page, request }) => {
+  await ensureDesignConnection(request);
+  await page.goto("/");
+  await settings(page, "Blocks");
+  await expect(page.getByRole("button", {name:"Open AI designer",exact:true})).toHaveCount(1);
+  await expect(page.locator("main").getByRole("button", {name:"Design with AI",exact:true})).toHaveCount(0);
+  await page.getByRole("button", {name:/Independent review/}).click();
+  await page.getByRole("button", {name:"Open AI designer",exact:true}).click();
+  const chat = page.getByRole("dialog", {name:"Design workflow with AI",exact:true});
+  await expect(chat).toContainText("Blocks · review context included");
+  const replies = chat.getByText("The proposal uses your connected catalog and preserves the other settings sections.", {exact:true});
+  const previousReplies = await replies.count();
+  await chat.getByLabel("Message AI designer", {exact:true}).fill("Explain this block");
+  const first = page.waitForRequest(req => /\/api\/design\/[^/]+\/messages$/.test(req.url()));
+  await chat.getByRole("button", {name:"Send to AI designer",exact:true}).click();
+  expect((await first).postDataJSON().context).toEqual({page:"settings",section:"blocks",blockId:"review"});
+  await expect(replies).toHaveCount(previousReplies + 1);
+  await page.getByRole("navigation", {name:"Settings sections"}).getByRole("button", {name:"Execution",exact:true}).click();
+  await expect(page.locator("main").getByRole("button", {name:"Design with AI",exact:true})).toHaveCount(0);
+  await expect(chat).toContainText("Execution settings context included");
+  await chat.getByLabel("Message AI designer", {exact:true}).fill("Explain these limits");
+  const second = page.waitForRequest(req => /\/api\/design\/[^/]+\/messages$/.test(req.url()));
+  await chat.getByRole("button", {name:"Send to AI designer",exact:true}).click();
+  const sent = await second;
+  expect(sent.postDataJSON().context).toEqual({page:"settings",section:"execution"});
+  await expect(replies).toHaveCount(previousReplies + 2);
+  const saved = await (await request.get(sent.url().replace(/\/messages$/, ""))).json();
+  expect(saved.messages.filter((item: {role:string}) => item.role === "user").slice(-2).map((item: {context:unknown}) => item.context)).toEqual([
+    {page:"settings",section:"blocks",blockId:"review"}, {page:"settings",section:"execution"},
+  ]);
 });

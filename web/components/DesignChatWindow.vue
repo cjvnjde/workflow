@@ -51,6 +51,17 @@ const message = computed({
   get: () => props.draft,
   set: (value) => emit("draft", value),
 });
+function contextLabel(context: DesignPageContext) {
+  if (context.page !== "settings")
+    return context.taskId || context.runId ? "Task workspace" : "New task";
+  const section =
+    context.section === "providers"
+      ? "Providers & models"
+      : context.section
+        ? designScopes[context.section].title
+        : "Settings";
+  return context.blockId ? `${section} · ${context.blockId}` : section;
+}
 const label = computed(() => designScopes[session.value.scope]);
 const working = computed(() => session.value.status === "working");
 const loading = false;
@@ -385,11 +396,7 @@ function resizeWithKeys(event: KeyboardEvent, left: boolean) {
         >
           <span>{{ entry.role === "user" ? "You" : "AI designer" }}</span>
           <small v-if="entry.context" class="design-page-context">{{
-            entry.context.page === "settings"
-              ? "Settings"
-              : entry.context.taskId || entry.context.runId
-                ? "Task workspace"
-                : "New task"
+            contextLabel(entry.context)
           }}</small>
           <MarkdownView :content="entry.content" /></article
       ></template>
@@ -474,14 +481,8 @@ function resizeWithKeys(event: KeyboardEvent, left: boolean) {
       />
       <div>
         <small
-          >{{
-            pageContext.page === "settings"
-              ? "Settings"
-              : pageContext.taskId || pageContext.runId
-                ? "Current task"
-                : "New task"
-          }}
-          context included · Enter to send</small
+          >{{ contextLabel(pageContext) }} context included · Enter to
+          send</small
         ><button
           v-if="!working && message"
           type="button"

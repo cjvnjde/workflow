@@ -11,10 +11,7 @@ import {
   type OrchestrationState,
 } from "../../src/orchestration-schema.js";
 import { executionSettingsSchema } from "../../src/setup-schema.js";
-import {
-  designScopeSchema,
-  type DesignScope,
-} from "../../src/design-schema.js";
+import { type DesignScope } from "../../src/design-schema.js";
 import { request } from "../api.js";
 import Icon from "../components/Icon.vue";
 import ModelSettings from "./ModelSettings.vue";
@@ -32,6 +29,18 @@ const props = defineProps<{
 const emit = defineEmits<{
   dirty: [dirty: boolean];
   design: [scope: DesignScope, prompt?: string];
+  context: [
+    value: {
+      section:
+        | "providers"
+        | "profiles"
+        | "cases"
+        | "blocks"
+        | "capabilities"
+        | "execution";
+      blockId?: string;
+    },
+  ];
 }>();
 const tabs = [
   ["providers", "Providers & models"],
@@ -41,7 +50,19 @@ const tabs = [
   ["capabilities", "Skills & MCP"],
   ["execution", "Execution"],
 ] as const;
-const tab = ref<string>("providers");
+const tab = ref<(typeof tabs)[number][0]>("providers");
+const selectedBlock = ref("");
+watch(
+  [tab, selectedBlock],
+  () =>
+    emit("context", {
+      section: tab.value,
+      ...(tab.value === "blocks" && selectedBlock.value
+        ? { blockId: selectedBlock.value }
+        : {}),
+    }),
+  { immediate: true },
+);
 const state = ref<OrchestrationState>();
 const saved = ref("");
 const models = ref<AvailableModel[]>([]);
@@ -189,7 +210,7 @@ function design(scope: DesignScope, prompt?: string) {
   error.value = "";
   emit("design", scope, prompt);
 }
-function changeTab(id: string) {
+function changeTab(id: (typeof tabs)[number][0]) {
   if (
     id !== tab.value &&
     (blockDirty.value || modelDirty.value) &&
@@ -266,18 +287,6 @@ function reload() {
         @busy="busy = $event"
         @dirty="modelDirty = $event"
       />
-      <div
-        v-if="!['providers', 'blocks'].includes(tab)"
-        class="settings-ai-row"
-      >
-        <span>Describe what you want. Refine it together.</span
-        ><button
-          class="ai-button"
-          @click="design(designScopeSchema.parse(tab))"
-        >
-          <Icon name="spark" />Design with AI
-        </button>
-      </div>
       <ModelProfiles
         v-if="tab === 'profiles'"
         v-model="state.settings"
@@ -295,7 +304,7 @@ function reload() {
         :on-saved="onSaved"
         @dirty="blockDirty = $event"
         @busy="busy = $event"
-        @design="design('blocks')"
+        @selected="selectedBlock = $event"
       />
       <Capabilities
         v-if="tab === 'capabilities'"

@@ -22,7 +22,7 @@ export const designProposalSchema = z.discriminatedUnion("scope", [
   z.object({ scope: z.literal("capabilities"), summary, capabilities: capabilitiesSchema }).strict(),
   z.object({ scope: z.literal("execution"), summary, settings: executionSettingsSchema.omit({ configRevision: true }) }).strict(),
 ]);
-export const designPageContextSchema = z.object({ page: z.enum(["task", "settings"]), taskId: z.string().uuid().optional(), runId: z.string().uuid().optional() }).strict();
+export const designPageContextSchema = z.object({ page: z.enum(["task", "settings"]), section: z.enum(["providers", "profiles", "cases", "blocks", "capabilities", "execution"]).optional(), blockId: z.string().max(200).optional(), taskId: z.string().uuid().optional(), runId: z.string().uuid().optional() }).strict();
 export type DesignPageContext = z.infer<typeof designPageContextSchema>;
 export const designMessageSchema = z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1).max(16000), time: z.string(), context: designPageContextSchema.optional() }).strict();
 export const designSessionSchema = z.object({

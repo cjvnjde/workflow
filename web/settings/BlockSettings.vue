@@ -30,7 +30,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   dirty: [value: boolean];
   busy: [value: boolean];
-  design: [];
+  selected: [id: string];
 }>();
 const libraryStateSchema = z.object({
   revision: z.string(),
@@ -39,6 +39,7 @@ const libraryStateSchema = z.object({
 });
 const state = shallowRef<z.infer<typeof libraryStateSchema>>();
 const selected = ref("");
+watch(selected, (id) => emit("selected", id), { immediate: true });
 const bundle = ref<BlockBundle>();
 const busy = ref(false),
   error = ref(""),
@@ -220,9 +221,6 @@ function download() {
         </p>
       </div>
       <div class="button-row">
-        <button class="ai-button" :disabled="busy" @click="emit('design')">
-          <Icon name="spark" />Design with AI
-        </button>
         <button :disabled="busy" @click="add">
           <Icon name="plus" />Add block
         </button>
@@ -305,7 +303,9 @@ function download() {
               >
               returns a typed AI result. Omit <code>output</code> for Markdown.
               Set a model in code, accept one through inputs, or use
-              <code>ctx.model</code> for the step’s default. Omitting <code>model</code> uses the model assigned by the orchestrator or in the workflow editor. An explicit model here takes precedence.
+              <code>ctx.model</code> for the step’s default. Omitting
+              <code>model</code> uses the model assigned by the orchestrator or
+              in the workflow editor. An explicit model here takes precedence.
             </p>
             <p v-if="settings.profiles.some((profile) => profile.enabled)">
               Available profiles:

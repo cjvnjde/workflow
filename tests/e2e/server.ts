@@ -79,21 +79,22 @@ const server = await createServer(engine, 4311, {
     await new Promise((resolve) => setTimeout(resolve, 400));
     options.signal.throwIfAborted();
     const message = options.messages.at(-1)!.content;
+    const scope = options.scope === "project" ? options.messages.at(-1)?.context?.section : options.scope;
     if (/explain/i.test(message)) { return { message: "The proposal uses your connected catalog and preserves the other settings sections." }; }
-    if (options.scope === "profiles") {
+    if (scope === "profiles") {
       const one = /one profile/i.test(message);
       if (one && !options.previous) { throw new Error("Expected the earlier proposal during refinement"); }
       const profiles = (one ? ["Project lead"] : ["Deliberate review", "Routine helper"]).map((name, index) => ({ id: name.toLowerCase().replaceAll(" ", "-"), name, description: `Use for ${index ? "routine summaries and straightforward changes" : "planning, difficult implementation and independent review"}.`, enabled: true, agent: { provider: "openai", model: "test-model", thinking: index ? "off" as const : "high" as const } }));
       return { message: one ? "Refined the earlier proposal into one project lead profile." : "I drafted roles from the available catalog. You can refine them before applying.", proposal: { scope: "profiles", summary: one ? "One profile for project leadership" : "A focused pair of model roles", profiles, coordinatorProfile: profiles[0]!.id } };
     }
-    if (options.scope === "blocks") {
+    if (scope === "blocks") {
       const bundle = structuredClone(options.library.blocks.review!);
       bundle.prompt = message;
       bundle.definition.agent = { provider: "openai", model: "test-model", thinking: "high" };
       return { message: "Updated the review instructions while preserving outputs and permissions.", proposal: { scope: "blocks", summary: "Focused independent review", changes: { summary: "Focused independent review", blocks: [{ bundle, rationale: "Review should cite independent acceptance evidence" }] } } };
     }
-    if (options.scope === "cases") { return { message: "Added release readiness instructions.", proposal: { scope: "cases", summary: "Release readiness case", cases: [...options.settings.cases.filter((item) => item.id !== "release-ai"), { id: "release-ai", name: "Release readiness", description: "Prepare a release", instructions: message, enabled: true }], instructions: options.settings.instructions, suggestBlocks: options.settings.suggestBlocks } }; }
-    if (options.scope === "capabilities") { return { message: "Added a project skill.", proposal: { scope: "capabilities", summary: "Coding conventions", capabilities: { ...options.settings.capabilities, skills: [...options.settings.capabilities.skills.filter((item) => item.id !== "conventions-ai"), { id: "conventions-ai", name: "AI coding conventions", description: "Project coding style", content: message, enabled: true }] } } }; }
+    if (scope === "cases") { return { message: "Added release readiness instructions.", proposal: { scope: "cases", summary: "Release readiness case", cases: [...options.settings.cases.filter((item) => item.id !== "release-ai"), { id: "release-ai", name: "Release readiness", description: "Prepare a release", instructions: message, enabled: true }], instructions: options.settings.instructions, suggestBlocks: options.settings.suggestBlocks } }; }
+    if (scope === "capabilities") { return { message: "Added a project skill.", proposal: { scope: "capabilities", summary: "Coding conventions", capabilities: { ...options.settings.capabilities, skills: [...options.settings.capabilities.skills.filter((item) => item.id !== "conventions-ai"), { id: "conventions-ai", name: "AI coding conventions", description: "Project coding style", content: message, enabled: true }] } } }; }
     const { instructions, commands, budget } = options.library.config;
     return { message: "Reduced the workflow limit.", proposal: { scope: "execution", summary: "Maximum 15 steps", settings: { instructions, commands, budget, maxSteps: 15 } } };
   },

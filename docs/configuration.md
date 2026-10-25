@@ -57,7 +57,7 @@ The **suggest blocks** setting allows the planner to propose missing reusable ro
 
 ## Design settings with AI
 
-**Design with AI** is available in the top bar on every page. Floating conversations, drafts and proposals survive navigation and reloads. Section buttons remain useful starting points, but every conversation can inspect and propose changes across settings sections. Each message records its page and current task/run IDs. Describe what you want, add constraints, refine the proposal, and select **Apply changes** when satisfied. A message can ask for an explanation without requiring an immediate edit.
+**Design with AI** is available in the top bar on every page. Floating conversations, drafts and proposals survive navigation and reloads. The global button is the single general design entry point; every conversation can inspect and propose changes across settings sections. Each message records its page, active settings section, selected block and current task/run IDs. Describe what you want, add constraints, refine the proposal, and select **Apply changes** when satisfied. A message can ask for an explanation without requiring an immediate edit.
 
 Chats can be moved, resized, minimized, and restored. **New conversation** creates another window rather than replacing the existing one. Conversation history, proposals, and window state persist. **Stop**, **Discard message**, and **Discard proposal** have different scopes; none applies an unfinished proposal.
 
