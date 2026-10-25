@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { isSourceWorkflow } from "./execution-label.js";
-import { computed, defineAsyncComponent, onMounted, ref, watch } from "vue";
+import {
+  computed,
+  defineAsyncComponent,
+  onMounted,
+  onUnmounted,
+  ref,
+  watch,
+} from "vue";
 import { runSchema } from "../src/domain.js";
 import { taskSchema } from "../src/task-schema.js";
 import { orchestrationStateSchema } from "../src/orchestration-schema.js";
@@ -121,25 +128,36 @@ watch(
 if (!initialLocation.has("task") && initialLocation.get("run")) {
   selectRun(initialLocation.get("run")!);
 }
-watch(
-  [view, selectedTask, selectedId],
-  () => {
-    const location =
-      view.value === "settings"
-        ? "settings"
-        : selectedTask.value
-          ? `task=${selectedTask.value}`
-          : selectedId.value
-            ? `run=${selectedId.value}`
-            : "";
-    window.history.replaceState(
-      null,
-      "",
-      `${window.location.pathname}${location ? `#${location}` : ""}`,
+watch([view, selectedTask, selectedId], syncLocation, { immediate: true });
+function syncLocation() {
+  const location =
+    view.value === "settings"
+      ? "settings"
+      : selectedTask.value
+        ? `task=${selectedTask.value}`
+        : selectedId.value
+          ? `run=${selectedId.value}`
+          : "";
+  window.history.replaceState(
+    null,
+    "",
+    `${window.location.pathname}${window.location.search}${location ? `#${location}` : ""}`,
+  );
+}
+function readLocation() {
+  const location = new URLSearchParams(window.location.hash.slice(1));
+  const next = location.has("settings") ? "settings" : "task";
+  navigate(next, () => {
+    selectedTask.value = location.get("task") ?? undefined;
+    selectRun(
+      selectedTask.value ? undefined : (location.get("run") ?? undefined),
     );
-  },
-  { immediate: true },
-);
+  });
+  // Restore the current URL if the user declines to discard settings.
+  syncLocation();
+}
+onMounted(() => window.addEventListener("hashchange", readLocation));
+onUnmounted(() => window.removeEventListener("hashchange", readLocation));
 function navigate(next: "task" | "settings", action?: () => void) {
   if (next === view.value && !action) {
     sidebar.value = false;

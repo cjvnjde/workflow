@@ -33,6 +33,32 @@ async function settings(page: Page, section = "Providers & models") {
   await page.getByRole("button", { name: section, exact: true }).click();
 }
 
+test("hash navigation and browser history update the visible workspace", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByLabel("What should we work on?", { exact: true })).toBeVisible();
+  await page.goto("/#settings");
+  await expect(page.getByRole("button", { name: "Providers & models", exact: true })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByLabel("What should we work on?", { exact: true })).toBeVisible();
+  await page.goForward();
+  await expect(page.getByRole("button", { name: "Providers & models", exact: true })).toBeVisible();
+});
+
+test("hash navigation preserves unsaved settings when discard is declined", async ({ page }) => {
+  await page.goto("/#settings");
+  await page.getByRole("button", { name: "Task instructions", exact: true }).click();
+  const name = page.getByLabel("Case name", { exact: true }).first();
+  await name.fill("Unsaved navigation edit");
+  await expect(page.getByRole("button", { name: "Discard settings changes", exact: true })).toBeVisible();
+  page.once("dialog", dialog => dialog.dismiss());
+  await page.goto("/#");
+  await expect(page).toHaveURL(/#settings$/);
+  await expect(name).toHaveValue("Unsaved navigation edit");
+  page.once("dialog", dialog => dialog.accept());
+  await page.goto("/#");
+  await expect(page.getByLabel("What should we work on?", { exact: true })).toBeVisible();
+});
+
 test("Prettier editor formatting supports undo, errors and protects newer typing", async ({ page }) => {
   await page.goto("/");
   await page.getByText("Use a TypeScript workflow", { exact: true }).click();
