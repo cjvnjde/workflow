@@ -11,6 +11,7 @@ import {
   designScopes,
   designSessionSchema,
   type DesignSession,
+  type DesignPageContext,
 } from "../../src/design-schema.js";
 import { request } from "../api.js";
 import Icon from "./Icon.vue";
@@ -22,6 +23,7 @@ import {
   type WindowSize,
 } from "../floating-window.js";
 const props = defineProps<{
+  pageContext: DesignPageContext;
   initial: DesignSession;
   draft: string;
   minimized: boolean;
@@ -137,7 +139,11 @@ async function send() {
     accept(
       await request(`/api/design/${current.id}/messages`, designSessionSchema, {
         method: "POST",
-        body: { message: content, revision: current.revision },
+        body: {
+          message: content,
+          revision: current.revision,
+          context: props.pageContext,
+        },
         signal: controller.signal,
       }),
     );
@@ -378,8 +384,31 @@ function resizeWithKeys(event: KeyboardEvent, left: boolean) {
           :class="entry.role"
         >
           <span>{{ entry.role === "user" ? "You" : "AI designer" }}</span>
+          <small v-if="entry.context" class="design-page-context">{{
+            entry.context.page === "settings"
+              ? "Settings"
+              : entry.context.taskId || entry.context.runId
+                ? "Task workspace"
+                : "New task"
+          }}</small>
           <MarkdownView :content="entry.content" /></article
       ></template>
+      <details v-if="session.toolActivity.length" class="design-tool-activity">
+        <summary>
+          Tools used ·
+          {{
+            session.toolActivity.filter((event) => event.kind === "tool_start")
+              .length
+          }}
+          calls
+        </summary>
+        <p v-for="(event, index) in session.toolActivity" :key="index">
+          <small>{{
+            event.kind === "tool_start" ? "Called" : "Finished"
+          }}</small>
+          {{ event.message }}
+        </p>
+      </details>
       <div v-if="working" class="design-progress" role="status">
         <span class="spinner" />
         <div>
@@ -444,7 +473,15 @@ function resizeWithKeys(event: KeyboardEvent, left: boolean) {
         @keydown="keydown"
       />
       <div>
-        <small>Enter to send · Shift + Enter for a new line</small
+        <small
+          >{{
+            pageContext.page === "settings"
+              ? "Settings"
+              : pageContext.taskId || pageContext.runId
+                ? "Current task"
+                : "New task"
+          }}
+          context included · Enter to send</small
         ><button
           v-if="!working && message"
           type="button"

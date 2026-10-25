@@ -779,3 +779,8 @@ button.danger, button.danger-quiet { color: var(--ctp-red); background: color-mi
 .composition-step .graph-label small, .composition-step .graph-label > span { font-size: 11px; }
 .composition-step .graph-label b { font-size: 10px; margin-top: 8px; }
 .composition-junction .vue-flow__handle { opacity: 0; }
+
+.design-tool-activity { margin: 12px 0; font-size: 11px; color: var(--ctp-subtext0); overflow-wrap: anywhere; }
+.design-tool-activity p { white-space: pre-wrap; max-height: 160px; overflow: auto; }
+.design-page-context { display: block; color: var(--ctp-overlay1); font-size: 10px; }
+@media (max-width: 600px) { .workspace-topbar .workspace-breadcrumb { min-width: 0; overflow: hidden; } .workspace-topbar .ai-button { white-space: nowrap; font-size: 10px; padding: 6px; } }

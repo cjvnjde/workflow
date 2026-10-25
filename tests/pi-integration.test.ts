@@ -342,7 +342,7 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
   });
   assert.equal(initialized.status, "generated");
   assert.equal((await loadOrchestration(project)).settings.coordinatorProfile, "inspector");
-  assert.deepEqual(requests[6]?.tools.map((tool) => tool.function.name).sort(), ["bash", "edit_file", "git_changes", "list_files", "propose_settings", "read_file", "reply_to_user", "write_file"]);
+  assert.deepEqual(requests[6]?.tools.map((tool) => tool.function.name).sort(), ["git_changes", "list_files", "propose_settings", "read_file", "reply_to_user", "workflow_inspect"]);
   assert.ok(JSON.stringify(requests[6]).includes("read-only inspection role"));
   assert.ok(!JSON.stringify(requests[6]).includes("FIRST_SESSION_ONLY"));
 

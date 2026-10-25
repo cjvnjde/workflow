@@ -609,6 +609,13 @@ async function designApplied() {
           }}</strong>
         </div>
         <div class="topbar-right">
+          <button
+            class="ai-button"
+            aria-label="Open AI designer"
+            @click="design('project')"
+          >
+            <Icon name="spark" />Design with AI
+          </button>
           <div class="notifications">
             <button
               class="icon-button"
@@ -855,6 +862,10 @@ async function designApplied() {
     </div>
     <DesignDock
       :requested="designRequest"
+      :page-context="{
+        page: view,
+        ...(view === 'task' ? { taskId: task?.id, runId: run?.id } : {}),
+      }"
       :has-unsaved-settings="settingsDirty"
       :on-applied="designApplied"
       @applying-change="applyingDesign = $event"

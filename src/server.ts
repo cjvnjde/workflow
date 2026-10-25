@@ -73,7 +73,14 @@ export async function createServer(engine: WorkflowEngine, port = 4310, services
   const attachments = new Attachments(engine.project);
   const tasks = new Tasks(engine, catalog, services.taskPlanner);
   await tasks.initialize();
-  const designChats = new DesignChats(engine.project, catalog, services.design, proposals);
+  const designChats = new DesignChats(engine.project, catalog, services.design, proposals, async (resource, id) => {
+    if (resource === "tasks") return tasks.list();
+    if (resource === "runs") return engine.list();
+    if (!id) throw new Error("An ID is required");
+    if (resource === "task") return tasks.get(id);
+    if (resource === "events") return await engine.events(id);
+    return engine.get(id);
+  });
   await designChats.initialize();
   const emit = (kind: string, message: string) => { engine.coordinatorActivity(kind, message); };
   const planningJob = async <T>(action: () => Promise<T>) => {

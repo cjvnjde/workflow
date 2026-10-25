@@ -57,9 +57,11 @@ The **suggest blocks** setting allows the planner to propose missing reusable ro
 
 ## Design settings with AI
 
-**Design with AI** opens a conversation scoped to the section you are editing. Describe what you want, add constraints, refine the proposal, and select **Apply changes** when satisfied. A message can ask for an explanation without requiring an immediate edit.
+**Design with AI** is available in the top bar on every page. Floating conversations, drafts and proposals survive navigation and reloads. Section buttons remain useful starting points, but every conversation can inspect and propose changes across settings sections. Each message records its page and current task/run IDs. Describe what you want, add constraints, refine the proposal, and select **Apply changes** when satisfied. A message can ask for an explanation without requiring an immediate edit.
 
 Chats can be moved, resized, minimized, and restored. **New conversation** creates another window rather than replacing the existing one. Conversation history, proposals, and window state persist. **Stop**, **Discard message**, and **Discard proposal** have different scopes; none applies an unfinished proposal.
+
+The designer uses a shared internal tool interface with named operations and JSON schemas: `workflow_inspect` reads configuration, models, blocks, tasks, runs and events; `propose_settings` validates a reviewable change; `reply_to_user` answers questions. This is an MCP-style internal interface, not an externally exposed MCP server. Inspection supports field selection and pagination. File inspection is read-only; the designer does not have shell or file-edit tools. Proposals retain revision checks and apply through the existing settings services. One section can be proposed per turn; after applying, continue in the same chat for another section. Changes affect future runs, while existing runs retain their frozen configuration. Provider credentials and automatic approval remain user-controlled.
 
 Settings designers can inspect the project through tools to inform configuration. This is different from the task coordinator, which composes its graph only from supplied context. Applying settings does not silently approve a task or change provider credentials. Stale proposals are rejected when the underlying section has changed.
 

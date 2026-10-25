@@ -1,3 +1,4 @@
+import type { DesignInspector } from "./design-tools.js";
 import { randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
@@ -16,7 +17,7 @@ export class DesignChats {
   private readonly jobs = new Map<string, { controller: AbortController; done: Promise<void> }>();
   private readonly applying = new Set<string>();
   private closed = false;
-  constructor(private readonly project: string, private readonly catalog = availableModels, private readonly designer = designSettings, private readonly proposals = new LibraryProposals(project)) {}
+  constructor(private readonly project: string, private readonly catalog = availableModels, private readonly designer = designSettings, private readonly proposals = new LibraryProposals(project), private readonly inspect?: DesignInspector) {}
   private filename(id: string) { return path.join(this.project, ".workflow", "design-chats", `${z.string().uuid().parse(id)}.json`); }
   async initialize() {
     const directory = path.dirname(this.filename(randomUUID()));
@@ -57,7 +58,7 @@ export class DesignChats {
     const previous = session.status === "applied" ? undefined : session.proposal;
     if (session.status === "applied") { session.proposal = undefined; session.base = undefined; session.libraryProposalId = undefined; }
     session.status = "working"; session.error = undefined; session.text = ""; session.activity = "Reading your request…";
-    session.messages.push({ role: "user", content: input.message, time: new Date().toISOString() });
+    session.messages.push({ role: "user", content: input.message, context: input.context, time: new Date().toISOString() });
     const controller = new AbortController();
     // Claim the conversation synchronously, before any disk or model work.
     const completion = Promise.withResolvers<void>();
@@ -71,9 +72,13 @@ export class DesignChats {
         const snapshot = await this.snapshot(controller.signal);
         controller.signal.throwIfAborted();
         const result = await this.designer({ project: this.project, scope: session.scope, library: snapshot.library, settings: snapshot.orchestration.settings,
-          models: snapshot.models, messages: structuredClone(session.messages), previous, signal: controller.signal,
+          inspect: this.inspect, models: snapshot.models, messages: structuredClone(session.messages), previous, signal: controller.signal,
           emit: (kind, message) => {
             if (controller.signal.aborted) { return; }
+            if (kind === "tool_start" || kind === "tool_end") {
+              session.toolActivity.push({kind, message: message.slice(0, 2000), time: new Date().toISOString()});
+              session.toolActivity = session.toolActivity.slice(-100);
+            }
             if (kind === "text_delta") { session.text = (session.text + message).slice(-8000); }
             else if (kind !== "usage") { session.activity = message.slice(0, 1000); }
           },

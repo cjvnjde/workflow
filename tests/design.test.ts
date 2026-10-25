@@ -79,12 +79,12 @@ test("discarding a design proposal persists without changing settings and fences
   assert.equal((await turn(restored, created.id, "Try a different lineup")).status, "ready");
 });
 
-test("settings designer stays scoped, validates catalog choices, and bootstraps a supported planning model", async (t) => {
+test("settings designer supports cross-section proposals, validates catalog choices, and bootstraps a supported planning model", async (t) => {
   const { library } = await fixture(t);
   const settings = orchestrationSchema.parse({});
   const context = { scope: "profiles" as const, library, settings, models };
   assert.equal(validateDesign(profileProposal(), context).scope, "profiles");
-  assert.throws(() => validateDesign(profileProposal(), { ...context, scope: "cases" }), /section/);
+  assert.equal(validateDesign(profileProposal(), { ...context, scope: "cases" }).scope, "profiles");
   const invalid = profileProposal(); invalid.profiles[0]!.agent.model = "invented";
   assert.throws(() => validateDesign(invalid, context), /not available/);
   invalid.profiles[0]!.agent.model = "careful"; invalid.profiles[0]!.agent.thinking = "max";
@@ -99,7 +99,7 @@ test("settings designer stays scoped, validates catalog choices, and bootstraps 
   assert.throws(() => designAgent(library, settings, []), /Connect ChatGPT/);
 });
 
-test("design sessions receive the conversation and draft, have local file and bash tools, and stop after submitting", async (t) => {
+test("design sessions receive the conversation and draft, have read-only inspection tools, and stop after submitting", async (t) => {
   const { project, library } = await fixture(t);
   library.config.agent = { thinking: "off", timeoutMs: 30000, maxToolCalls: 20 }; library.config.coordinator = {};
   const proposal = profileProposal();
@@ -108,7 +108,7 @@ test("design sessions receive the conversation and draft, have local file and ba
     assert.match(session.systemPrompt, /Available models/);
     assert.deepEqual(JSON.parse(session.prompt).previousDraft, proposal);
     assert.equal(JSON.parse(session.prompt).conversation[0].content, "Use careful review");
-    assert.deepEqual(session.tools.map((tool) => tool.name), ["bash", "git_changes", "list_files", "read_file", "write_file", "edit_file", "reply_to_user", "propose_settings"]);
+    assert.deepEqual(session.tools.map((tool) => tool.name), ["git_changes", "list_files", "read_file", "workflow_inspect", "reply_to_user", "propose_settings"]);
     assert.equal(session.completion?.isComplete(), false);
     assert.match(session.completion!.prompt(), /prose does not create/);
     const submit = session.tools.find((tool) => tool.name === "propose_settings")!;
@@ -349,4 +349,42 @@ test("design API enforces mutation headers and revision checks with real persist
   assert.equal(applied.statusCode, 200, applied.body);
   assert.equal((await loadOrchestration(project)).settings.profiles[0]!.id, "reviewer");
   assert.equal((await server.inject({ method: "GET", url: "/api/design/profiles/latest", headers })).json().status, "applied");
+});
+
+test("global designer inspects live history and applies another section while retaining per-turn page context", async t => {
+  const { project, library, cleanup } = await fixture(t);
+  const taskId = "11111111-1111-4111-8111-111111111111";
+  const runId = "22222222-2222-4222-8222-222222222222";
+  library.config.agent = { thinking: "off", timeoutMs: 30000, maxToolCalls: 20 }; library.config.coordinator = {};
+  const calls: unknown[] = [];
+  await designSettings({ project, library, settings: orchestrationSchema.parse({}), models, scope: "project", messages: [], signal: AbortSignal.timeout(30000), emit: () => {},
+    inspect: async (resource, id) => { calls.push([resource, id]); return { attempts: [{ result: "failed assertion" }] }; },
+  }, async session => {
+    const inspect = session.tools.find(tool => tool.name === "workflow_inspect")!;
+    const inspected = await inspect.execute("read", {resource:"run",id:runId,path:["attempts"],limit:1}, undefined, undefined, toolContext);
+    assert.match(JSON.stringify(inspected), /failed assertion/);
+    assert.deepEqual(calls, [["run", runId]]);
+    await assert.rejects(inspect.execute("invalid", {resource:"run",id:runId,path:["__proto__"]}, undefined, undefined, toolContext), /Unknown field/);
+    assert.equal(session.tools.some(tool => ["bash", "write_file", "edit_file"].includes(tool.name)), false);
+    await session.tools.find(tool => tool.name === "propose_settings")!.execute("proposal", {json:JSON.stringify(profileProposal()),message:"Use this model profile."}, undefined, undefined, toolContext);
+  });
+  let context: unknown;
+  const chats = new DesignChats(project, catalog, async options => {
+    context = options.messages.at(-1)?.context;
+    options.emit("tool_start", "workflow_inspect run");
+    options.emit("tool_end", "workflow_inspect: finished");
+    return { message: "Profile proposal", proposal: profileProposal() };
+  });
+  await chats.initialize(); cleanup(() => chats.close());
+  const created = await chats.create({ scope: "project" });
+  await chats.send(created.id, { message:"Improve the reviewer",revision:created.revision,context:{page:"task",taskId,runId} });
+  const ready = await settled(chats, created.id);
+  assert.deepEqual(context, {page:"task",taskId,runId});
+  assert.equal((await loadOrchestration(project)).settings.profiles.length, 0);
+  await chats.apply(created.id, {revision:ready.revision});
+  assert.equal((await loadOrchestration(project)).settings.coordinatorProfile, "reviewer");
+  const restored = new DesignChats(project, catalog, profileDesigner);
+  await restored.initialize(); cleanup(() => restored.close());
+  assert.deepEqual(restored.get(created.id).messages[0]?.context, context);
+  assert.equal(restored.get(created.id).toolActivity.length, 2);
 });

@@ -5,6 +5,7 @@ import {
   designSessionSchema,
   type DesignScope,
   type DesignSession,
+  type DesignPageContext,
 } from "../../src/design-schema.js";
 import type { DesignRequest } from "../design-types.js";
 import { request } from "../api.js";
@@ -17,6 +18,7 @@ import {
   type WindowPoint,
 } from "../floating-window.js";
 const props = defineProps<{
+  pageContext: DesignPageContext;
   requested?: DesignRequest;
   hasUnsavedSettings: boolean;
   onApplied: () => Promise<void>;
@@ -248,6 +250,7 @@ onScopeDispose(() => {
       v-for="chat in chats"
       :key="chat.session.id"
       :initial="chat.session"
+      :page-context="pageContext"
       :draft="chat.draft"
       :position="chat.position"
       :size="chat.size"

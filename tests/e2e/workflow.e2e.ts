@@ -1475,3 +1475,38 @@ test("CodeMirror highlights TypeScript, indents, undoes, searches and bounds lon
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
+
+test("global AI designer retains conversation and drafts across task, settings and reload", async ({ page, request }) => {
+  await ensureDesignConnection(request);
+  await page.goto("/");
+  await page.getByRole("button", {name:"Open AI designer",exact:true}).click();
+  const chat = page.getByRole("dialog", {name:"Design workflow with AI",exact:true});
+  const input = chat.getByLabel("Message AI designer", {exact:true});
+  await input.fill("Reduce the workflow limit to 15 steps");
+  await page.getByRole("button", {name:"Settings",exact:true}).click();
+  await expect(input).toHaveValue("Reduce the workflow limit to 15 steps");
+  await page.reload();
+  await expect(input).toHaveValue("Reduce the workflow limit to 15 steps");
+  const sent = page.waitForRequest(req => /\/api\/design\/[^/]+\/messages$/.test(req.url()));
+  await chat.getByRole("button", {name:"Send to AI designer",exact:true}).click();
+  expect((await sent).postDataJSON().context.page).toBe("settings");
+  await expect(chat.getByRole("button", {name:"Apply changes",exact:true})).toBeEnabled();
+  await page.getByRole("button", {name:"New task",exact:true}).click();
+  await expect(chat.getByText("Reduced the workflow limit.", {exact:true})).toBeVisible();
+  await chat.getByRole("button", {name:"Apply changes",exact:true}).click();
+  await expect(chat.getByText("Changes applied", {exact:false})).toBeVisible();
+  await chat.getByRole("button", {name:"Minimize design chat",exact:true}).click();
+  await page.getByRole("button", {name:"Open AI designer",exact:true}).click();
+  await expect(chat.getByText("Reduced the workflow limit.", {exact:true})).toBeVisible();
+  await chat.getByRole("button", {name:"Minimize design chat",exact:true}).click();
+  await newTask(page, "Fix the current focus issue");
+  await page.getByRole("button", {name:"Open AI designer",exact:true}).click();
+  await input.fill("Explain this task");
+  const taskMessage = page.waitForRequest(req => /\/api\/design\/[^/]+\/messages$/.test(req.url()));
+  await chat.getByRole("button", {name:"Send to AI designer",exact:true}).click();
+  const context = (await taskMessage).postDataJSON().context;
+  expect(context.page).toBe("task");
+  expect(context.taskId).toMatch(/^[a-f0-9-]{36}$/);
+  expect(context.runId).toMatch(/^[a-f0-9-]{36}$/);
+  await expect(chat.getByText("The proposal uses your connected catalog and preserves the other settings sections.", {exact:true})).toBeVisible();
+});
