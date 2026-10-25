@@ -1,6 +1,8 @@
+import { executionWorkspace } from "./execution-workspace.js";
 import { ProtectedPaths, ProtectedPathsChangedError } from "./protected-paths.js";
 import { createHash, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
+import { realpath } from "node:fs/promises";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -46,6 +48,7 @@ import { loadOrchestration } from "./orchestration-settings.js";
 const activeStatuses = new Set<WorkflowRun["status"]>(["running", "pausing", "paused", "interrupted"]);
 
 export class WorkflowEngine {
+  private readonly executionWorkspaces = new Set<string>();
   private readonly usageByAttempt = new Map<string, UsageTotals>();
   private readonly runs = new Map<string, WorkflowRun>();
   private readonly emitter = new EventEmitter();
@@ -740,6 +743,28 @@ export class WorkflowEngine {
     });
   }
 
+  async keepRecoveryFiles(id: string) {
+    return this.mutate(async () => {
+      const run = structuredClone(this.requireRun(id));
+      if (!["failed", "cancelled"].includes(run.status) || [...this.runs.values()].some(candidate => activeStatuses.has(candidate.status))) {
+        throw new Error("Stop execution before keeping recovery files");
+      }
+      const attempts = run.attempts.filter(attempt => attempt.recovery?.status === "conflict");
+      if (!attempts.length) throw new Error("No recovery conflicts to resolve");
+      for (const attempt of attempts) {
+        const settled = await this.recoverAttempt(run, true, attempt);
+        attempt.recovery = settled.recovery;
+      }
+      run.revision += 1;
+      run.updatedAt = new Date().toISOString();
+      await this.store.save(run);
+      this.runs.set(id, run);
+      this.emit(run, "recovery", "Current files retained without overwriting them. Resolved file claims released; implementation acceptance remains pending.");
+      await this.store.flush();
+      return this.get(id);
+    });
+  }
+
   private async executeOperation(value: WorkflowRun, raw: CodeOperation): Promise<unknown> {
     const run = runSchema.parse(value);
     this.assertActivity(run);
@@ -775,15 +800,42 @@ export class WorkflowEngine {
         node.agent = undefined;
         node.goal = operation.prompt.slice(0, 8000);
         node.context = { ...node.context, "call-prompt": operation.prompt };
-        const protection = operation.protectedPaths?.length ? await ProtectedPaths.capture(this.project, operation.protectedPaths) : undefined;
+        const workspace = await executionWorkspace(this.project, operation.workspace, signal);
+        const isolated = operation.workspace !== undefined && workspace !== await realpath(this.project);
+        if (isolated) {
+          if (this.executionWorkspaces.has(workspace)) {
+            const summary = "Another AI call owns this worktree; use a distinct worktree for each concurrent writer";
+            emit("operation_error", summary);
+            // This is a rejected operation with no effects, not a lost activity
+            // that needs interruption/recovery and an explicit resume.
+            return { outcome: "fail", summary, artifacts: {} };
+          }
+          this.executionWorkspaces.add(workspace);
+        }
+        let protection: ProtectedPaths | undefined;
+        let audit: ProtectedPaths | undefined;
         try {
-          const completion = await this.executeBlock(run, "value", operation.protectedPaths);
+          protection = (operation.protectedPaths?.length || operation.writablePaths !== undefined) ? await ProtectedPaths.capture(workspace, operation.protectedPaths ?? [], operation.writablePaths) : undefined;
+          try { audit = await ProtectedPaths.capture(workspace, ["**/*"]); }
+          catch { emit("file_evidence_unavailable", "File scan unavailable or exceeds limits; unchanged files have not been established."); }
+          emit("execution_workspace", workspace);
+          const completion = await this.executeBlock(run, "value", operation.protectedPaths, operation.writablePaths, workspace);
           result = completion.result;
         } finally {
-          try { await protection?.assertUnchanged(); }
-          catch (error) {
-            if (!(error instanceof ProtectedPathsChangedError)) throw error;
-            result = { outcome: "fail", summary: error.message, artifacts: {} };
+          try {
+            if (audit) {
+              try {
+                const changes = await audit.changes();
+                emit("file_evidence", JSON.stringify({ workspace, changedFileCount: changes.length, changes: changes.slice(0, 100) }));
+              } catch { emit("file_evidence_unavailable", "Final file scan unavailable; inspect the worktree before accepting it."); }
+            }
+            try { await protection?.assertUnchanged(); }
+            catch (error) {
+              if (!(error instanceof ProtectedPathsChangedError)) throw error;
+              result = { outcome: "fail", summary: error.message, artifacts: {} };
+            }
+          } finally {
+            if (isolated) this.executionWorkspaces.delete(workspace);
           }
         }
       } else if (this.mode === "demo") {
@@ -806,9 +858,9 @@ export class WorkflowEngine {
     finally { clearInterval(heartbeat); }
   }
 
-  private async executeBlock(value: WorkflowRun, resultMode?: "value", protectedPaths?: string[]) {
+  private async executeBlock(value: WorkflowRun, resultMode?: "value", protectedPaths?: string[], writablePaths?: string[], workspace = this.project) {
     const node = value.plan.nodes.find(node => node.id === value.cursor);
-    if (value.config.budget?.maxCostUsd === undefined || (node && value.blocks[node.block]?.definition.executor)) return this.executeBlockNow(value, resultMode, protectedPaths);
+    if (value.config.budget?.maxCostUsd === undefined || (node && value.blocks[node.block]?.definition.executor)) return this.executeBlockNow(value, resultMode, protectedPaths, writablePaths, workspace);
     // Only budgeted model sessions serialize. Otherwise siblings may spend the
     // same stale remaining balance. Compute and unbudgeted AI stay parallel.
     const before = this.budgetQueue;
@@ -823,7 +875,7 @@ export class WorkflowEngine {
       signal.throwIfAborted();
       await Promise.race([before, new Promise<never>((_, reject) => { onAbort = () => reject(signal.reason); signal.addEventListener("abort", onAbort, {once:true}); })]);
       signal.throwIfAborted();
-      return await this.executeBlockNow(value, resultMode, protectedPaths);
+      return await this.executeBlockNow(value, resultMode, protectedPaths, writablePaths, workspace);
     } finally {
       clearInterval(heartbeat);
       if (onAbort) signal.removeEventListener("abort", onAbort);
@@ -831,7 +883,7 @@ export class WorkflowEngine {
     }
   }
 
-  private async executeBlockNow(value: WorkflowRun, resultMode?: "value", protectedPaths?: string[]) {
+  private async executeBlockNow(value: WorkflowRun, resultMode?: "value", protectedPaths?: string[], writablePaths?: string[], workspace = this.project) {
     const run = runSchema.parse(value);
     this.assertActivity(run);
     if (run.mode !== this.mode) {
@@ -866,8 +918,9 @@ export class WorkflowEngine {
       const runner = this.mode !== "live" || !bundle.definition.executor ? this.runner
         : bundle.definition.executor.kind === "script" ? runScriptBlock
         : bundle.definition.executor.kind === "function" ? runFunctionBlock : runCommandBlock;
+      const isolated = workspace !== this.project && workspace !== await realpath(this.project);
       const result = validateBlockResult(await runner({
-        project: this.project, config: run.config, bundle, node, protectedPaths, task: run.plan.task, workflow: run.plan, composition: run.program?.structure,
+        project: workspace, attachmentProject: this.project, absoluteJournalPaths: isolated, config: run.config, bundle, node, protectedPaths, writablePaths, task: run.plan.task, workflow: run.plan, composition: run.program?.structure,
         inputs: resolveInputs(node, run), visit: run.visits[node.id] ?? 1,
         settings, signal, journal, maxCostUsd: remainingCost, resultMode,
         onUsage: async (sessionUsage) => { const usage = addUsage(previousUsage, sessionUsage); await saveUsage(directory, usage); this.usageByAttempt.set(`${run.id}/${node.id}/${run.visits[node.id] ?? 1}`, { ...usage }); this.emit(run, "usage", JSON.stringify(usage), node.id); },

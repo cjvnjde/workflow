@@ -19,10 +19,11 @@ export class ProtectedPaths {
   private constructor(
     readonly root: string,
     readonly patterns: string[],
+    readonly writablePaths?: string[],
   ) {}
-  static async capture(root: string, patterns: string[]) {
+  static async capture(root: string, patterns: string[], writablePaths?: string[]) {
     if (
-      patterns.some(
+      [...patterns, ...(writablePaths ?? [])].some(
         (pattern) =>
           !pattern ||
           pattern.startsWith("/") ||
@@ -35,7 +36,7 @@ export class ProtectedPaths {
         "protectedPaths must contain project-relative positive globs without parent traversal",
       );
     }
-    const guard = new ProtectedPaths(await realpath(root), patterns);
+    const guard = new ProtectedPaths(await realpath(root), patterns, writablePaths);
     guard.before = await guard.snapshot();
     return guard;
   }
@@ -50,7 +51,7 @@ export class ProtectedPaths {
       );
   }
   private matches(relative: string) {
-    return this.patterns.some((pattern) =>
+    return (this.writablePaths !== undefined && !this.writablePaths.some(pattern => minimatch(relative, pattern, { dot: true, nonegate: true }))) || this.patterns.some((pattern) =>
       minimatch(relative, pattern, { dot: true, nonegate: true }),
     );
   }
@@ -64,6 +65,7 @@ export class ProtectedPaths {
           throw new Error(
             "Protected-file scan exceeds 100000 entries; narrow the workspace before running.",
           );
+        if (excluded.has(entry.name)) continue;
         const relative = prefix + entry.name,
           absolute = path.join(directory, entry.name);
         if (entry.isDirectory()) {
@@ -92,6 +94,15 @@ export class ProtectedPaths {
     };
     await walk(this.root);
     return files;
+  }
+  evidence() {
+    return { protectedPaths: this.patterns, writablePaths: this.writablePaths, checkedFileCount: this.before.size, checkedFiles: [...this.before.keys()].sort().slice(0, 100), status: "unchanged" };
+  }
+  async changes() {
+    const after = await this.snapshot();
+    return [...new Set([...this.before.keys(), ...after.keys()])]
+      .filter(file => this.before.get(file) !== after.get(file)).sort()
+      .map(file => ({ path: file, before: this.before.get(file) ?? null, after: after.get(file) ?? null }));
   }
   async assertUnchanged() {
     const after = await this.snapshot();

@@ -9,7 +9,7 @@ export const taskCaseSchema = z.object({
 }).strict();
 export const modelProfileSchema = z.object({
   id: identifierSchema, name: z.string().trim().min(1).max(100), description: z.string().trim().min(1).max(4000),
-  agent: agentOverrideSchema.pick({ provider: true, model: true, thinking: true }).required(),
+  agent: agentOverrideSchema.required({ provider: true, model: true, thinking: true }),
   enabled: z.boolean().default(true),
 }).strict();
 export const defaultCases = [

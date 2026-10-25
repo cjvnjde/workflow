@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { link, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { link, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import os from "node:os";
@@ -100,4 +100,15 @@ test("Git metadata and dotfiles are accessible with explicit paths", async (t) =
   assert.ok((await workspace.list()).includes(".npmrc"));
   assert.deepEqual(await workspace.list(".git/**"), [".git/HEAD"]);
   assert.ok(!(await workspace.list()).includes(".git/HEAD"));
+});
+
+test('isolated managed writes cannot escape through absolute paths or links', async t => {
+ const {project}=await fixture(t);
+ const isolated=path.join(project,'isolated');await mkdir(isolated);
+ const workspace=await Workspace.create(isolated,{writeRootOnly:true,absoluteJournalPaths:true});
+ await writeFile(path.join(project,'outside.txt'),'keep');
+ await assert.rejects(workspace.write(path.join(project,'outside.txt'),'changed'),/stay inside/);
+ await symlink(path.join(project,'outside.txt'),path.join(isolated,'alias'));
+ await assert.rejects(workspace.write('alias','changed'),/stay inside/);
+ assert.equal(await readFile(path.join(project,'outside.txt'),'utf8'),'keep');
 });

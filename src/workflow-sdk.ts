@@ -13,6 +13,7 @@ export type Model = {
 };
 export type Outcome = "pass" | "retry" | "fail";
 export type StepResult<T = unknown> = {
+  disposition?: "work-completed" | "accepted" | "changes-requested" | "blocked";
   outcome: Outcome;
   summary: string;
   artifacts: Record<string, string>;
@@ -70,6 +71,8 @@ export type ExecResult = {
 export type AIOptions<S extends z.ZodType = z.ZodType> = {
   /** Project-relative globs owned by other steps; checked before accepting this call. */
   protectedPaths?: string[];
+  writablePaths?: string[];
+  workspace?: string;
   prompt: string;
   instructions?: string;
   model?: Model | string;
@@ -99,6 +102,8 @@ export interface BlockContext<I> {
   summary(markdown: string): void;
   /** Record a routing outcome while returning structured feedback to the caller. */
   outcome(value: Outcome): void;
+  /** Describe acceptance separately from successful authoring; also sets the matching routing outcome. */
+  disposition(value: "work-completed" | "accepted" | "changes-requested" | "blocked"): void;
 }
 export type CodeBlock<I = Record<string, unknown>, O = unknown> = {
   readonly kind: "code";

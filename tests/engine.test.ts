@@ -486,6 +486,35 @@ test("manual recovery conflicts block resume and preserve external edits", async
   assert.equal(engine.get(draft.id).status, "completed");
 });
 
+test("keeping recovery files requires a stopped run, preserves current bytes and releases claims", async t => {
+  const { Workspace } = await import("../src/workspace.js");
+  const { engine, project, library } = await setup(t, async execution => {
+    if (execution.node.id === "work") {
+      const workspace = await Workspace.create(execution.project, {journal:execution.journal});
+      await workspace.write("source.ts", "managed edit");
+      await writeFile(path.join(execution.project,"source.ts"), "formatted or external edit");
+      throw new Error("Session timed out");
+    }
+    return passingResult(execution);
+  });
+  await writeFile(path.join(project,"source.ts"),"original");
+  const draft=await engine.create(createTemplate("Conflict","bug",library),library);
+  const interrupted=eventBarrier(engine,"interrupted");
+  await engine.approve(draft.id);await interrupted;
+  await assert.rejects(engine.keepRecoveryFiles(draft.id),/Stop execution/);
+  await engine.cancel(draft.id);await engine.waitForIdle();
+  const kept=await engine.keepRecoveryFiles(draft.id);
+  assert.equal(kept.status,"cancelled");
+  assert.equal(kept.attempts.at(-1)?.recovery?.status,"committed");
+  assert.equal(await readFile(path.join(project,"source.ts"),"utf8"),"formatted or external edit");
+  const next=await engine.createProgram("Continue","Finish remaining work",{source:`import {workflow,block} from "workflow";
+    const work=block({async run(ctx){await ctx.writeFile("source.ts","reviewed continuation");}});
+    export default workflow({name:"Continue",async run(ctx){await ctx.step("next",work);}});`},library);
+  await engine.approve(next.id);await engine.waitForIdle();
+  assert.equal(engine.get(next.id).status,"completed");
+  assert.equal(await readFile(path.join(project,"source.ts"),"utf8"),"reviewed continuation");
+});
+
 test("spending totals survive interrupted attempts and stop further model steps", async (t) => {
   const { budgetSchema } = await import("../src/domain.js");
   const { emptyUsage } = await import("../src/budget.js");
@@ -562,11 +591,15 @@ test("pre-versioning Temporal runs resume on the frozen legacy worker without re
   // Frozen v1 histories predate optional permission metadata. Reconstruct the
   // actual old input shape instead of sending new block definitions to v1.
   delete library.blocks.push;
+  delete library.config.capabilities;
   for (const bundle of Object.values(library.blocks)) {
     bundle.definition.permissions = { read: ["**/*"], write: [], deny: [], writeDeny: [] };
   }
   const id = randomUUID(); const now = new Date().toISOString();
   const legacyRun = runSchema.parse({ id, temporalWorkflowId: `workflow-${id}`, approvedAt: now, createdAt: now, updatedAt: now, revision: 0, mode: "live", status: "running", plan: createTemplate("Legacy upgrade", "bug", library), config: library.config, blocks: library.blocks, cursor: "prepare", visits: {}, artifacts: {}, attempts: [] });
+  // Fail promptly if newer defaults leak into this historical input fixture.
+  const { runSchema: legacySchema } = await import("../src/legacy/domain-v1.js");
+  legacySchema.parse(legacyRun);
   await store.save(legacyRun);
   const queue = `workflow-${createHash("sha256").update(project).digest("hex").slice(0, 32)}`;
   const started = deferred<void>(); const release = deferred<void>(); const paused = deferred<void>();

@@ -1,9 +1,13 @@
 <script setup lang="ts">
+import { ref, onScopeDispose, toRaw } from "vue";
+import { z } from "zod";
+import { request } from "../api.js";
+import type { McpServer } from "../../src/capability-schema.js";
 import type { OrchestrationSettings } from "../../src/orchestration-schema.js";
 import Field from "../components/Field.vue";
 import Icon from "../components/Icon.vue";
 import McpSettings from "./McpSettings.vue";
-defineProps<{
+const props = defineProps<{
   projectCapabilities?: import("zod").infer<
     typeof import("../../src/orchestration-schema.js").projectCapabilitiesSchema
   >;
@@ -11,6 +15,73 @@ defineProps<{
 const capabilities = defineModel<OrchestrationSettings["capabilities"]>({
   required: true,
 });
+const connectionStatus = ref<Record<string, string>>({});
+const inspecting = ref<string>();
+const controller = new AbortController();
+onScopeDispose(() => controller.abort());
+function projectName(kind: string, id: string) {
+  const key = kind === "skill" ? "skills" : "mcpServers";
+  return (
+    props.projectCapabilities?.capabilities[key].find((item) => item.id === id)
+      ?.name ?? id
+  );
+}
+function enabled(kind: string, id: string) {
+  const key = kind === "skill" ? "skills" : "mcpServers";
+  return (
+    capabilities.value[key].find((item) => item.id === id)?.enabled ??
+    props.projectCapabilities?.capabilities[key].find((item) => item.id === id)
+      ?.enabled ??
+    false
+  );
+}
+function override(kind: string, id: string) {
+  if (kind === "skill") {
+    if (capabilities.value.skills.some((item) => item.id === id)) return;
+    const item = props.projectCapabilities?.capabilities.skills.find(
+      (item) => item.id === id,
+    );
+    if (item) capabilities.value.skills.push(structuredClone(toRaw(item)));
+  } else {
+    if (capabilities.value.mcpServers.some((item) => item.id === id)) return;
+    const item = props.projectCapabilities?.capabilities.mcpServers.find(
+      (item) => item.id === id,
+    );
+    if (item) capabilities.value.mcpServers.push(structuredClone(toRaw(item)));
+  }
+}
+async function inspect(id: string) {
+  const server: McpServer | undefined =
+    capabilities.value.mcpServers.find((item) => item.id === id) ??
+    props.projectCapabilities?.capabilities.mcpServers.find(
+      (item) => item.id === id,
+    );
+  if (!server) return;
+  inspecting.value = id;
+  connectionStatus.value[id] = "Connecting…";
+  try {
+    const result = await request(
+      "/api/settings/mcp/inspect",
+      z.object({
+        tools: z.array(
+          z.object({
+            name: z.string(),
+            description: z.string(),
+            readOnly: z.boolean(),
+          }),
+        ),
+      }),
+      { method: "POST", body: server, signal: controller.signal },
+    );
+    connectionStatus.value[id] =
+      `Connected · ${result.tools.length} tools: ${result.tools.map((tool) => tool.name).join(", ")}`;
+  } catch (error) {
+    connectionStatus.value[id] =
+      error instanceof Error ? error.message : String(error);
+  } finally {
+    inspecting.value = undefined;
+  }
+}
 function addSkill() {
   capabilities.value.skills.push({
     id: `skill-${crypto.randomUUID().slice(0, 8)}`,
@@ -57,8 +128,23 @@ function addServer() {
           v-for="source in projectCapabilities.sources"
           :key="source.kind + source.id"
         >
-          <strong>{{ source.id }}</strong> · {{ source.kind }} ·
+          <strong>{{ projectName(source.kind, source.id) }}</strong> ·
+          {{ enabled(source.kind, source.id) ? "Enabled" : "Disabled" }} ·
+          {{ source.kind }} ·
           {{ source.path }}
+          <button @click="override(source.kind, source.id)">
+            Customize in Workflow
+          </button>
+          <button
+            v-if="source.kind === 'mcp'"
+            :disabled="!!inspecting"
+            @click="inspect(source.id)"
+          >
+            Test connection
+          </button>
+          <p v-if="connectionStatus[source.id]" role="status">
+            {{ connectionStatus[source.id] }}
+          </p>
         </li>
       </ul>
       <p

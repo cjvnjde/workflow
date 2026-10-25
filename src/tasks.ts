@@ -56,11 +56,15 @@ export class Tasks {
   async create(value: unknown) {
     if (this.closed) { throw new Error("Server is shutting down"); }
     const input = newTaskSchema.parse(value);
-    const attachments = await Promise.all([...new Set(input.attachments)].map((id) => new Attachments(this.engine.project).get(id)));
+    const sourceRun = input.sourceRunId ? this.engine.get(input.sourceRunId) : undefined;
+    const sourceTask = sourceRun ? [...this.records.values()].find(task => task.runId === sourceRun.id) : undefined;
+    if (sourceRun && !["failed", "cancelled"].includes(sourceRun.status)) throw new Error("Recovery planning requires a failed or cancelled run; pause/resume active work instead");
+    if (sourceRun?.attempts.some(attempt => attempt.recovery?.status === "conflict")) throw new Error("Resolve file recovery or keep current files before planning a continuation");
+    const attachments = await Promise.all([...new Set([...input.attachments, ...(sourceRun?.config.attachments ?? []).map(attachment => attachment.id)])].map((id) => new Attachments(this.engine.project).get(id)));
     if (attachments.reduce((sum, item) => sum + item.size, 0) > 20_000_000) { throw new Error("Attachments must total less than 20 MB"); }
     const { settings } = await loadOrchestration(this.engine.project);
     const now = new Date().toISOString();
-    const task = taskSchema.parse({ id: randomUUID(), createdAt: now, updatedAt: now, revision: 0, status: "queued", prompt: input.prompt, attachments, answers: [], approval: settings.approval });
+    const task = taskSchema.parse({ id: randomUUID(), createdAt: now, updatedAt: now, revision: 0, status: "queued", prompt: sourceRun?.plan.task ?? input.prompt, sourceRunId: sourceRun?.id, attachments, answers: structuredClone(sourceTask?.answers ?? []), approval: sourceRun ? "review" : settings.approval });
     this.records.set(task.id, task);
     await this.save(task); this.enqueue(task.id);
     return this.get(task.id);
@@ -85,7 +89,7 @@ export class Tasks {
           plan.title = task.prompt.replace(/\s+/g, " ").slice(0, 100);
           library.config.attachments = task.attachments;
           return { kind: "plan" as const, plan, library, rationale: "Demo simulation. No model requests, commands, or task-file changes.", suggestedBlocks: [], caseName: "Demo task" };
-        })() : await this.planner({ project: this.engine.project, library, settings, task: structuredClone(task), models: (await this.catalog(controller.signal)).models, signal: controller.signal, emit: (kind, message) => this.emit(task, kind, message) });
+        })() : await this.planner({ project: this.engine.project, library, settings, task: structuredClone(task), recovery: task.sourceRunId ? this.engine.get(task.sourceRunId) : undefined, models: (await this.catalog(controller.signal)).models, signal: controller.signal, emit: (kind, message) => this.emit(task, kind, message) });
         controller.signal.throwIfAborted();
         if (result.kind === "question") { task.status = "needs_input"; task.question = result.question; }
         else {

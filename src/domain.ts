@@ -178,6 +178,7 @@ export const planSchema = z
 export const resultSchema = z
   .object({
     outcome: outcomeSchema,
+    disposition: z.enum(["work-completed", "accepted", "changes-requested", "blocked"]).optional(),
     summary: z.string().min(1).max(16_000),
     artifacts: z.record(artifactNameSchema, z.string().max(64_000)).default({}),
   })

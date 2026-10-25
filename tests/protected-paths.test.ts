@@ -54,3 +54,26 @@ test("ownership globs reject outside paths rather than silently protecting nothi
     );
   }
 });
+
+test("test-author allowlists protect production from managed and shell edits", async t => {
+ const root=await mkdtemp(path.join(os.tmpdir(),'workflow-test-owner-'));
+ t.after(()=>rm(root,{recursive:true,force:true}));
+ await writeFile(path.join(root,'app.ts'),'production');
+ const guard=await ProtectedPaths.capture(root,[],['**/*.test.ts']);
+ const workspace=await Workspace.create(root,{protect:guard});
+ await workspace.write('app.test.ts','valid regression');
+ await assert.rejects(workspace.write('app.ts','test author repair'),/belongs to another step/);
+ await guard.assertUnchanged();
+ assert.equal(guard.evidence().checkedFileCount,1);
+ await writeFile(path.join(root,'new-production.ts'),'shell bypass');
+ await assert.rejects(guard.assertUnchanged(),/new-production.ts/);
+});
+
+test("empty write allowlists deny edits and protection wins over an allowlist", async t => {
+ const root=await mkdtemp(path.join(os.tmpdir(),'workflow-readonly-'));
+ t.after(()=>rm(root,{recursive:true,force:true}));
+ const readonly=await ProtectedPaths.capture(root,[],[]);
+ await assert.rejects((await Workspace.create(root,{protect:readonly})).write('new.ts','x'),/belongs to another step/);
+ const both=await ProtectedPaths.capture(root,['**/*.test.ts'],['**/*']);
+ await assert.rejects((await Workspace.create(root,{protect:both})).write('new.test.ts','x'),/belongs to another step/);
+});

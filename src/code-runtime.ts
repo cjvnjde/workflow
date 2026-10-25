@@ -41,6 +41,7 @@ export async function executeCode(options: {
     closed = false;
   let summary = "",
     outcome: BlockResult["outcome"] = "pass";
+  let disposition: BlockResult["disposition"];
   const artifacts: Record<string, string> = {};
   const effect = <T>(call: () => Promise<unknown>): Promise<T> => {
     if (closed)
@@ -80,6 +81,8 @@ export async function executeCode(options: {
       prompt: string;
       instructions?: string;
       protectedPaths?: string[];
+      writablePaths?: string[];
+      workspace?: string;
       model?: Parameters<typeof modelOverride>[0];
       output?: z.ZodType;
     }) => {
@@ -92,6 +95,8 @@ export async function executeCode(options: {
           prompt: args.prompt,
           instructions: args.instructions,
           protectedPaths: args.protectedPaths,
+          writablePaths: args.writablePaths,
+          workspace: args.workspace,
           model: modelOverride(args.model),
           outputSchema,
         }),
@@ -140,8 +145,14 @@ export async function executeCode(options: {
       const head = Math.floor((16_000 - marker.length) / 2);
       summary = text.length <= 16_000 ? text : text.slice(0, head) + marker + text.slice(-(16_000 - marker.length - head));
     },
+    disposition: (value) => {
+      disposition = value;
+      outcome = value === "blocked" ? "fail" : value === "changes-requested" ? "retry" : "pass";
+    },
     outcome: (value) => {
-      outcome = outcomeSchema.parse(value);
+      const next = outcomeSchema.parse(value);
+      if (next !== outcome) disposition = undefined;
+      outcome = next;
     },
   };
   try {
@@ -163,6 +174,7 @@ export async function executeCode(options: {
     if (serialized !== undefined) artifacts.data = serialized;
     const result = resultSchema.parse({
       outcome,
+      disposition,
       artifacts,
       summary:
         summary ||

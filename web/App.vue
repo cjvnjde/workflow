@@ -370,6 +370,19 @@ function runAction(action: string) {
     return;
   }
   void perform(async () => {
+    if (action === "plan-recovery") {
+      const created = await request("/api/tasks", taskSchema, {
+        method: "POST",
+        body: { prompt: current.plan.task, sourceRunId: current.id },
+      });
+      if (view.value === "task" && selectedId.value === current.id) {
+        selectedTask.value = created.id;
+        selectRun(undefined);
+      }
+      applyTask(created);
+      await refreshRuns();
+      return;
+    }
     applyRun(
       await request(`/api/runs/${current.id}/${action}`, runSchema, {
         method: "POST",

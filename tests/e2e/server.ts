@@ -1,4 +1,4 @@
-import { cp, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -9,6 +9,7 @@ import { createServer } from "../../src/server.js";
 import { BrowserAuth } from "../../src/browser-auth.js";
 import { authRuntime } from "../auth-fixture.js";
 import { userPaths } from "../../src/user-settings.js";
+import { Workspace } from "../../src/workspace.js";
 
 const project = await mkdtemp(path.join(os.tmpdir(), "workflow-e2e-"));
 const temporalCache = path.join(userPaths().directory, "cache", "temporal");
@@ -21,6 +22,12 @@ await cp(temporalCache, path.join(process.env.WORKFLOW_HOME, "cache", "temporal"
 await initializeProject(project, "", "legacy");
 process.env.WORKFLOW_DEMO_DELAY_MS = "400";
 const engine = new WorkflowEngine(project, "demo", async execution => {
+  if (execution.task.includes("[recovery-conflict]") && execution.node.id === "work") {
+    const workspace = await Workspace.create(project, {journal:execution.journal});
+    await workspace.write("recovery-fixture.txt", "managed change");
+    await writeFile(path.join(project,"recovery-fixture.txt"),"external change");
+    throw new Error("Interrupted recovery fixture");
+  }
   if (execution.task.includes("[parallel-stream-fixture]")) {
     const frontend = execution.node.id === "stream-frontend";
     execution.emit("agent_start", "Deterministic parallel streaming fixture");

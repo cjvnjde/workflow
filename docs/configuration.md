@@ -134,3 +134,23 @@ User settings live outside projects in `$XDG_CONFIG_HOME/workflow` when the XDG 
 | `cache/temporal/` | Managed Temporal executable. |
 
 Credential files use private filesystem permissions, not an OS keychain. API auth responses expose connection status and prompts, not credential objects. Disconnect removes saved local credentials; it does not revoke them at the provider. Workflow does not import Pi's credentials or ambient project/global extensions.
+
+## Execution evidence and ownership
+
+Results shows actual step attempt durations and overlaps, AI working directories, before/after file changes, and verified ownership checks. Missing scans are explicitly unavailable, not evidence that nothing changed. Concurrent shared-workspace changes cannot be attributed to a single writer. File scans exclude runtime/dependency trees and cannot detect transient edits restored before a check; they are integrity evidence, not an OS sandbox.
+
+`ctx.ai({ writablePaths: ["tests/**"] })` protects all other project paths. An empty allowlist is read-only. `protectedPaths` still wins if both are provided. Managed writes are blocked before editing; shell/MCP changes are detected between tools and before acceptance. New default test-authoring blocks use test-only allowlists. Existing saved libraries and run snapshots are not silently rewritten.
+
+Use `ctx.disposition("work-completed")` for authoring, `"accepted"` for verified acceptance, `"changes-requested"` for defects, and `"blocked"` for unavailable prerequisites. These also set pass/pass/retry/fail respectively. A successful authoring result does not establish acceptance.
+
+## Parallel implementation
+
+AI calls can select an existing sibling Git worktree with `ctx.ai({workspace: worktreePath, ...})`. The host validates that it belongs to the same repository and prevents concurrent calls from owning the same alternate worktree. File tools, commands, MCP roots, and integrity checks use that directory. Managed edits are journaled with absolute paths so recovery targets the correct checkout. Managed writes outside an isolated worktree are rejected; shell/MCP are not OS-sandboxed.
+
+The workflow must create distinct worktrees from a recorded common baseline, preserve relevant uncommitted work, and explicitly integrate changes after joining writers. Integration conflicts must stop acceptance until resolved. Run combined checks after integration; per-branch checks are insufficient. Worktrees are retained until an explicit cleanup step, preserving evidence when integration fails.
+
+## Continuing failed work
+
+**Plan recovery with prior evidence** creates a new reviewed task for a failed or cancelled run. It retains the original request, clarification answers, attachments, prior results and diagnostics. The coordinator must arrange read-only validation of the current workspace before reusing evidence or proposing remaining repairs. It does not automatically replay effects, skip checks, or rewrite the old run. The new workflow uses the current runtime and always requires approval, even when ordinary tasks use automatic execution. Paused/interrupted runs retain their existing resume mechanism.
+
+If file recovery reports a conflict, stop execution first. **Keep current files** retains the current bytes and releases resolved claims without accepting the implementation. Alternatively, restore the intended baseline and use **Retry file recovery**. Continuation planning requires resolving these conflicts first. Model-session and code-block timeouts are separate limits; a longer block budget does not implicitly increase the inner model limit.

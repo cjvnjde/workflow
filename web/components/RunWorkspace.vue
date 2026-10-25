@@ -7,6 +7,7 @@ import {
 } from "../../src/domain.js";
 import type { PlanDraft } from "../composables/use-draft.js";
 import { currentActivity, statusLabel, stepState } from "../workflow-status.js";
+import ExecutionEvidence from "./ExecutionEvidence.vue";
 import Icon from "./Icon.vue";
 import { executionLabel, isSourceWorkflow } from "../execution-label.js";
 import MarkdownView from "./MarkdownView.vue";
@@ -259,16 +260,18 @@ const resultSummary = computed(
           ? "Execution is paused. Review the step results before continuing."
           : "Execution stopped. Review the step activity before retrying."),
 );
-const resultTitle = computed(
-  () =>
-    ({
-      completed: "Workflow completed",
-      failed: "Workflow failed",
-      interrupted: "Execution interrupted",
-      cancelled: "Workflow stopped",
-      rejected: "Workflow rejected",
-      paused: "Workflow paused",
-    })[props.run.status as "completed"] ?? "Latest results",
+const resultTitle = computed(() =>
+  lastAttempt.value?.result?.disposition === "blocked" &&
+  props.run.status === "failed"
+    ? "Blocked: prerequisites unavailable"
+    : ({
+        completed: "Workflow completed",
+        failed: "Workflow failed",
+        interrupted: "Execution interrupted",
+        cancelled: "Workflow stopped",
+        rejected: "Workflow rejected",
+        paused: "Workflow paused",
+      }[props.run.status as "completed"] ?? "Latest results"),
 );
 const resultArtifacts = computed(() =>
   [...artifacts.value].sort(
@@ -349,6 +352,14 @@ function selectStep(id: string) {
         </button>
       </template>
       <button
+        v-if="['failed', 'cancelled'].includes(run.status)"
+        :disabled="busy"
+        @click="emit('action', 'plan-recovery')"
+        title="Create a new reviewed continuation with prior evidence. Validate current files before reusing completed work."
+      >
+        Plan recovery with prior evidence
+      </button>
+      <button
         v-if="run.status === 'running'"
         :disabled="busy"
         @click="emit('action', 'pause')"
@@ -391,6 +402,19 @@ function selectStep(id: string) {
         @click="emit('action', 'recover')"
       >
         Retry file recovery
+      </button>
+      <button
+        v-if="
+          ['cancelled', 'failed'].includes(run.status) &&
+          run.attempts.some(
+            (attempt) => attempt.recovery?.status === 'conflict',
+          )
+        "
+        :disabled="busy"
+        title="Retain current files and release this stopped run's file claims. This does not accept the implementation or restart execution."
+        @click="emit('action', 'keep-recovery-files')"
+      >
+        Keep current files
       </button>
       <span class="workflow-counts"
         >{{ run.plan.nodes.length }} blocks · {{ run.attempts.length }}/{{
@@ -564,6 +588,7 @@ function selectStep(id: string) {
               :filename="`${run.id}-results.md`"
             />
           </div>
+          <ExecutionEvidence :run="run" :events="events" :now="now" />
           <MarkdownView v-if="finished" :content="resultSummary" />
           <details
             v-if="run.attempts.some((attempt) => attempt.checks.length)"

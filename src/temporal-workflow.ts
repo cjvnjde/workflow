@@ -243,6 +243,7 @@ export async function executeWorkflow(input: WorkflowRun, loadProgram?: () => Wo
               return { result: completion.result, checks: [] };
             }, stopped);
             if (codeError && !envelope) throw new Error(codeError);
+            if (!envelope && result.outcome === "fail") throw new Error(result.summary);
             const data = result.artifacts.data === undefined ? undefined : JSON.parse(result.artifacts.data);
             return envelope ? { ...result, data } : data;
           }

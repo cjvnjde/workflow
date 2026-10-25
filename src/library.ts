@@ -254,8 +254,17 @@ export async function initializeProject(project: string, instructions = "", form
     if (definition.executor?.kind === "code" && ["implement", "fix"].includes(specification.id)) {
       definition.executor.source = definition.executor.source.replace("await ctx.ai({", 'await ctx.ai({ protectedPaths: ["**/*.{test,spec}.*", "**/*_test.go", "**/test_*.py", "**/{test,tests,__tests__,e2e}/**"],');
     }
+    if (definition.executor?.kind === "code" && ["reproduce", "verify"].includes(specification.id)) {
+      definition.executor.source = definition.executor.source.replace("await ctx.ai({", 'await ctx.ai({ writablePaths: ["**/*.{test,spec}.*", "**/*_test.go", "**/test_*.py", "**/{test,tests,__tests__,e2e}/**"],');
+    }
     if (definition.executor?.kind === "code" && ["requirements", "review", "checks"].includes(specification.id)) {
       definition.executor.source = definition.executor.source.replace("await ctx.ai({", 'await ctx.ai({ protectedPaths: ["**/*"],');
+    }
+    if (definition.executor?.kind === "code" && ["reproduce", "verify", "implement", "fix"].includes(specification.id)) {
+      definition.executor.source = definition.executor.source.replace("ctx.outcome(result.outcome);", 'ctx.outcome(result.outcome); if (result.outcome === "pass") ctx.disposition("work-completed");');
+    }
+    if (definition.executor?.kind === "code" && !definition.checks.length) {
+      definition.executor.source = definition.executor.source.replace("await ctx.ai({", 'await ctx.ai({ workspace: typeof ctx.input.workspace === "string" ? ctx.input.workspace : undefined,');
     }
     let savedDefinition: unknown = definition;
     if (definition.executor?.kind === "code") {

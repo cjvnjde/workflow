@@ -72,8 +72,9 @@ test("workflow init creates policy in the caller's project without installing an
     "--instructions",
     "Preserve the project's public API.",
   ]);
-  assert.match(result.stdout, /with 7 blocks/);
+  assert.match(result.stdout, /with 8 blocks/);
   const library = await loadLibrary(project);
+  assert.deepEqual(Object.keys(library.blocks).sort(), ["checks", "fix", "implement", "push", "reproduce", "requirements", "review", "verify"]);
   assert.equal(
     library.config.instructions,
     "Preserve the project's public API.",

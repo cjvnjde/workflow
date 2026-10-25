@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fixture, passingRunner, passingResult } from "./helpers.js";
 import { WorkflowEngine } from "../src/engine.js";
@@ -201,4 +201,35 @@ test("task API enforces local mutation guard, serves attachments safely and supp
   assert.match(staleEdit.json().error, /changed in another session/);
   assert.equal(engine.get(before.id).blocks.review!.prompt, library.blocks.review!.prompt);
   assert.equal((await server.inject({ url: "/api/library", headers })).json().blocks.review, undefined);
+});
+
+test("recovery planning retains prior evidence and original scope without automatically rerunning effects", async t => {
+ const {project,library,cleanup}=await fixture(t);
+ const engine=new WorkflowEngine(project,'live',passingRunner);
+ cleanup(()=>engine.shutdown());await engine.initialize();
+ const draft=await engine.createProgram('Failed task','Fix the reported bug',{source:`import {workflow,block} from "workflow";
+ const first=block({async run(ctx){await ctx.writeFile("retained.txt","completed work");ctx.artifact("evidence","Keep this result");return {done:true};}});
+ const broken=block({async run(){throw new Error("acceptance infrastructure unavailable");}});
+ export default workflow({name:"Failure",async run(ctx){await ctx.step("first",first);return await ctx.step("broken",broken);}});`},library);
+ await engine.approve(draft.id);await engine.waitForIdle();
+ assert.equal(engine.get(draft.id).status,'failed');
+ const sourceTaskId=crypto.randomUUID();
+ const sourceTask=taskSchema.parse({id:sourceTaskId,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),revision:1,status:'ready',prompt:'Fix the reported bug',attachments:[],answers:[{question:'Which platform?',answer:'Desktop only'}],runId:draft.id,approval:'review'});
+ await mkdir(path.join(project,'.workflow/tasks'),{recursive:true});
+ await writeFile(path.join(project,'.workflow/tasks',sourceTaskId+'.json'),JSON.stringify(sourceTask));
+ const state=await loadOrchestration(project);state.settings.approval='automatic';await saveOrchestration(project,state,[]);
+ let observed=false;
+ const tasks=new Tasks(engine,async()=>({models:[],warnings:[]}),async options=>{
+  observed=true;assert.equal(options.task.prompt,'Fix the reported bug');assert.equal(options.recovery?.id,draft.id);
+  assert.equal(options.recovery?.artifacts.first?.evidence,'Keep this result');
+  assert.deepEqual(options.task.answers,[{question:'Which platform?',answer:'Desktop only'}]);
+  return {kind:'question',question:{question:'Which unavailable dependency is ready?',options:[]}};
+ });
+ cleanup(()=>tasks.close());await tasks.initialize();
+ const task=await tasks.create({prompt:'Continue',sourceRunId:draft.id});
+ await until(()=>tasks.get(task.id).status==='needs_input');
+ assert.ok(observed);assert.equal(tasks.get(task.id).approval,'review');
+ assert.equal(await readFile(path.join(project,'retained.txt'),'utf8'),'completed work');
+ assert.equal(engine.get(draft.id).status,'failed');
+ await assert.rejects(tasks.create({prompt:'Invalid',sourceRunId:'00000000-0000-0000-0000-000000000000'}));
 });

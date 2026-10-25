@@ -683,6 +683,11 @@ test("settings manages described models, task cases, skills and enabled MCP conn
   await page.getByRole("button", { name: "Add model profile", exact: true }).click();
   await page.getByLabel("Profile name", { exact: true }).fill("Careful reviewer");
   await page.getByLabel("When should this model be used?", { exact: true }).fill("Use for complex changes, diagnosis and independent review.");
+  await page.getByText("Session limits", {exact:true}).click();
+  await page.getByLabel("Session timeout (minutes)", {exact:true}).fill("20");
+  await page.getByLabel("Maximum tool calls", {exact:true}).fill("150");
+  await page.getByLabel("Profile model", {exact:true}).selectOption("openai/test-model");
+  await expect(page.getByLabel("Session timeout (minutes)", {exact:true})).toHaveValue("20");
   await page.getByRole("button", { name: "Save settings", exact: true }).click();
   await expect(page.getByText("All changes saved", { exact: true })).toBeVisible();
   await page.screenshot({ path: "/tmp/workflow-redesign-profiles.png", fullPage: true });
@@ -701,6 +706,8 @@ test("settings manages described models, task cases, skills and enabled MCP conn
   await expect(page.getByText("All changes saved", { exact: true })).toBeVisible();
   const stored = (await (await request.get("/api/settings/orchestration")).json()).settings;
   expect(stored.profiles[0].description).toContain("independent review");
+  expect(stored.profiles[0].agent.timeoutMs).toBe(1200000);
+  expect(stored.profiles[0].agent.maxToolCalls).toBe(150);
   expect(stored.cases.at(-1).name).toBe("Release check");
   expect(stored.capabilities.mcpServers[0].tools).toEqual(["inspect", "publish"]);
   expect(stored.capabilities.mcpServers[0].enabled).toBe(true);
@@ -997,6 +1004,42 @@ test("failed results are prominent, safely render Markdown and support copying a
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.screenshot({ path: "/tmp/workflow-results-mobile.png", fullPage: true });
+});
+
+test("failed-run recovery opens a new reviewed task and retains the original history", async ({ page }) => {
+  await page.goto("/");
+  await newTask(page, "Review current changes [result-fixture]");
+  await page.getByRole("button", { name: "Approve & start", exact: true }).click();
+  await expect(page.locator(".status-pill")).toHaveText("Failed", { timeout: 15_000 });
+  const originalUrl = page.url();
+  const response = page.waitForResponse(response => response.url().endsWith("/api/tasks") && response.request().method() === "POST");
+  await page.getByRole("button", { name: "Plan recovery with prior evidence", exact: true }).click();
+  const created = await (await response).json();
+  expect(created.sourceRunId).toBeTruthy();
+  expect(created.approval).toBe("review");
+  await expect(page).toHaveURL(new RegExp(`task=${created.id}$`));
+  await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
+  await page.goto(originalUrl);
+  await expect(page.locator(".status-pill")).toHaveText("Failed");
+  await expect(page.locator(".result-banner")).toContainText("Branch review blocked");
+});
+
+test("file recovery and continuation planning remain separate actions", async ({ page }) => {
+  await page.goto("/");
+  await newTask(page, "Fix the issue [recovery-conflict]");
+  await page.getByRole("button", {name:"Approve & start",exact:true}).click();
+  await expect(page.locator(".status-pill")).toHaveText("Needs attention",{timeout:15000});
+  const recovery=page.waitForResponse(response=>response.url().endsWith("/recover") && response.request().method()==="POST");
+  await page.getByRole("button",{name:"Retry file recovery",exact:true}).click();
+  expect((await recovery).ok()).toBeTruthy();
+  await expect(page.locator(".status-pill")).toHaveText("Needs attention");
+  await page.getByRole("button",{name:"Stop execution",exact:true}).click();
+  await expect(page.locator(".status-pill")).toHaveText("Cancelled");
+  await page.getByRole("button",{name:"Keep current files",exact:true}).click();
+  await expect(page.getByRole("button",{name:"Keep current files",exact:true})).toHaveCount(0);
+  await expect(page.locator(".status-pill")).toHaveText("Cancelled");
+  await page.getByRole("button",{name:"Plan recovery with prior evidence",exact:true}).click();
+  await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
 });
 
 test("same-scope AI chats stay independent, draggable and restorable", async ({ page, request }) => {

@@ -62,6 +62,7 @@ function choose(profile: Profile, key: string) {
   const model = props.models.find((item) => modelKey(item) === key);
   if (model) {
     profile.agent = {
+      ...profile.agent,
       provider: model.provider,
       model: model.id,
       thinking: agentSchema.shape.thinking.parse(
@@ -219,6 +220,53 @@ function generate() {
           </select></Field
         >
       </div>
+      <details>
+        <summary>Session limits</summary>
+        <p>
+          Leave blank to inherit project defaults. A longer code-block timeout
+          does not extend an AI session.
+        </p>
+        <div class="field-grid">
+          <Field v-slot="{ id }" label="Session timeout (minutes)">
+            <input
+              :id="id"
+              type="number"
+              min="1"
+              max="60"
+              step="1"
+              placeholder="Project default"
+              :value="
+                profile.agent.timeoutMs === undefined
+                  ? ''
+                  : profile.agent.timeoutMs / 60000
+              "
+              @input="
+                profile.agent.timeoutMs =
+                  inputValue($event) === ''
+                    ? undefined
+                    : Number(inputValue($event)) * 60000
+              "
+            />
+          </Field>
+          <Field v-slot="{ id }" label="Maximum tool calls">
+            <input
+              :id="id"
+              type="number"
+              min="1"
+              max="1000"
+              step="1"
+              placeholder="Project default"
+              :value="profile.agent.maxToolCalls"
+              @input="
+                profile.agent.maxToolCalls =
+                  inputValue($event) === ''
+                    ? undefined
+                    : Number(inputValue($event))
+              "
+            />
+          </Field>
+        </div>
+      </details>
     </article>
   </section>
 </template>

@@ -296,3 +296,17 @@ test("verbose failed-check summaries stay bounded without preventing diagnostic 
   assert.match(result.summary,/ASSERTION FAILED/);
   assert.equal(result.artifacts.diagnostics!.length,18029);
 });
+
+test("authoring completion and blocked acceptance have distinct recorded dispositions", async t => {
+ const {project,library,cleanup}=await fixture(t);
+ const engine=new WorkflowEngine(project,'live',passingRunner);cleanup(()=>engine.shutdown());await engine.initialize();
+ const source=wrap(`const work=block({async run(ctx){ctx.disposition("work-completed");ctx.summary("Valid failing regressions retained");return {testsPass:false};}});`);
+ const draft=await engine.createProgram('Authoring','Write regressions',{source},library);await engine.approve(draft.id);await engine.waitForIdle();
+ assert.equal(engine.get(draft.id).attempts[0]?.result?.disposition,'work-completed');
+ const blocked=wrap(`const work=block({async run(ctx){ctx.disposition("blocked");ctx.summary("Required service unavailable");return {missing:"service"};}});`);
+ const next=await engine.createProgram('Acceptance','Verify',{source:blocked},library);await engine.approve(next.id);await engine.waitForIdle();
+ assert.equal(engine.get(next.id).status,'failed');assert.equal(engine.get(next.id).attempts[0]?.result?.disposition,'blocked');
+ const overridden=wrap(`const work=block({async run(ctx){ctx.disposition("accepted");ctx.outcome("fail");ctx.summary("A later check failed");}});`);
+ const changed=await engine.createProgram('Contradictory acceptance','Verify',{source:overridden},library);await engine.approve(changed.id);await engine.waitForIdle();
+ assert.equal(engine.get(changed.id).status,'failed');assert.equal(engine.get(changed.id).attempts[0]?.result?.disposition,undefined);
+});

@@ -13,6 +13,7 @@ import { availableModels } from "../src/available-models.js";
 import { initializeProfiles } from "../src/initialize-profiles.js";
 import { loadOrchestration } from "../src/orchestration-settings.js";
 import { fixture } from "./helpers.js";
+import { Attachments } from "../src/attachments.js";
 
 const requestSchema = z
   .object({
@@ -384,4 +385,14 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
   });
   assert.equal(markdown.summary, valueSubmission);
   assert.deepEqual(markdown.artifacts, {});
+  const attachment = await new Attachments(project).add({ name: "brief.txt", mimeType: "text/plain", data: Buffer.from("Retained original-project attachment").toString("base64") });
+  const isolated = path.join(project, "isolated-checkout");
+  await mkdir(isolated);
+  await runPiBlock({
+    project: isolated, attachmentProject: project,
+    config: { ...library.config, attachments: [attachment] }, bundle: customAudit, node,
+    task: "Read the supplied brief", inputs: {}, visit: 1, settings,
+    signal: AbortSignal.timeout(10_000), emit: () => {}, resultMode: "value",
+  });
+  assert.match(JSON.stringify(requests.at(-1)), /Retained original-project attachment/);
 });

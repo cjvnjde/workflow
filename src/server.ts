@@ -335,6 +335,7 @@ export async function createServer(engine: WorkflowEngine, port = 4310, services
     async (request) => await engine.resume(request.params.id),
   );
   server.post<{ Params: { id: string } }>("/api/runs/:id/recover", async (request) => (await engine.recover(request.params.id)).run);
+  server.post<{ Params: { id: string } }>("/api/runs/:id/keep-recovery-files", async (request) => engine.keepRecoveryFiles(request.params.id));
   server.get("/api/stream", async (_request, reply) => {
     reply.hijack();
     streams.add(reply.raw);

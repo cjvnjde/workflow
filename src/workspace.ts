@@ -14,10 +14,10 @@ const maxFileBytes = 1_000_000;
 export class Workspace {
   private constructor(
     readonly root: string,
-    private readonly options: { journal?: FileJournal; signal?: AbortSignal; protect?: ProtectedPaths } = {},
+    private readonly options: { journal?: FileJournal; signal?: AbortSignal; protect?: ProtectedPaths; absoluteJournalPaths?: boolean; writeRootOnly?: boolean } = {},
   ) {}
 
-  static async create(root: string, options: { journal?: FileJournal; signal?: AbortSignal; protect?: ProtectedPaths } = {}) {
+  static async create(root: string, options: { journal?: FileJournal; signal?: AbortSignal; protect?: ProtectedPaths; absoluteJournalPaths?: boolean; writeRootOnly?: boolean } = {}) {
     return new Workspace(await realpath(root), options);
   }
 
@@ -40,6 +40,11 @@ export class Workspace {
   private async checkedPath(input: string, operation: "read" | "write", links = 0): Promise<string> {
     if (links > 40) { throw new Error("Too many symbolic links"); }
     this.options.signal?.throwIfAborted();
+    if (operation === "write" && this.options.writeRootOnly) {
+      const logical = this.resolve(input);
+      const physical = await this.physicalPath(logical);
+      if (![logical, physical].every(filename => filename.startsWith(this.root + path.sep))) throw new Error("Isolated workspace writes must stay inside their worktree");
+    }
     if (operation === "write") this.options.protect?.assertWritable(this.resolve(input));
     const filename = await this.physicalPath(this.resolve(input));
     try {
@@ -124,7 +129,7 @@ export class Workspace {
     const snapshot = await this.snapshot(filename);
     await mkdir(path.dirname(filename), { recursive: true });
     const relative = path.relative(this.root, filename);
-    const journalPath = relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative) ? filename : relative;
+    const journalPath = this.options.absoluteJournalPaths || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative) ? filename : relative;
     await this.options.journal?.prepare(journalPath, snapshot, Buffer.from(content));
     this.options.signal?.throwIfAborted();
     await atomicWrite(filename, content, snapshot.mode, () => this.options.signal?.throwIfAborted());

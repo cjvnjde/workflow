@@ -32,11 +32,13 @@ test("cases and described model profiles save with revision checks and explicit 
   assert.equal(original.settings.cases[0]!.id, "bug");
   assert.ok(!("nodes" in original.settings.cases[0]!));
   const settings = structuredClone(original.settings);
-  settings.profiles = [{ id: "reviewer", name: "Careful reviewer", description: "Use for difficult reviews", agent: { provider: "test", model: "careful", thinking: "high" }, enabled: true }];
+  settings.profiles = [{ id: "reviewer", name: "Careful reviewer", description: "Use for difficult reviews", agent: { provider: "test", model: "careful", thinking: "high", timeoutMs: 1200000, maxToolCalls: 150 }, enabled: true }];
   settings.coordinatorProfile = "reviewer";
   settings.cases = [{ id: "audit", name: "Audit", description: "Investigate an issue", instructions: "Inspect evidence without editing files.", enabled: true }];
   const saved = await saveOrchestration(project, { ...original, settings }, models);
   assert.equal(saved.settings.cases.length, 1);
+  assert.equal((await loadOrchestration(project)).settings.profiles[0]?.agent.timeoutMs,1200000);
+  assert.equal(saved.settings.profiles[0]?.agent.maxToolCalls,150);
   assert.notEqual(saved.revision, original.revision);
   await assert.rejects(saveOrchestration(project, { ...original, settings }, models), /changed/);
   // Temporarily disconnected profiles must not prevent editing descriptions.
