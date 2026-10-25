@@ -1351,6 +1351,7 @@ test("floating chats resize independently, retain dimensions and stay usable on 
   expect((await first.boundingBox())!.width).toBe(resized.width + 20);
   await page.setViewportSize({ width: 390, height: 700 });
   await expect.poll(async () => (await first.boundingBox())!.width).toBeLessThanOrEqual(366);
+  await expect.poll(() => first.locator(".design-conversation").evaluate(el => el.clientHeight)).toBeGreaterThan(250);
   const message = first.getByLabel("Message AI designer", { exact: true });
   await message.fill(Array.from({ length: 50 }, () => "A long design request").join("\n"));
   await expect.poll(() => message.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
@@ -1530,7 +1531,9 @@ test("only the global designer remains and each message captures its settings se
   await chat.getByRole("button", {name:"Send to AI designer",exact:true}).click();
   expect((await first).postDataJSON().context).toEqual({page:"settings",section:"blocks",blockId:"review"});
   await expect(replies).toHaveCount(previousReplies + 1);
+  await chat.getByRole("button", {name:"Minimize design chat",exact:true}).click();
   await page.getByRole("navigation", {name:"Settings sections"}).getByRole("button", {name:"Execution",exact:true}).click();
+  await page.getByRole("button", {name:"Open AI designer",exact:true}).click();
   await expect(page.locator("main").getByRole("button", {name:"Design with AI",exact:true})).toHaveCount(0);
   await expect(chat).toContainText("Execution settings context included");
   await chat.getByLabel("Message AI designer", {exact:true}).fill("Explain these limits");

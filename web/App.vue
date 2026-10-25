@@ -529,7 +529,7 @@ async function designApplied() {
         ><strong>workflow<span>from intent to done</span></strong>
       </button>
       <button class="new-task-button" aria-label="New task" @click="newTask()">
-        <Icon name="plus" :size="19" />New task<span>↗</span>
+        <Icon name="plus" :size="19" />New task
       </button>
       <div class="sidebar-search">
         <Icon name="search" :size="15" /><input
