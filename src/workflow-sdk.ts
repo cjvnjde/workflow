@@ -69,6 +69,8 @@ export type ExecResult = {
   result?: StepResult;
 };
 export type AIOptions<S extends z.ZodType = z.ZodType> = {
+  /** Text-only transformation: only the structured-result tool is available. */
+  tools?: "none";
   /** Project-relative globs owned by other steps; checked before accepting this call. */
   protectedPaths?: string[];
   writablePaths?: string[];

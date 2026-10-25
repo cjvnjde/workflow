@@ -250,14 +250,15 @@ test("pause drains active parallel steps and keeps queued branches waiting until
     engine.get(draft.id).attempts.some((a) => a.nodeId === "a" && a.finishedAt),
   );
   assert.equal((await engine.refresh(draft.id)).status, "pausing");
-  assert.deepEqual(calls, ["a", "b"]);
+  assert.deepEqual([...calls].sort(), ["a", "b"]);
   gates.b.release();
   await until(() => engine.get(draft.id).status === "paused");
-  assert.deepEqual(calls, ["a", "b"]);
+  assert.deepEqual([...calls].sort(), ["a", "b"]);
   await engine.resume(draft.id);
   await engine.waitForIdle();
   assert.equal(engine.get(draft.id).status, "completed");
-  assert.deepEqual(calls, ["a", "b", "c"]);
+  assert.deepEqual(calls.slice(0, 2).sort(), ["a", "b"]);
+  assert.equal(calls[2], "c");
 });
 
 test("managed parallel writes reject overlapping physical paths and retain claims after restart", async (t) => {

@@ -77,3 +77,20 @@ for await (const line of readline.createInterface({input:process.stdin})) {
  } finally {await connection.close();}
  assert.equal((await loadOrchestration(project)).settings.capabilities.mcpServers.length,0);
 });
+
+test("discovered skills retain usable reference and script paths for execution tools", async t => {
+  const {project}=await fixture(t);
+  const base=path.join(project,'.agents/skills/format-note');
+  await mkdir(path.join(base,'references'),{recursive:true});await mkdir(path.join(base,'scripts'));
+  await writeFile(path.join(base,'SKILL.md'),'---\nname: format-note\ndescription: Format a short note\n---\nRead references/style.txt and run scripts/format.mjs.');
+  await writeFile(path.join(base,'references/style.txt'),'Use the prefix NOTE.');
+  await writeFile(path.join(base,'scripts/format.mjs'),'import {readFileSync} from "node:fs"; const style=readFileSync(new URL("../references/style.txt",import.meta.url),"utf8");console.log(style+" Script executed.");');
+  const discovered=await discoverProjectCapabilities(project);
+  assert.match(discovered.capabilities.skills[0]!.content,new RegExp(base.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
+  const {Workspace}=await import('../src/workspace.js'); const {workspaceTools}=await import('../src/block-runner.js');
+  const tools=workspaceTools(await Workspace.create(project,{signal:AbortSignal.timeout(10000)}));
+  const reference=await tools.find(tool=>tool.name==='read_file')!.execute('read',{path:path.join(base,'references/style.txt')},undefined,undefined,{} as never);
+  assert.match(JSON.stringify(reference),/Use the prefix NOTE/);
+  const script=await tools.find(tool=>tool.name==='bash')!.execute('run',{command:`node ${JSON.stringify(path.join(base,'scripts/format.mjs'))}`},undefined,undefined,{} as never);
+  assert.match(JSON.stringify(script),/Script executed/);
+});

@@ -395,4 +395,14 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
     signal: AbortSignal.timeout(10_000), emit: () => {}, resultMode: "value",
   });
   assert.match(JSON.stringify(requests.at(-1)), /Retained original-project attachment/);
+  valueSubmission = "docs: clarify setup";
+  const textOnly = await runPiBlock({
+    project, config: { ...library.config, capabilities: { skills: [], mcpServers: [{ id: "unavailable", name: "Must not connect", enabled: true, transport: "stdio", command: "workflow-mcp-must-not-launch", args: [], url: "", tools: [], planningTools: [] }] } },
+    bundle: customAudit, node, task: "Draft a commit message", tools: "none",
+    inputs: { "call-prompt": "Describe the supplied documentation diff" }, visit: 1,
+    settings, signal: AbortSignal.timeout(10000), emit: () => {}, resultMode: "value",
+  });
+  assert.equal(textOnly.summary, valueSubmission);
+  assert.deepEqual(requests.at(-1)!.tools.map(tool => tool.function.name), ["submit_result"]);
+
 });

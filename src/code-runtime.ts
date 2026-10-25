@@ -79,6 +79,7 @@ export async function executeCode(options: {
     visit: run.visits[node.id]!,
     ai: (async (args: {
       prompt: string;
+      tools?: "none";
       instructions?: string;
       protectedPaths?: string[];
       writablePaths?: string[];
@@ -86,12 +87,14 @@ export async function executeCode(options: {
       model?: Parameters<typeof modelOverride>[0];
       output?: z.ZodType;
     }) => {
+      if (args.tools === "none" && args.prompt.length > 32_000) throw new Error("No-tools AI prompts must fit within 32000 characters; select focused input first");
       const outputSchema = args.output
         ? z.toJSONSchema(args.output)
         : undefined;
       const result = await effect<BlockResult>(() =>
         options.operation({
           kind: "ai",
+          tools: args.tools,
           prompt: args.prompt,
           instructions: args.instructions,
           protectedPaths: args.protectedPaths,

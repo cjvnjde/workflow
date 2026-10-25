@@ -28,6 +28,7 @@ import { inspectGit } from "./git-inspection.js";
 import type { FlowStructure } from "./composition-sdk.js";
 
 export type BlockExecution = {
+  tools?: "none";
   protectedPaths?: string[];
   writablePaths?: string[];
   absoluteJournalPaths?: boolean;
@@ -238,12 +239,12 @@ export const runPiBlock: BlockRunner = async (execution) => {
   const attachments = await new Attachments(execution.attachmentProject ?? project).context(
     config.attachments ?? [],
   );
-  const external = await mcpTools(config.capabilities, project, signal);
+  const external = execution.tools === "none" ? { tools: [], close: async () => {} } : await mcpTools(config.capabilities, project, signal);
   try {
     await runAgentSession({
       project,
       settings: execution.settings,
-      tools: [...tools, ...external.tools].map((tool) => ({
+      tools: [...(execution.tools === "none" ? tools.filter(tool => tool.name === "submit_result") : tools), ...external.tools].map((tool) => ({
         ...tool,
         execute: async (...args: Parameters<ToolDefinition["execute"]>) => {
           if (result) {

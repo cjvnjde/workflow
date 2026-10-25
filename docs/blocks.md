@@ -157,3 +157,21 @@ New default `verify` blocks complete test authoring rather than acceptance: vali
 Read-only AI calls use `protectedPaths: ["**/*"]` with the same documented exclusions. New default requirements, review and acceptance-check AI calls include this guard. Put the current call's narrow role before handoff evidence in its prompt: a read-only inventory inside a repair block must not perform the later repair. Keep related or deferred findings separate from selected repair scope.
 
 `ctx.summary()` is a bounded display summary: text over 16,000 characters is explicitly abbreviated with its beginning and end retained. This does not change the block outcome or interrupt diagnostic routing. Keep full check diagnostics in an artifact or returned data; their existing size limits still apply.
+
+## Small, single-purpose commit-message blocks
+
+The modules in `examples/blocks/` can be saved individually in a project's block library:
+
+| Block | Input | Output | Effects |
+| --- | --- | --- | --- |
+| `collect-commit-diff` | `{source: "staged" \| "unstaged"}` | `{diff, context}` | Reads one tracked Git diff; no model. |
+| `draft-commit-message` | `{diff, context?}` | `{message}` | Luna (`gpt-6-luna`, low reasoning), with no file, shell or MCP tools. |
+| `validate-commit-message` | `{message}` | `{message, subject}` | Deterministic syntax/style validation; no model. |
+
+`examples/commit-message.ts` composes all three. The writer can also consume a supplied diff without collecting repository state. The validator emits the `commit-message` artifact. These blocks never stage, commit or push, and a validation pass is not implementation acceptance. Keep publication in a separate authorized block.
+
+Empty or oversized diffs fail explicitly; untracked files are excluded. The 72-character subject limit and lowercase types are this library's style policy, not extra requirements of the Conventional Commits specification. Validation checks header structure and subject/body separation; it cannot establish whether the message is factually correct or whether an omitted breaking-change marker was needed.
+
+For text-only transformations, `ctx.ai({tools: "none", prompt, output})` exposes only the result-submission tool. MCP connections are not started and enclosing step handoffs are not implicitly included; pass the selected data in the prompt. These prompts must fit within 32,000 characters because the call has no file tool to read larger context references. Project instructions still apply. Other calls retain their existing tool access.
+
+Small blocks should have explicit input/output schemas, one responsibility, clear failure conditions and independent tests. Use models for judgment; keep Git inspection, validation and publication deterministic where possible. Splitting every trivial expression into an agent call adds latency and context cost without improving the contract.
