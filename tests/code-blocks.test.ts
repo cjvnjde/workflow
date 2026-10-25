@@ -272,3 +272,27 @@ test("a read-only preparatory AI call cannot modify production or admit the late
   assert.equal(calls,1);
   assert.match(JSON.stringify(engine.get(draft.id).attempts),/Protected files changed: production.ts/);
 });
+
+test("verbose failed-check summaries stay bounded without preventing diagnostic routing", async t => {
+  const {project,library,cleanup}=await fixture(t);
+  const engine=new WorkflowEngine(project,"live",passingRunner);
+  cleanup(()=>engine.shutdown());await engine.initialize();
+  const source=`import {workflow,block,step,sequence} from "workflow";
+    const checks=step("checks",block({async run(ctx){
+      const diagnostics="BEGIN CHECK\\n"+"x".repeat(18000)+"\\nASSERTION FAILED";
+      ctx.outcome("retry");ctx.summary(diagnostics);ctx.artifact("diagnostics",diagnostics);return {diagnostics};
+    }}),{on:{retry:"continue"}});
+    const diagnose=step("diagnose",block({async run(ctx){if(!String(ctx.input.diagnostics).endsWith("ASSERTION FAILED"))throw new Error("Lost failure evidence");return "production";}}),{inputs:c=>({diagnostics:c.output(checks)?.diagnostics})});
+    export default workflow({name:"Verbose failure",flow:sequence(checks,diagnose)});`;
+  const draft=await engine.createProgram("Verbose failure","Check behavior",{source},library);
+  await engine.approve(draft.id);await engine.waitForIdle();const run=engine.get(draft.id);
+  assert.equal(run.status,"completed",run.error);
+  assert.deepEqual(run.attempts.map(a=>a.nodeId),["checks","diagnose"]);
+  const result=run.attempts[0]!.result!;
+  assert.equal(result.outcome,"retry");
+  assert.ok(result.summary.length<=16000);
+  assert.match(result.summary,/summary truncated/);
+  assert.match(result.summary,/BEGIN CHECK/);
+  assert.match(result.summary,/ASSERTION FAILED/);
+  assert.equal(result.artifacts.diagnostics!.length,18029);
+});

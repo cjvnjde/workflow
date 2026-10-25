@@ -133,7 +133,12 @@ export async function executeCode(options: {
       artifacts[name] = content;
     },
     summary: (value) => {
-      summary = z.string().max(16_000).parse(value);
+      const text = z.string().parse(value);
+      const marker = "\n… [summary truncated: showing beginning and end] …\n";
+      // A verbose failing check must still reach its declared diagnostic route.
+      // Keep both setup context and the final failure, without changing artifacts/data.
+      const head = Math.floor((16_000 - marker.length) / 2);
+      summary = text.length <= 16_000 ? text : text.slice(0, head) + marker + text.slice(-(16_000 - marker.length - head));
     },
     outcome: (value) => {
       outcome = outcomeSchema.parse(value);
