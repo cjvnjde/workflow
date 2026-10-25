@@ -252,3 +252,23 @@ test("default test authoring preserves a valid failing regression while acceptan
   assert.deepEqual(run.attempts.map(a=>a.result?.outcome),["pass","retry"]);
   assert.match(await readFile(path.join(child,"regression.test.ts"),"utf8"),/assert.equal\(actual, 2\)/);
 });
+
+test("a read-only preparatory AI call cannot modify production or admit the later repair call", async t => {
+  const {project, library, cleanup}=await fixture(t);
+  await writeFile(path.join(project,"production.ts"),"original production");
+  let calls=0;
+  const engine=new WorkflowEngine(project,"live",async execution=>{
+    calls++;
+    assert.deepEqual(execution.protectedPaths,["**/*"]);
+    // Inventory mistakenly performs the surrounding block's repair via shell.
+    await writeFile(path.join(project,"production.ts"),"premature repair");
+    return {outcome:"pass",summary:"Inventory complete",artifacts:{data:'{"paths":["regression.test.ts"]}'}};
+  });
+  cleanup(()=>engine.shutdown()); await engine.initialize();
+  const source=wrap('const work=block({async run(ctx){const inventory=await ctx.ai({prompt:"Read-only: identify regression files",protectedPaths:["**/*"],output:z.object({paths:z.array(z.string())})});return await ctx.ai({prompt:"Repair production",protectedPaths:inventory.paths});}});');
+  const draft=await engine.createProgram("Call ownership","Fix the bug",{source},library);
+  await engine.approve(draft.id);await engine.waitForIdle();
+  assert.equal(engine.get(draft.id).status,"failed");
+  assert.equal(calls,1);
+  assert.match(JSON.stringify(engine.get(draft.id).attempts),/Protected files changed: production.ts/);
+});

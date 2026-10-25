@@ -252,6 +252,9 @@ export async function initializeProject(project: string, instructions = "", form
     if (definition.executor?.kind === "code" && ["implement", "fix"].includes(specification.id)) {
       definition.executor.source = definition.executor.source.replace("await ctx.ai({", 'await ctx.ai({ protectedPaths: ["**/*.{test,spec}.*", "**/*_test.go", "**/test_*.py", "**/{test,tests,__tests__,e2e}/**"],');
     }
+    if (definition.executor?.kind === "code" && ["requirements", "review", "checks"].includes(specification.id)) {
+      definition.executor.source = definition.executor.source.replace("await ctx.ai({", 'await ctx.ai({ protectedPaths: ["**/*"],');
+    }
     let savedDefinition: unknown = definition;
     if (definition.executor?.kind === "code") {
       const { source, ...executor } = definition.executor;
