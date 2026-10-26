@@ -57,11 +57,14 @@ export class RunStore {
   }
 
   record(event: RunEvent) {
-    this.eventWrites = this.eventWrites.then(async () => {
-      const directory = path.join(this.directory, event.runId);
+    // Capture the submitted value before yielding to other writers or listeners.
+    const runId = event.runId;
+    const contents = JSON.stringify(eventSchema.parse(event)) + "\n";
+    const operation = this.eventWrites.then(async () => {
+      const directory = path.join(this.directory, runId);
       await mkdir(directory, { recursive: true });
       const filename = path.join(directory, "events.jsonl");
-      if (!this.eventFilesReady.has(event.runId)) {
+      if (!this.eventFilesReady.has(runId)) {
         try {
           const content = await readFile(filename, "utf8");
           if (content && !content.endsWith("\n")) {
@@ -74,14 +77,18 @@ export class RunStore {
         } catch (error) {
           if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) { throw error; }
         }
-        this.eventFilesReady.add(event.runId);
+        this.eventFilesReady.add(runId);
       }
       await appendFile(
         filename,
-        JSON.stringify(event) + "\n",
+        contents,
         { mode: 0o600 },
       );
-    }).catch((error: unknown) => { this.eventFailures.push(error); });
+    });
+    // Callers may await this exact write before publishing its event. Keep the
+    // queue usable and retain failures for callers that only await flush().
+    this.eventWrites = operation.catch((error: unknown) => { this.eventFailures.push(error); });
+    return operation;
   }
 
   async flush() {

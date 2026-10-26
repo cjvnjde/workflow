@@ -60,6 +60,12 @@ Temporal owns that history. Deterministic workflow code composes steps, applies 
 
 Local JSON is the approval record and UI projection, not an alternative executor. The managed Temporal development service uses project-local SQLite and binds to loopback. An external endpoint can be selected, but hosted deployment and remote authentication onboarding are separate work.
 
+### Ideas adopted from Pi Durable
+
+The [Pi Durable harness](https://github.com/earendil-works/pi/tree/main/packages/durable) persists conversation turns, tool calls, and task checkpoints. Its [storage and listener contracts](https://github.com/earendil-works/pi/blob/main/packages/durable/README.md#errors) inform Workflow's event delivery: saved run events are published only after their log write succeeds, queued writes capture the submitted value, and failing or mutating subscribers cannot affect execution or other subscribers. Ephemeral text shares the delivery queue to preserve message order. Storage failures still reach the caller through the write promise or the next event flush.
+
+Workflow keeps its existing Pi sessions and Temporal executor. Pi Durable currently labels its API experimental; adopting its harness would introduce another scheduler and recovery lifecycle alongside Temporal. Turn-level AI recovery could reduce repeated model work, but needs an explicit design for in-flight tools, file journals, usage accounting, and approved versions. AI sessions therefore continue to recover as whole activities. The event changes do not provide atomic transactions across run snapshots, event logs, and Temporal, or add power-loss guarantees to the JSONL log.
+
 ## Composition and execution
 
 The SDK builds a tree of `step`, `sequence`, `parallel`, `when`, and `repeatUntil` nodes. `describeFlow` serializes the structure for preview without calling its blocks, input callbacks, or conditions. The compiler evaluates declarative module initialization in a bounded VM without host APIs. Imperative workflows retain execution-only initialization.

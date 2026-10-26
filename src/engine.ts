@@ -66,6 +66,7 @@ export class WorkflowEngine {
   private shutdownPromise: Promise<void> | undefined;
   private mutations = Promise.resolve();
   private projections = Promise.resolve();
+  private eventPublications = Promise.resolve();
   private readonly taskQueue: string;
   private releaseProject: (() => Promise<void>) | undefined;
   private readonly leaseCancellation = new AbortController();
@@ -237,7 +238,7 @@ export class WorkflowEngine {
         await this.store.save(removed);
         this.runs.set(id, removed);
         this.emit(removed, "run_deleted", "Removed from history. Project files and recovery records are retained.");
-        await this.store.flush();
+        await this.flushEvents();
         return structuredClone(removed);
       });
       this.projections = operation.then(() => {}, () => {});
@@ -255,9 +256,17 @@ export class WorkflowEngine {
   }
 
   subscribe(listener: (event: RunEvent) => void) {
-    this.emitter.on("event", listener);
+    const report = (error: unknown) => { console.error("Workflow event listener failed:", error); };
+    const isolated = (event: RunEvent) => {
+      try {
+        // Views cannot change another view's event or turn a completed host
+        // operation into a failure. Async views do not delay execution either.
+        void Promise.resolve(listener(structuredClone(event))).catch(report);
+      } catch (error) { report(error); }
+    };
+    this.emitter.on("event", isolated);
 
-    return () => { this.emitter.off("event", listener); };
+    return () => { this.emitter.off("event", isolated); };
   }
 
   coordinatorActivity(kind: string, message: string, runId = "coordinator") {
@@ -268,17 +277,32 @@ export class WorkflowEngine {
 
   async events(id: string) {
     this.requireRun(id);
-    await this.store.flush();
+    await this.flushEvents();
 
     return await this.store.events(id);
   }
 
   private emit(run: WorkflowRun, kind: string, message: string, nodeId?: string, id: string = randomUUID()) {
     const event: RunEvent = { id, runId: run.id, time: new Date().toISOString(), kind, message, nodeId };
-    if (kind !== "text_delta") {
-      this.store.record(event);
-    }
-    this.emitter.emit("event", event);
+    // Synchronous model callbacks enqueue work; flushEvents reports write errors.
+    void this.publishEvent(event, kind !== "text_delta").catch(() => {});
+  }
+
+  private publishEvent(event: RunEvent, persist = true) {
+    const stored = persist ? this.store.record(event) : undefined;
+    const publication = this.eventPublications.then(async () => {
+      await stored;
+      this.emitter.emit("event", event);
+    });
+    // Include ephemeral text in this queue so a later turn's text cannot arrive
+    // before the previous turn's saved message and get cleared by the UI.
+    this.eventPublications = publication.catch(() => {});
+    return publication;
+  }
+
+  private async flushEvents() {
+    try { await this.store.flush(); }
+    finally { await this.eventPublications; }
   }
 
   private assertSnapshot(run: WorkflowRun) {
@@ -301,8 +325,8 @@ export class WorkflowEngine {
     const operation = operationRecordSchema.parse(value);
     const event: RunEvent = { id: randomUUID(), runId: run.id, nodeId, time: new Date().toISOString(), kind: "operation", operation,
       message: `${operation.name}: ${operation.state}${operation.summary ? `\n${operation.summary}` : ""}` };
-    this.store.record(event); await this.store.flush();
-    this.emitter.emit("event", event);
+    await this.publishEvent(event);
+    await this.flushEvents();
   }
 
   private async frozenTools(run: WorkflowRun) {
@@ -347,7 +371,7 @@ export class WorkflowEngine {
         // newest projection, but retain every branch's activity event.
         if (event) {
           this.emit(run, event.kind, event.message, event.nodeId, `${run.id}:${run.revision}:${event.kind}`);
-          await this.store.flush();
+          await this.flushEvents();
         }
         return;
       }
@@ -358,7 +382,7 @@ export class WorkflowEngine {
       if (event) {
         this.emit(run, event.kind, event.message, event.nodeId, `${run.id}:${run.revision}:${event.kind}`);
       }
-      await this.store.flush();
+      await this.flushEvents();
     });
     this.projections = operation.then(() => {}, () => {});
 
@@ -398,7 +422,7 @@ export class WorkflowEngine {
       await this.store.save(run);
       this.runs.set(run.id, run);
       this.emit(run, "draft", "Workflow proposed. Review its steps, commands and handoffs before approval.");
-      await this.store.flush();
+      await this.flushEvents();
 
       return this.get(run.id);
     });
@@ -428,12 +452,12 @@ export class WorkflowEngine {
       this.emit(run, "draft", checked
         ? "Workflow graph composed and frozen. Review its blocks, models and connections before approval."
         : "TypeScript workflow typechecked and frozen. Review the source and inputs before approval.");
-      await this.store.flush();
+      await this.flushEvents();
       if (signal?.aborted) {
         run.deletedAt = new Date().toISOString(); run.updatedAt = run.deletedAt; run.revision++;
         await this.store.save(run); this.runs.set(id, run);
         this.emit(run, "run_deleted", "Source compilation was cancelled; the unpublished draft was removed.");
-        await this.store.flush();
+        await this.flushEvents();
         signal.throwIfAborted();
       }
       return this.get(id);
@@ -480,7 +504,7 @@ export class WorkflowEngine {
       await this.store.save(run);
       this.runs.set(id, run);
       this.emit(run, "draft", "TypeScript source and inputs updated. Execution still requires approval.");
-      await this.store.flush();
+      await this.flushEvents();
       return this.get(id);
     });
   }
@@ -512,7 +536,7 @@ export class WorkflowEngine {
       await this.store.save(run);
       this.runs.set(id, run);
       this.emit(run, "draft", "Draft graph updated. Execution still requires approval.");
-      await this.store.flush();
+      await this.flushEvents();
 
       return this.get(id);
     });
@@ -530,7 +554,7 @@ export class WorkflowEngine {
       await this.store.save(run);
       this.runs.set(id, run);
       this.emit(run, "rejected", "Workflow rejected. No block was executed.");
-      await this.store.flush();
+      await this.flushEvents();
 
       return this.get(id);
     });
@@ -555,7 +579,7 @@ export class WorkflowEngine {
       await this.store.save(restored);
       this.runs.set(restored.id, restored);
       this.emit(restored, "draft", message);
-      await this.store.flush();
+      await this.flushEvents();
     });
     this.projections = operation.then(() => {}, () => {});
     await operation;
@@ -674,7 +698,7 @@ export class WorkflowEngine {
         await this.store.save(run);
         this.runs.set(id, run);
         this.emit(run, "run_end", "CANCELLED");
-        await this.store.flush();
+        await this.flushEvents();
       } else {
         await this.handle(id).cancel();
       }
@@ -707,7 +731,7 @@ export class WorkflowEngine {
         // still stopping activities that can change the shared project.
         const stopped = await Promise.allSettled([...this.workers.values()].map(({ done }) => done));
         await this.projections;
-        await this.store.flush();
+        await this.flushEvents();
         const failures = stopped.filter((result): result is PromiseRejectedResult => result.status === "rejected");
         if (failures.length) { throw new AggregateError(failures.map(result => result.reason), "Temporal workers failed while stopping"); }
       } finally {
@@ -777,7 +801,7 @@ export class WorkflowEngine {
         await this.store.save(run); this.runs.set(id, run);
       }
       this.emit(run, "recovery", JSON.stringify(settled.recovery));
-      await this.store.flush();
+      await this.flushEvents();
       return { run: this.get(id), ...settled };
     });
   }
@@ -799,7 +823,7 @@ export class WorkflowEngine {
       await this.store.save(run);
       this.runs.set(id, run);
       this.emit(run, "recovery", "Current files retained without overwriting them. Resolved file claims released; implementation acceptance remains pending.");
-      await this.store.flush();
+      await this.flushEvents();
       return this.get(id);
     });
   }

@@ -64,3 +64,18 @@ test("an event persistence failure is reported but does not permanently poison s
   store.record(event); await store.flush();
   assert.deepEqual(await store.events(id), [event]);
 });
+
+test("queued events retain their original values when the caller changes the input", async (t) => {
+  const { project } = await fixture(t);
+  const store = new RunStore(path.join(project, ".workflow/runs"));
+  const id = randomUUID();
+  const event = { id: randomUUID(), runId: id, time: "now", kind: "operation", message: "original", operation: {
+    id: "call", name: "read", kind: "read" as const, state: "completed" as const, output: { text: "original" },
+  } };
+  const expected = structuredClone(event);
+  store.record(event);
+  event.message = "changed";
+  event.operation.output.text = "changed";
+  await store.flush();
+  assert.deepEqual(await store.events(id), [expected]);
+});

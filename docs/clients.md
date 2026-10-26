@@ -101,6 +101,8 @@ try {
 
 Initialize project configuration first with `workflow init`. `createApplication` takes optional model/planner service overrides, a block runner, execution mode, and Temporal options. It owns the project lease and cleans up failed startup. `close()` is idempotent, aborts and drains coordinator work, closes task/design services, and shuts down the engine. Subscribe once per presentation and unsubscribe when it closes. Events are live hints; read runs/tasks and persisted events for authoritative state.
 
+Run events reach subscribers after their event-log write succeeds. Streamed `text_delta` events remain ephemeral but keep their order relative to saved run events; coordinator notifications remain live hints. Event reads, mutations that flush events, and shutdown also drain queued run notifications. Each subscriber receives its own event copy. A subscriber that throws or rejects is logged without failing execution or preventing delivery to other subscribers; the engine does not wait for asynchronous subscriber work.
+
 An embedded host may attach HTTP separately:
 
 ```ts
