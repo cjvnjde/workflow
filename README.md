@@ -2,7 +2,7 @@
 
 **Turn a coding request into a workflow you can inspect, run, and resume.**
 
-Workflow is a local AI development tool with a browser workspace. Describe a task, attach files or screenshots, and the orchestrator composes a TypeScript workflow from your reusable blocks, task instructions, and model profiles. Review the graph, then start it—or enable automatic execution.
+Workflow is an AI development engine with a browser workspace and terminal clients. Describe a task, attach files or screenshots, and the orchestrator composes a TypeScript workflow from your reusable blocks, task instructions, and model profiles. Review the graph, then start it—or enable automatic execution.
 
 ## Why this project exists
 
@@ -34,7 +34,7 @@ The coordinator uses the supplied request, context, task instructions, blocks, a
 | **Workflow** | Steps composed into sequences, branches, parallel groups, and bounded loops. |
 | **Task instructions and model profiles** | Guidance the orchestrator uses to choose blocks and models for a particular request. |
 
-The web UI uses Vue, Vue Flow, CodeMirror, and Catppuccin Mocha. Pi provides embedded model sessions and authentication integration; Temporal provides durable execution. Workflow owns the task workspace, configuration, approval flow, and results. [Read the design rationale](docs/concepts.md) or [explore the architecture](docs/architecture.md).
+The web UI uses Vue, Vue Flow, CodeMirror, and Catppuccin Mocha. The terminal workspace uses OpenTUI. Pi provides embedded model sessions and authentication integration; Temporal provides durable execution. Workflow owns the task workspace, configuration, approval flow, and results. [Read the design rationale](docs/concepts.md) or [explore the architecture](docs/architecture.md).
 
 ## Get started
 
@@ -69,6 +69,20 @@ Open **http://127.0.0.1:4310**:
 The current directory is the project; there is no project-path argument. `workflow init` can generate profiles if a provider is already connected; use `--no-ai` to initialize without a model request. Review is the default approval mode.
 
 [The getting-started guide](docs/getting-started.md) covers running without a PATH installation, development mode, first-task examples, and setup troubleshooting.
+
+## Choose an interface
+
+```sh
+workflow                       # engine, API, and web GUI
+workflow tui                   # full terminal workspace: chat, graph, tools, approval
+workflow serve --no-web         # engine and API only
+workflow exec verify.ts         # execute directly in the terminal, without HTTP
+workflow run verify.ts --approve --wait  # execute through a running server
+```
+
+In `workflow tui`, describe a task, inspect `/graph`, and `/approve` or `/reject` it. Follow streamed AI responses, tool executions, and step results. Use `/auto on` for automatic approval of new tasks, `/sessions` to reopen work, and `/settings` or `/login` to configure models. [The terminal guide](docs/terminal.md) covers commands, shortcuts, and server attachment.
+
+The engine's application API is independent of presentation. The web GUI, terminal workspace, and CLI commands share a validated HTTP client; embedded hosts can call the application directly. [Engine and clients](docs/clients.md) covers server access, integration APIs, and separate builds. Desktop and mobile GUIs can use the same interfaces; those additional clients are not included yet.
 
 ## Workflows are TypeScript
 
@@ -114,6 +128,8 @@ Use commands available in your project. Parallel blocks share its working direct
 
 Import the source through **New task → Use a TypeScript workflow**, or save it in your project and run `workflow run verify.ts` while its server is running. Inside a block, `ctx.ai({ prompt, model?, output? })` adds a model session with optional typed output.
 
+Use `defineTool()` for typed operations shared by code and models: call one with `ctx.call(tool, input)` or expose it through `ctx.ai({ tools: [tool], ... })`. Implementations are frozen with approval, and structured activity records connect each call to its file/command effects. See [shared tools and replay rules](docs/tools.md) and the [example](examples/shared-tools.ts).
+
 For an implementation/review loop driven by `review.approved`, see [the composed workflow example](examples/composed.ts). The [workflow guide](docs/workflows.md) explains conditions, outcomes, typed handoffs, model overrides, and limits.
 
 ## Documentation
@@ -128,6 +144,8 @@ Start at **[docs/README.md](docs/README.md)** for reading paths and a complete i
 | Build reusable code and AI blocks | [Writing blocks](docs/blocks.md) · [Contracts, testing and evidence](docs/block-contracts-and-evidence.md) |
 | Configure models, task instructions, skills, and MCP | [Configuration](docs/configuration.md) |
 | Understand statuses, retries, recovery, and backups | [Running and recovering workflows](docs/operations.md) |
+| Work entirely in a terminal | [Terminal workspace](docs/terminal.md) |
+| Embed the engine or build another UI | [Engine and clients](docs/clients.md) |
 | Use the CLI or local HTTP API | [Command and API reference](docs/reference.md) |
 | Understand the implementation or contribute | [Architecture](docs/architecture.md) · [Development](docs/development.md) |
 

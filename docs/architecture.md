@@ -2,14 +2,17 @@
 
 [Documentation](README.md) → Architecture
 
-Workflow has one execution engine, with a browser and CLI using the same local API. TypeScript composition describes the work, Temporal records its progress, and host activities perform effects.
+Workflow has a presentation-independent application layer around one execution engine. The browser and terminal clients share an HTTP client; embedded hosts and `workflow exec` call the application directly. TypeScript composition describes the work, Temporal records its progress, and host activities perform effects.
 
 ## Request to result
 
 ```mermaid
 flowchart TD
-    UI["Vue workspace / CLI"] --> API["Local Fastify API"]
-    API --> Task["Persist request + attachments"]
+    UI["Vue workspace / OpenTUI / CLI"] --> Client["WorkflowClient + public contracts"]
+    Client --> API["Fastify HTTP adapter"]
+    API --> App["WorkflowApplication"]
+    Direct["Embedded host / workflow exec"] --> App
+    App --> Task["Persist request + attachments"]
     Task --> Planner["Coordinator: cases, blocks, profiles"]
     Planner --> Compiler["Format, typecheck, preview, bundle"]
     Compiler --> Draft["Draft graph + frozen configuration"]
@@ -30,6 +33,18 @@ flowchart TD
 5. Approval records a recoverable start intent and starts Temporal under the selected version. Activities must match the locally approved execution snapshot.
 6. The workflow interpreter schedules steps and groups. Blocks execute pure code in the replayable runtime and request host effects through recorded activity boundaries.
 7. Checkpoints update the local projection; activity events and live text reach the browser through SSE. Typed results and readable artifacts remain attached to attempts.
+
+Shared `defineTool()` operations can be invoked by code through `ctx.call()` or explicitly offered to `ctx.ai()`. Their compiled module and imports are archived with the approved Temporal version. A bounded worker executes each tool through a host environment, recording its calls and child effects as structured events before execution. Read-only tools permit limited automatic retries; unsafe effects retain explicit recovery. AI sessions still recover as whole activities, not individual turns. See [shared tools](tools.md).
+
+## Application and presentation boundaries
+
+`createApplication` owns initialization, the project lease, tasks, design sessions, provider interactions, planning concurrency/cancellation, and shutdown. `WorkflowEngine` retains execution, approval, and recovery. Neither starts HTTP or loads GUI assets.
+
+`createHttpServer` borrows that application and translates HTTP requests, headers, disconnects, and SSE. Closing this adapter closes its connections but leaves the application running. The host closes the application explicitly. `registerWebGui` optionally adds static browser assets. The legacy `createServer` wrapper keeps its combined ownership for existing callers.
+
+The Vue code imports only the public `contracts` and `client` entry points from the backend tree. The shared client handles validation, revision headers, errors, endpoint selection, and event streaming. Presentation state, graph layout, editors, and rendering remain in `web/`. [Engine and clients](clients.md) documents the integration and lifecycle contract.
+
+The terminal controller also uses only that client and public contracts. `src/tui/view.ts` renders its state with OpenTUI; `presentation.ts` formats activity and composition trees. `src/tui.ts` owns attachment or local application startup, signals, parser resources, and terminal cleanup. The CLI loads `dist/tui.js` only when requested, keeping native rendering out of server and scripting commands.
 
 ## Why Pi is embedded
 
@@ -78,12 +93,17 @@ Paths below are relative to the repository checkout. The packaged CLI includes c
 
 | Area | Main files |
 | --- | --- |
-| CLI and local HTTP | `src/cli.ts`, `src/server.ts` |
+| Application and lifecycle | `src/application.ts` |
+| CLI and local HTTP | `src/cli.ts`, `src/terminal-client.ts`, `src/http-server.ts` |
+| Terminal workspace | `src/tui.ts`, `src/tui/controller.ts`, `src/tui/view.ts`, `src/tui/presentation.ts` |
+| Client contract and transport | `src/contracts.ts`, `src/client.ts` |
+| Optional GUI serving / compatibility | `src/web-server.ts`, `src/server.ts` |
 | Task persistence and planning | `src/tasks.ts`, `src/task-planner.ts`, `src/task-schema.ts` |
 | Public authoring API | `src/workflow-sdk.ts`, `src/composition-sdk.ts` |
 | Source validation and preview | `src/program-compiler.ts`, `src/composition-plan.ts`, `src/source-format.ts` |
 | Durable execution | `src/engine.ts`, `src/temporal-workflow.ts`, `src/composition-runtime.ts` |
 | Code blocks and host effects | `src/code-runtime.ts`, `src/code-host.ts`, `src/block-runner.ts` |
+| Shared tools and environments | `src/tool-sdk.ts`, `src/tool-runner.ts`, `src/tool-worker.ts`, `src/execution-environment.ts`, `src/operation-schema.ts` |
 | Models and sessions | `src/agent-session.ts`, `src/model-runtime.ts`, `src/available-models.ts` |
 | Auth and user defaults | `src/browser-auth.ts`, `src/user-settings.ts`, `src/terminal-commands.ts` |
 | Library and settings design | `src/library.ts`, `src/library-proposals.ts`, `src/design-chats.ts`, `src/settings-designer.ts` |

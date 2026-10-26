@@ -1,5 +1,8 @@
 import { z } from "zod";
 import type { FlowNode } from "./composition-sdk.js";
+import type { WorkflowTool } from "./tool-sdk.js";
+export { defineTool, __workflowTools } from "./tool-sdk.js";
+export type { WorkflowTool, ToolContext, ExecutionEnvironment } from "./tool-sdk.js";
 export { z };
 export { step, sequence, parallel, when, repeatUntil, describeFlow } from "./composition-sdk.js";
 export type { FlowNode, FlowStep, FlowContext, FlowStructure } from "./composition-sdk.js";
@@ -70,7 +73,7 @@ export type ExecResult = {
 };
 export type AIOptions<S extends z.ZodType = z.ZodType> = {
   /** Text-only transformation: only the structured-result tool is available. */
-  tools?: "none";
+  tools?: "none" | readonly WorkflowTool[];
   role?: "test-author" | "repair" | "verification" | "review";
   capabilities?: { skills?: string[]; mcp?: Record<string, string[]>; optionalMcp?: string[] };
   /** Project-relative globs owned by other steps; checked before accepting this call. */
@@ -83,6 +86,8 @@ export type AIOptions<S extends z.ZodType = z.ZodType> = {
   output?: S;
 };
 export interface BlockContext<I> {
+  /** Invoke the same frozen, typed capability an AI call can use. */
+  call<A, O>(tool: WorkflowTool<A, O>, input: A): Promise<O>;
   readonly input: I;
   readonly request: string;
   readonly prompt: string;

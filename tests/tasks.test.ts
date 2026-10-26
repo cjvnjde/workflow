@@ -226,7 +226,7 @@ test("recovery planning retains prior evidence and original scope without automa
   return {kind:'question',question:{question:'Which unavailable dependency is ready?',options:[]}};
  });
  cleanup(()=>tasks.close());await tasks.initialize();
- const task=await tasks.create({prompt:'Continue',sourceRunId:draft.id});
+ const task=await tasks.create({prompt:'Continue',sourceRunId:draft.id,approval:'automatic'});
  await until(()=>tasks.get(task.id).status==='needs_input');
  assert.ok(observed);assert.equal(tasks.get(task.id).approval,'review');
  assert.equal(await readFile(path.join(project,'retained.txt'),'utf8'),'completed work');

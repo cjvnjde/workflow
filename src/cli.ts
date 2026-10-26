@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
-import { readFile, realpath } from "node:fs/promises";
-import { z } from "zod";
+import { realpath } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { initializeProject, loadLibrary } from "./library.js";
-import { runSchema } from "./domain.js";
+import { clientCommands, runClientCommand, readProgram, printRun, executionExitCode } from "./terminal-client.js";
+import { waitForRun } from "./client.js";
 
 async function main() {
   const { values, positionals } = parseArgs({
@@ -16,6 +16,10 @@ async function main() {
       "no-ai": { type: "boolean", default: false },
       input: { type: "string", default: "{}" },
       approve: { type: "boolean", default: false },
+      "no-web": { type: "boolean", default: false },
+      server: { type: "string" },
+      wait: { type: "boolean", default: false },
+      json: { type: "boolean", default: false },
       "temporal-address": { type: "string" },
       "temporal-namespace": { type: "string", default: "default" },
       help: { type: "boolean", short: "h" },
@@ -23,10 +27,41 @@ async function main() {
   });
   const command = positionals[0] ?? "serve";
   if (values.help || command === "help") {
-    console.log(
-      'Usage:\n  workflow login [provider]     Connect an account or API key in the terminal UI\n  workflow logout [provider]    Remove saved credentials in the terminal UI\n  workflow model [search]       Choose a default model in the terminal UI\n  workflow thinking             Choose default thinking in the terminal UI\n  workflow auth                 Show connection metadata (never secrets)\n  workflow init [--instructions "Project constraints"] [--no-ai]\n  workflow profiles [--instructions "Model preferences"]  Regenerate model profiles with AI\n  workflow [serve] [--port 4310] [--demo]\n  workflow runs                 List runs from the local server\n  workflow pause <run-id>        Pause after the current step\n  workflow resume <run-id>       Resume, or explicitly retry an interrupted step\n  workflow cancel <run-id>       Cancel a running or paused workflow\n  workflow recover <run-id>      Retry safe file recovery after a conflict\n\nRun workflow from your project folder. Configuration and run state live in .workflow/ in the current directory. Provider credentials belong to workflow, outside the project; Pi does not need to be installed. The command includes the web UI and manages a persistent local Temporal server. Use --demo to simulate agents and checks. Advanced: --temporal-address host:port --temporal-namespace name connects to an existing server.',
-    );
-    console.log('\n  workflow run <file.ts> [--input \'{"request":"..."}\'] [--approve]\n    Typecheck a TypeScript workflow and create a draft on the local server.\n    --approve starts it immediately; otherwise review it in the web UI.');
+    console.log(`Usage:
+  workflow init [--instructions "Project constraints"] [--no-ai]
+  workflow profiles [--instructions "Model preferences"]
+  workflow [serve] [--port 4310] [--no-web] [--demo]
+  workflow tui [--server URL] [--demo]  Interactive terminal workspace
+  workflow exec <file.ts> [--input JSON] [--json]
+  workflow run <file.ts> [--input JSON] [--approve] [--wait]
+  workflow task "Request"       Create an asynchronous planning task
+  workflow tasks               List tasks
+  workflow task-show <task-id>  Inspect planning, questions, and the linked run
+  workflow answer <task-id> "Answer"
+  workflow runs                List runs
+  workflow show <run-id>        Inspect the full draft or result
+  workflow approve <run-id> [--wait]
+  workflow reject <run-id>
+  workflow events <run-id>      Print persisted activity
+  workflow watch <run-id>       Wait until completion or attention is needed
+  workflow pause <run-id>       Pause after the current step
+  workflow resume <run-id>      Resume or explicitly retry an interrupted step
+  workflow cancel <run-id>
+  workflow recover <run-id>
+  workflow login [provider]    Connect an account or API key in the terminal UI
+  workflow logout [provider]
+  workflow model [search]
+  workflow thinking
+  workflow auth
+
+Run workflow from your project folder. State lives in .workflow/ in the current directory.
+serve includes the web UI; --no-web starts only the API and worker.
+exec explicitly approves and executes a TypeScript workflow without an HTTP server or GUI.
+run creates a draft on a running server; inspect it with show, then approve it.
+Client commands accept --port, --server URL (explicitly selects that server's project), and --json.
+watch/--wait/exec exit 0 on completion, 1 on failure/cancellation, 2 when attention is needed.
+--demo simulates agents/checks. Advanced: --temporal-address host:port --temporal-namespace name.
+Provider credentials belong to Workflow, outside the project; Pi does not need to be installed.`);
     return;
   }
   if (["login", "logout", "model", "thinking", "auth"].includes(command)) {
@@ -36,53 +71,49 @@ async function main() {
     return;
   }
   const project = await realpath(process.cwd());
-  if (["run", "runs", "pause", "resume", "cancel", "recover"].includes(command)) {
-    const port = Number(values.port);
-    if (!Number.isInteger(port) || port < 1 || port > 65535) { throw new Error("Port must be between 1 and 65535"); }
-    const base = `http://127.0.0.1:${port}`;
-    const projectResponse = await fetch(`${base}/api/project`, { signal: AbortSignal.timeout(5000) });
-    const served = z.object({ project: z.string() }).parse(await projectResponse.json());
-    if (await realpath(served.project) !== project) { throw new Error("The local server belongs to another project"); }
-    if (command === "run") {
-      if (positionals.length !== 2 || !positionals[1]?.endsWith(".ts")) throw new Error("Expected workflow run <file.ts> [--input JSON] [--approve]");
-      const filename = path.relative(project, path.resolve(project, positionals[1]));
-      const input = z.record(z.string(), z.json()).parse(JSON.parse(values.input));
-      const title = path.basename(filename, ".ts");
-      const response = await fetch(`${base}/api/programs`, {
-        method: "POST", headers: { "x-workflow-client": "1", "content-type": "application/json" },
-        body: JSON.stringify({ filename, source: await readFile(path.resolve(project, filename), "utf8"), input, title,
-          task: typeof input.request === "string" ? input.request : title }),
-        signal: AbortSignal.timeout(120_000),
-      });
-      const body: unknown = await response.json();
-      if (!response.ok) throw new Error(z.object({ error: z.string() }).parse(body).error);
-      let run = runSchema.parse(body);
-      if (values.approve) {
-        const approved = await fetch(`${base}/api/runs/${run.id}/approve`, {
-          method: "POST", headers: { "x-workflow-client": "1", "content-type": "application/json", "if-match": `"${run.revision}"` },
-          body: "{}", signal: AbortSignal.timeout(120_000),
-        });
-        const result: unknown = await approved.json();
-        if (!approved.ok) throw new Error(z.object({ error: z.string() }).parse(result).error);
-        run = runSchema.parse(result);
-      }
-      console.log(`${run.id} · ${run.status} · ${base}/?run=${run.id}`);
-      return;
-    }
-    if (command === "runs") {
-      const response = await fetch(`${base}/api/runs`, { signal: AbortSignal.timeout(5000) });
-      const runs = z.array(z.object({ id: z.string(), status: z.string(), title: z.string() })).parse(await response.json());
-      for (const run of runs) { console.log(`${run.id}  ${run.status.padEnd(12)} ${run.title}`); }
-      return;
-    }
-    const id = z.string().uuid().parse(positionals[1]);
-    const response = await fetch(`${base}/api/runs/${id}/${command}`, {
-      method: "POST", headers: { "x-workflow-client": "1", "content-type": "application/json" }, body: "{}", signal: AbortSignal.timeout(15_000),
+  if (command === "tui") {
+    if (positionals.length > 1) throw new Error("Use workflow tui [--server URL] [--demo]");
+    // Keep the native renderer in a separately loaded bundle for headless commands.
+    const terminalEntry = new URL("./tui.js", import.meta.url).href;
+    const { runTerminalWorkspace } = await import(terminalEntry) as typeof import("./tui.js");
+    await runTerminalWorkspace({ project, port: Number(values.port), server: values.server, demo: values.demo,
+      temporal: { address: values["temporal-address"], namespace: values["temporal-namespace"] } });
+    return;
+  }
+  if (clientCommands.includes(command)) {
+    await runClientCommand(command, positionals.slice(1), {
+      project, port: values.port, server: values.server, input: values.input,
+      approve: values.approve, wait: values.wait, json: values.json,
     });
-    const body: unknown = await response.json();
-    if (!response.ok) { throw new Error(z.object({ error: z.string() }).parse(body).error); }
-    const run = runSchema.parse(body);
-    console.log(`${run.id} · ${run.status}${command === "pause" ? " · current step finishes before pausing" : ""}`);
+    return;
+  }
+  if (command === "exec") {
+    if (positionals.length !== 2) throw new Error("Expected workflow exec <file.ts> [--input JSON]");
+    if (values.server) throw new Error("exec runs locally; use run --server URL --approve --wait for a server");
+    const program = await readProgram(project, positionals[1], values.input);
+    const { createApplication } = await import("./application.js");
+    const controller = new AbortController();
+    const stop = () => controller.abort(new Error("Execution interrupted. Resume the saved run with workflow serve and workflow resume."));
+    process.once("SIGINT", stop); process.once("SIGTERM", stop);
+    let app: Awaited<ReturnType<typeof createApplication>> | undefined;
+    try {
+      app = await createApplication({ project, mode: values.demo ? "demo" : "live",
+        temporal: { address: values["temporal-address"], namespace: values["temporal-namespace"] } });
+      controller.signal.throwIfAborted();
+      const draft = await app.createProgram(program, controller.signal);
+      controller.signal.throwIfAborted();
+      const running = await app.approve(draft.id, draft.revision);
+      const current = app;
+      const run = await waitForRun(() => current.getRun(running.id), {
+        signal: controller.signal,
+        onUpdate: values.json ? undefined : updated => console.error(`${updated.id} · ${updated.status}`),
+      });
+      printRun(run, values.json);
+      process.exitCode = executionExitCode(run);
+    } finally {
+      try { await app?.close(); }
+      finally { process.removeListener("SIGINT", stop); process.removeListener("SIGTERM", stop); }
+    }
     return;
   }
   if (positionals.length > 1) {
@@ -135,34 +166,36 @@ async function main() {
     }
     throw error;
   }
-  const [{ WorkflowEngine }, { runDemoBlock, runPiBlock }, { createServer }] = await Promise.all([
-    import("./engine.js"), import("./block-runner.js"), import("./server.js"),
+  const [{ createApplication }, { createHttpServer }] = await Promise.all([
+    import("./application.js"), import("./http-server.js"),
   ]);
-  const engine = new WorkflowEngine(
-    project,
-    values.demo ? "demo" : "live",
-    values.demo ? runDemoBlock : runPiBlock,
-    { address: values["temporal-address"], namespace: values["temporal-namespace"] },
-  );
-  let server: Awaited<ReturnType<typeof createServer>> | undefined;
+  const controller = new AbortController();
+  const stop = () => controller.abort();
+  process.once("SIGINT", stop); process.once("SIGTERM", stop);
+  let app: Awaited<ReturnType<typeof createApplication>> | undefined;
+  let server: Awaited<ReturnType<typeof createHttpServer>> | undefined;
   try {
-    await engine.initialize();
-    server = await createServer(engine, port);
-    const address = await server.listen({ port, host: "127.0.0.1" });
-    console.log(
-      `Workflow ${engine.mode.toUpperCase()} · ${address}\nProject: ${project}`,
-    );
-    if (values.demo) {
-      console.log(
-        "DEMO: agents and checks are simulated. No task files are changed.",
-      );
+    app = await createApplication({ project, mode: values.demo ? "demo" : "live",
+      temporal: { address: values["temporal-address"], namespace: values["temporal-namespace"] } });
+    if (controller.signal.aborted) return;
+    server = await createHttpServer(app, port);
+    const application = app;
+    // This host owns both lifetimes: stop HTTP admission before draining the app.
+    server.addHook("preClose", () => application.close());
+    if (!values["no-web"]) {
+      const { registerWebGui } = await import("./web-server.js");
+      await registerWebGui(server);
     }
-    await new Promise<void>((resolve) => {
-      process.once("SIGINT", resolve);
-      process.once("SIGTERM", resolve);
-    });
+    const address = await server.listen({ port, host: "127.0.0.1" });
+    console.log(`Workflow ${app.mode.toUpperCase()} · ${address}${values["no-web"] ? " · API only" : ""}\nProject: ${project}`);
+    if (values.demo) console.log("DEMO: agents and checks are simulated. No task files are changed.");
+    if (!controller.signal.aborted) await new Promise<void>(resolve => controller.signal.addEventListener("abort", () => resolve(), { once: true }));
   } finally {
-    try { await server?.close(); } finally { await engine.shutdown(); }
+    try { await server?.close(); }
+    finally {
+      try { await app?.close(); }
+      finally { process.removeListener("SIGINT", stop); process.removeListener("SIGTERM", stop); }
+    }
   }
 }
 

@@ -4,7 +4,7 @@ import {
   resolveAgentSettings,
   type RunEvent,
   type WorkflowRun,
-} from "../../src/domain.js";
+} from "../../src/contracts.js";
 import type { PlanDraft } from "../composables/use-draft.js";
 import { currentActivity, statusLabel, stepState } from "../workflow-status.js";
 import { recoveryAdvice } from "../run-report.js";

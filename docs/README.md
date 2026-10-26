@@ -16,12 +16,15 @@ Workflow turns a development request into an inspectable TypeScript graph, then 
 | --- | --- |
 | [Concepts and design](concepts.md) | The problem Workflow solves; task, case, block, step, workflow, and run; why code, models, and durable execution fit together. |
 | [Getting started](getting-started.md) | Installation, project initialization, browser setup, first task, and importing TypeScript. |
+| [Terminal workspace](terminal.md) | OpenTUI chat, live activity, graphs, approval, sessions, settings, and provider login. |
 | [Writing workflows](workflows.md) | The composition primitives, typed data, conditions, outcomes, loops, parallel scheduling, and older workflow formats. |
 | [Block contracts and evidence](block-contracts-and-evidence.md) | Single-block testing, enforced ownership roles, selective skills/MCP, decisions and actual model sessions. |
 | [Writing blocks](blocks.md) | `block()`, context operations, AI outputs, model overrides, command results, artifacts, and reusable library modules. |
+| [Shared tools](tools.md) | Typed tools callable by blocks and models, replay rules, frozen implementations, structured activity, and environments. |
 | [Configuration](configuration.md) | Providers, model profiles, task instructions, AI settings chats, skills, MCP, limits, and stored configuration. |
 | [Running and recovering workflows](operations.md) | Statuses, activity, pause/resume, cancellation, file recovery, version archives, backups, and troubleshooting. |
 | [Command and API reference](reference.md) | CLI commands, environment variables, HTTP routes, and concurrency headers. |
+| [Engine and clients](clients.md) | Headless execution, terminal control, embedding, shared client, and separate builds. |
 | [Architecture](architecture.md) | The request-to-execution path, responsibilities of Pi and Temporal, persistence, and source map. |
 | [Development](development.md) | Local development, build artifacts, tests, packaging, and how to keep these docs accurate. |
 
@@ -32,6 +35,7 @@ Workflow turns a development request into an inspectable TypeScript graph, then 
 | [composed.ts](../examples/composed.ts) | Implementation, deterministic tests, concurrent inspection, a typed approval loop, and a conditional report. |
 | [implement-reviewed.ts](../examples/implement-reviewed.ts) | The supported imperative `run(ctx)` style, with explicit awaited steps. |
 | [scripts-only.ts](../examples/scripts-only.ts) | Running commands without model calls, including existing script compatibility. |
+| [shared-tools.ts](../examples/shared-tools.ts) | One typed file tool used directly by a block and selected for an AI review. |
 
 The examples use project tools and, where applicable, configured model profiles. Read their commands and adapt them to your project before approving execution.
 

@@ -1,17 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, onScopeDispose, ref, watch } from "vue";
 import type { z } from "zod";
-import type { Library } from "../../src/domain.js";
+import type { Library } from "../../src/contracts.js";
 import {
   modelCatalogSchema,
   type AvailableModel,
-} from "../../src/library-editor-schema.js";
+} from "../../src/contracts.js";
 import {
   orchestrationStateSchema,
   type OrchestrationState,
-} from "../../src/orchestration-schema.js";
-import { executionSettingsSchema } from "../../src/setup-schema.js";
-import { type DesignScope } from "../../src/design-schema.js";
+} from "../../src/contracts.js";
+import { executionSettingsSchema } from "../../src/contracts.js";
+import { type DesignScope } from "../../src/contracts.js";
 import { request } from "../api.js";
 import Icon from "../components/Icon.vue";
 import ModelSettings from "./ModelSettings.vue";

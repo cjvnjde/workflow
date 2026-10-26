@@ -8,13 +8,13 @@ import {
   watch,
 } from "vue";
 import { z } from "zod";
-import { resolveAgentSettings, type AgentSettings } from "../../src/domain.js";
+import { resolveAgentSettings, type AgentSettings } from "../../src/contracts.js";
 import {
   modelCatalogSchema,
   modelKey,
   type AvailableModel,
-} from "../../src/library-editor-schema.js";
-import { setupSchema, type Setup } from "../../src/setup-schema.js";
+} from "../../src/contracts.js";
+import { setupSchema, type Setup } from "../../src/contracts.js";
 import { request } from "../api.js";
 import { inputValue } from "../form-events.js";
 import ProviderLogin from "./ProviderLogin.vue";

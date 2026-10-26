@@ -2,14 +2,14 @@
 import { ref, onScopeDispose, toRaw } from "vue";
 import { z } from "zod";
 import { request } from "../api.js";
-import type { McpServer } from "../../src/capability-schema.js";
-import type { OrchestrationSettings } from "../../src/orchestration-schema.js";
+import type { McpServer } from "../../src/contracts.js";
+import type { OrchestrationSettings } from "../../src/contracts.js";
 import Field from "../components/Field.vue";
 import Icon from "../components/Icon.vue";
 import McpSettings from "./McpSettings.vue";
 const props = defineProps<{
   projectCapabilities?: import("zod").infer<
-    typeof import("../../src/orchestration-schema.js").projectCapabilitiesSchema
+    typeof import("../../src/contracts.js").projectCapabilitiesSchema
   >;
 }>();
 const capabilities = defineModel<OrchestrationSettings["capabilities"]>({

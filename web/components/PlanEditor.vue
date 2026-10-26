@@ -7,12 +7,12 @@ import {
   type WorkflowNode,
   type WorkflowPlan,
   type WorkflowRun,
-} from "../../src/domain.js";
+} from "../../src/contracts.js";
 import {
   modelCatalogSchema,
   modelKey,
   type AvailableModel,
-} from "../../src/library-editor-schema.js";
+} from "../../src/contracts.js";
 import { request } from "../api.js";
 import type { PlanDraft } from "../composables/use-draft.js";
 import { inputValue, inputChecked } from "../form-events.js";

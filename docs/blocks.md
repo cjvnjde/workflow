@@ -46,6 +46,7 @@ This block returns diagnostics and lets its workflow route feedback to implement
 | Operation | Behavior |
 | --- | --- |
 | `await ctx.ai({ prompt, instructions?, model?, output? })` | A fresh model/tool session; returns Markdown or schema-validated data. |
+| `await ctx.call(tool, input)` | Invokes a frozen `defineTool()` operation with typed input and output. See [shared tools](tools.md). |
 | `await ctx.exec(command, { timeoutMs?, env? })` | Bash in the project directory. Returns command status and output. |
 | `await ctx.readFile(path)` | Reads text through the host file tools. |
 | `await ctx.writeFile(path, text)` | Writes text through managed file recovery. |
@@ -94,6 +95,8 @@ A model can be an object with `provider`, `model`, `thinking`, `timeoutMs`, and 
 Model choice can also be part of a block's declared input schema and passed to `ctx.ai`. A profile is a convenient source of settings, not a separate block type. Omit `model` on `ctx.ai` when the orchestrator's per-step assignment should control it.
 
 An AI session has file tools, Bash, Git inspection, configured checks, and enabled skills/MCP tools. It does not inherit another session's conversation. Include the needed feedback in the prompt or inputs. Tool access follows the server user's access; a review instruction does not enforce a read-only OS boundary.
+
+Use `ctx.ai({ tools: [myTool], ... })` to expose only selected [shared tools](tools.md) plus the result submission tool. The same `myTool` can be called from code with `ctx.call(myTool, input)`.
 
 ## Commands and host code
 

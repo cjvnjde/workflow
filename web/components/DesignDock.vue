@@ -6,7 +6,7 @@ import {
   type DesignScope,
   type DesignSession,
   type DesignPageContext,
-} from "../../src/design-schema.js";
+} from "../../src/contracts.js";
 import type { DesignRequest } from "../design-types.js";
 import { request } from "../api.js";
 import Icon from "./Icon.vue";

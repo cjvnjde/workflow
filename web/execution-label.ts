@@ -1,4 +1,4 @@
-import type { Block, WorkflowRun } from "../src/domain.js";
+import type { Block, WorkflowRun } from "../src/contracts.js";
 
 export function executionLabel(executor: Block["executor"]) {
   if (executor?.kind === "code") return "TypeScript";

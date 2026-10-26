@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { blocksForAgent } from "../../src/domain.js";
+import { blocksForAgent } from "../../src/contracts.js";
 import { executionLabel } from "../execution-label.js";
-import type { DesignProposal } from "../../src/design-schema.js";
+import type { DesignProposal } from "../../src/contracts.js";
 defineProps<{ proposal: DesignProposal }>();
 </script>
 

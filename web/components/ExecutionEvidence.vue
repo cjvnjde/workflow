@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import type { RunEvent, WorkflowRun } from "../../src/domain.js";
+import type { RunEvent, WorkflowRun } from "../../src/contracts.js";
 import { runReport } from "../run-report.js";
 import { executionEvidence } from "../execution-evidence.js";
 const props = defineProps<{

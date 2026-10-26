@@ -31,6 +31,8 @@ See [Architecture](architecture.md#source-map) for the source map and execution 
 ```sh
 bun run typecheck
 bun run build
+bun run build:engine  # backend artifacts, without invoking Vite
+bun run build:web     # GUI assets only
 ```
 
 Typechecking includes Vue scripts, templates, and component props through the Vue language engine. `scripts/typecheck.ts` integrates it directly for Bun. A regression test verifies that script, template, and prop errors fail.
@@ -41,7 +43,12 @@ Main outputs:
 
 | Output | Purpose |
 | --- | --- |
+| `dist/application.js` and declarations | Embeddable application and lifecycle. |
+| `dist/http-server.js` and declarations | Optional HTTP adapter. |
+| `dist/client.js`, `dist/contracts.js` and declarations | Portable client and public data contracts. |
 | `dist/cli.js` | Executable Bun CLI. |
+| `dist/tui.js` | Lazily loaded OpenTUI terminal workspace. |
+| `dist/tool-worker.js` | Bounded worker for frozen shared-tool implementations. |
 | `dist/web/` | Browser UI and assets. |
 | `dist/workflow-sdk.js` and declaration files | SDK used to compile authored workflows/blocks. |
 | `dist/program-runtime.js` | Runtime included in compiled user workflow versions. |
@@ -61,6 +68,8 @@ bun test --timeout 30000 tests/composition.test.ts
 ```
 
 Tests use disposable projects. They cover SDK behavior, API validation, approval, commands/files, parallel execution, spending, worker loss, restart/recovery, CLI packaging, and terminal setup. Model integration fixtures use local fake providers or mocks; ordinary test suites do not need paid model credentials. Engine tests use real local Temporal services.
+
+The terminal tests render through OpenTUI's native test renderer and exercise typing, command completion, graph layout, resizing, and masked secret input. Controller tests use the real HTTP adapter, and a Bun pseudo-terminal test runs the packaged `tui` command through planning, approval, execution, and clean shutdown. Run them after building with `bun test --timeout 45000 tests/tui*.test.ts`. Markdown parser caches and credentials use isolated test directories. Source development uses `bun run workflow tui`.
 
 For browser checks:
 

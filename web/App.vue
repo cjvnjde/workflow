@@ -8,12 +8,12 @@ import {
   ref,
   watch,
 } from "vue";
-import { runSchema } from "../src/domain.js";
-import { taskSchema } from "../src/task-schema.js";
-import { orchestrationStateSchema } from "../src/orchestration-schema.js";
-import { libraryProposalSchema } from "../src/library-editor-schema.js";
-import type { DesignScope } from "../src/design-schema.js";
-import { request } from "./api.js";
+import { runSchema } from "../src/contracts.js";
+import { taskSchema } from "../src/contracts.js";
+import { orchestrationStateSchema } from "../src/contracts.js";
+import { libraryProposalSchema } from "../src/contracts.js";
+import type { DesignScope } from "../src/contracts.js";
+import { apiUrl, request } from "./api.js";
 import { useDraft } from "./composables/use-draft.js";
 import { useWorkflowData } from "./composables/use-workflow-data.js";
 import { useTasks } from "./composables/use-tasks.js";
@@ -21,7 +21,7 @@ import { statusLabel } from "./workflow-status.js";
 import type { DesignRequest } from "./design-types.js";
 import TaskComposer from "./components/TaskComposer.vue";
 import ProgramComposer from "./components/ProgramComposer.vue";
-import type { ProgramSource } from "../src/program-schema.js";
+import type { ProgramSource } from "../src/contracts.js";
 import TaskPlanning from "./components/TaskPlanning.vue";
 import RunWorkspace from "./components/RunWorkspace.vue";
 import Icon from "./components/Icon.vue";
@@ -753,12 +753,12 @@ async function designApplied() {
               <a
                 v-for="file in task.attachments"
                 :key="file.id"
-                :href="`/api/attachments/${file.id}`"
+                :href="apiUrl(`/api/attachments/${file.id}`)"
                 target="_blank"
                 rel="noreferrer"
                 ><img
                   v-if="file.kind === 'image'"
-                  :src="`/api/attachments/${file.id}`"
+                  :src="apiUrl(`/api/attachments/${file.id}`)"
                   :alt="file.name"
                 /><Icon v-else name="file" /><span>{{ file.name }}</span></a
               >

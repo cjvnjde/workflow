@@ -1,5 +1,5 @@
-import type { FlowStructure } from "../src/composition-sdk.js";
-import type { WorkflowPlan } from "../src/domain.js";
+import type { FlowStructure } from "../src/contracts.js";
+import type { WorkflowPlan } from "../src/contracts.js";
 
 type Point = { x: number; y: number };
 export type LayoutNode = {

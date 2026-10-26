@@ -3,8 +3,8 @@ import { onScopeDispose, ref } from "vue";
 import {
   attachmentSchema,
   type Attachment,
-} from "../../src/capability-schema.js";
-import { request } from "../api.js";
+} from "../../src/contracts.js";
+import { apiUrl, request } from "../api.js";
 import Icon from "./Icon.vue";
 
 const props = withDefaults(
@@ -147,7 +147,7 @@ function drop(event: DragEvent) {
         <div v-for="file in files" :key="file.id" class="attachment-chip">
           <img
             v-if="file.kind === 'image'"
-            :src="`/api/attachments/${file.id}`"
+            :src="apiUrl(`/api/attachments/${file.id}`)"
             :alt="file.name"
           />
           <Icon v-else name="file" :size="22" />

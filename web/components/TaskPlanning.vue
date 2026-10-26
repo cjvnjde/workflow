@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import type { TaskRequest } from "../../src/task-schema.js";
+import type { TaskRequest } from "../../src/contracts.js";
 import type { TaskStream } from "../composables/use-workflow-data.js";
 import { describeActivity } from "../activity.js";
 import Icon from "./Icon.vue";

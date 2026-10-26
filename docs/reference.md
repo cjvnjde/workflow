@@ -11,7 +11,14 @@ Run project commands from the target project's directory. Configuration is in th
 | `workflow init [--instructions "..."] [--no-ai]` | Initialize the project. Without `--no-ai`, connected providers can generate initial profiles. |
 | `workflow profiles [--instructions "..."]` | Regenerate model profiles using AI. |
 | `workflow` or `workflow serve` | Serve this project and start its worker. |
-| `workflow run <file.ts> [--input '<JSON object>'] [--approve]` | Submit source to the running project server. Default is a draft; `--approve` starts it. |
+| `workflow tui [--server URL] [--demo]` | Open the full-screen terminal workspace; attach to an existing server or start a private local engine. |
+| `workflow exec <file.ts> [--input '<JSON object>'] [--json]` | Execute locally without HTTP or GUI; wait and return an execution exit code. |
+| `workflow run <file.ts> [--input '<JSON object>'] [--approve] [--wait]` | Submit source to the running project server. Default is a draft; `--approve` starts it. |
+| `workflow show <run-id>` | Full draft or result, including revision. |
+| `workflow approve <run-id> [--wait]`, `workflow reject <run-id>` | Decide whether a draft runs. |
+| `workflow events <run-id>`, `workflow watch <run-id>` | Read activity or wait for completion/attention. |
+| `workflow task "Request"`, `workflow tasks`, `workflow task-show <task-id>` | Create/list/inspect planning requests. |
+| `workflow answer <task-id> "Answer"` | Answer the current planning question. |
 | `workflow runs` | List runs on the local project server. |
 | `workflow pause <run-id>` | Finish active steps, then pause new dispatch. |
 | `workflow resume <run-id>` | Continue paused work or explicitly retry interrupted steps. |
@@ -23,21 +30,25 @@ Run project commands from the target project's directory. Configuration is in th
 | `workflow thinking` | Choose shared thinking defaults. |
 | `workflow auth` | Print connection metadata, never secret values. |
 
-Terminal setup commands can run outside a project. Interactive setup requires a real terminal and supports cancellation. Browser Settings provides the primary setup path.
+Terminal setup commands can run outside a project. Interactive setup requires a real terminal and supports cancellation. Both browser Settings and the TUI's `/login`, `/models`, and `/thinking` support model setup. See [Terminal workspace](terminal.md) for slash commands and shortcuts.
 
 ### Server options
 
 | Option | Behavior |
 | --- | --- |
+| `--no-web` | Server only: API and worker without serving GUI assets. |
+| `--server URL` | Client commands: explicitly select a server project, including over a tunnel. |
+| `--json` | Client commands and `exec`: machine-readable output. |
+| `--wait` | Wait for a submitted/controlled run to finish or need attention. |
 | `--port 4310` | HTTP port; 4310 is the default. Use the same option on CLI control commands. |
-| `--port 0` | Server only: choose a free port and print it. Control commands need that concrete port. |
+| `--port 0` | Server: choose a free port and print it. TUI: skip discovery and start a private engine. Control commands need a concrete server port. |
 | `--demo` | Explicit simulation of agents/checks using real Temporal history. Normal startup and development use live AI. |
 | `--temporal-address host:port` | Connect to an existing trusted Temporal endpoint instead of the managed service. |
 | `--temporal-namespace name` | Namespace for that connection; default `default`. |
 
 An external Temporal service is not stopped when Workflow exits. The CLI currently exposes address/namespace selection, not remote authentication/TLS onboarding.
 
-`workflow run` returns the submitted run ID and state; it does not wait for completion. Source must be a project-relative `.ts` file, and `--input` must be a JSON object. The server must already be running for that same project.
+`workflow run` returns the submitted run ID and state; add `--wait` to wait for completion or a state needing attention. Source must be a project-relative `.ts` file, and `--input` must be a JSON object. The server must already be running for that same project unless `--server` explicitly selects another endpoint. Use `exec` to run without a server. See [Engine and clients](clients.md) for exit codes, embedding, and remote access.
 
 ### Environment variables
 
@@ -53,7 +64,7 @@ Project commands and stdio MCP servers inherit the server environment. Provider-
 
 ## Local HTTP API
 
-The Vue UI and CLI use the same loopback API. This is a local application interface, not a remotely authenticated public service. Request/response validation is implemented in `src/server.ts` and its imported schemas.
+The Vue UI and CLI use the same loopback API. This is a local application interface, not a remotely authenticated public service. Request/response validation is implemented in `src/application.ts`, `src/http-server.ts`, and the public `src/contracts.ts` schemas.
 
 All mutations and `/api/auth/*` reads require `X-Workflow-Client: 1`. Responses disable caching. Draft reads return a quoted revision `ETag`, such as `"2"`; send it as `If-Match` when editing, refining, or approving. Conflicts return 409. The browser supplies these headers; older clients can omit some draft revision headers, but should not rely on that for concurrent edits.
 
@@ -66,7 +77,7 @@ Settings and library mutations carry their own required revision/hash fields. Re
 | `GET /api/project` | Served project, mode, and library/configuration. |
 | `GET /api/health` | Server readiness. |
 | `GET /api/tasks` | Task list. |
-| `POST /api/tasks` | Create `{ prompt, attachments?: [attachmentId] }`; returns 202 with the task. |
+| `POST /api/tasks` | Create `{ prompt, attachments?: [attachmentId], approval?: "review" \| "automatic", sourceRunId? }`; returns 202 with the task. Omitted approval uses project settings; recovery tasks always require review. |
 | `GET /api/tasks/:id` | Task, planning events, and linked run. |
 | `POST /api/tasks/:id/answer` | Answer an essential question with `{ answer, revision }`. |
 | `POST /api/tasks/:id/retry` or `/cancel` | Retry or cancel planning. |
@@ -124,4 +135,4 @@ Planning is asynchronous. Poll the returned task ID or subscribe to the stream. 
 | `POST /api/auth/session/:id/respond` | Respond with `{ promptId, value }`. |
 | `POST /api/auth/session/:id/cancel`, `POST /api/auth/providers/:id/logout` | Cancel sign-in or remove local credentials. |
 
-The browser implementations in `web/api.ts`, the shared schemas, and the server routes are the detailed contract for design proposal bodies. The API has no published cross-version stability guarantee; keep integrations aligned with the installed application.
+The shared client in `src/client.ts`, public contracts, and HTTP routes are the detailed contract for design proposal bodies. The API has no published cross-version stability guarantee; keep integrations aligned with the installed application.

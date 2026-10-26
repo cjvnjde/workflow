@@ -1,4 +1,4 @@
-import type { RunEvent } from "../src/domain.js";
+import type { RunEvent } from "../src/contracts.js";
 import type { IconName } from "./icons.js";
 
 export const activityCategories = [
@@ -87,6 +87,15 @@ export function describeActivity(event: RunEvent): ActivityItem {
     icon: "spark",
     markdown: false,
   };
+  if (event.operation) {
+    const op = event.operation;
+    item.category = "tools"; item.icon = "terminal";
+    item.title = `${op.parentId ? "↳ " : ""}${toolLabels[op.name] ?? op.name}`;
+    item.state = op.state; item.preview = op.summary ?? `${op.kind} · ${op.state}`;
+    item.detail = JSON.stringify(op, null, 2);
+    item.tone = op.state === "completed" ? "success" : ["failed", "interrupted"].includes(op.state) ? "error" : "working";
+    return item;
+  }
   if (event.kind === "model_session" || event.kind === "model_session_end") {
     const data = object(event.message);
     item.category = "usage";

@@ -12,7 +12,7 @@ import {
   designSessionSchema,
   type DesignSession,
   type DesignPageContext,
-} from "../../src/design-schema.js";
+} from "../../src/contracts.js";
 import { request } from "../api.js";
 import Icon from "./Icon.vue";
 import ProposalPreview from "./ProposalPreview.vue";

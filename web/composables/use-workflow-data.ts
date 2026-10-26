@@ -6,8 +6,8 @@ import {
   runSchema,
   type RunEvent,
   type WorkflowRun,
-} from "../../src/domain.js";
-import { projectSchema, request, runListSchema } from "../api.js";
+} from "../../src/contracts.js";
+import { client, projectSchema, request, runListSchema } from "../api.js";
 import {
   mergeEvents,
   mergeRuns,
@@ -66,7 +66,7 @@ export function useWorkflowData() {
   }
   const controller = new AbortController();
   const options = { signal: controller.signal };
-  let source: EventSource | undefined;
+  let source: ReturnType<typeof client.subscribe> | undefined;
   let running = false;
   let pending = false;
   let pendingEvents = false;
@@ -197,30 +197,8 @@ export function useWorkflowData() {
   onMounted(() => {
     void refreshProject().catch(report);
     void refreshRuns().catch(report);
-    source = new EventSource("/api/stream");
-    source.onopen = () => {
-      connected.value = true;
-      if (!project.value) void refreshProject().catch(report);
-      schedule(true);
-    };
-    source.onerror = () => {
-      connected.value = false;
-    };
-    source.onmessage = (message) => {
-      if (controller.signal.aborted) {
-        return;
-      }
-      let data: unknown;
-      try {
-        data = JSON.parse(message.data);
-      } catch {
-        return;
-      }
-      const parsed = eventSchema.safeParse(data);
-      if (!parsed.success) {
-        return;
-      }
-      const event = parsed.data;
+    source = client.subscribe((event) => {
+      if (controller.signal.aborted) return;
       if (event.kind === "run_deleted") {
         notices.value = notices.value.filter(
           (item) => item.runId !== event.runId,
@@ -330,7 +308,15 @@ export function useWorkflowData() {
       if (refreshKinds.has(event.kind)) {
         schedule(false);
       }
-    };
+    }, {
+      signal: controller.signal,
+      onOpen: () => {
+        connected.value = true;
+        if (!project.value) void refreshProject().catch(report);
+        schedule(true);
+      },
+      onError: () => { connected.value = false; },
+    });
   });
   onScopeDispose(() => {
     controller.abort();

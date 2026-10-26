@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { OrchestrationSettings } from "../../src/orchestration-schema.js";
+import type { OrchestrationSettings } from "../../src/contracts.js";
 import Field from "../components/Field.vue";
 import Icon from "../components/Icon.vue";
 const settings = defineModel<OrchestrationSettings>({ required: true });

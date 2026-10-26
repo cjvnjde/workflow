@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { RunEvent } from "../../src/domain.js";
+import type { RunEvent } from "../../src/contracts.js";
 import {
   activityCategories,
   describeActivity,

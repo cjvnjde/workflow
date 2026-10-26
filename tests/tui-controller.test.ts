@@ -1,0 +1,144 @@
+import assert from "node:assert/strict";
+import path from "node:path";
+import { cp } from "node:fs/promises";
+import { userPaths } from "../src/user-settings.js";
+import test, { type TestContext } from "node:test";
+import { createApplication, type ApplicationServices } from "../src/application.js";
+import { createHttpServer } from "../src/http-server.js";
+import { WorkflowClient } from "../src/client.js";
+import { TerminalController } from "../src/tui/controller.js";
+import { connectTerminal } from "../src/tui.js";
+import { BrowserAuth } from "../src/browser-auth.js";
+import { createTemplate } from "../src/templates.js";
+import { loadOrchestration } from "../src/orchestration-settings.js";
+import { authRuntime } from "./auth-fixture.js";
+import { fixture, passingRunner } from "./helpers.js";
+
+const model = { provider: "test", id: "careful", name: "Careful", reasoning: true, thinkingLevels: ["low", "medium", "high"], contextWindow: 32000, maxTokens: 4000, cost: null };
+async function context(t: TestContext, options: { question?: boolean; auth?: BrowserAuth; plan?: ApplicationServices["plan"] } = {}) {
+  const { project, library, cleanup } = await fixture(t);
+  const cache = path.join(userPaths().directory, "cache", "temporal");
+  const previous = process.env.WORKFLOW_HOME;
+  process.env.WORKFLOW_HOME = path.join(project, "user-settings");
+  await cp(cache, path.join(project, "user-settings", "cache", "temporal"), { recursive: true }).catch(() => {});
+  t.after(() => { if (previous === undefined) delete process.env.WORKFLOW_HOME; else process.env.WORKFLOW_HOME = previous; });
+  const app = await createApplication({ project, mode: options.question || options.plan ? "live" : "demo", runner: passingRunner, plan: options.plan,
+    catalog: async () => ({ models: [model], warnings: [] }), providers: async () => [], auth: options.auth,
+    taskPlanner: async ({ task, emit }) => {
+      emit("text_delta", "Let me clarify the integration.");
+      if (!task.answers.length) return { kind: "question", question: { question: "Which service?", options: ["Internal", "External"] } };
+      return { kind: "plan", plan: createTemplate(task.prompt, "feature", library), library, rationale: "Use the chosen service", suggestedBlocks: [] };
+    },
+  });
+  cleanup(() => app.close());
+  const server = await createHttpServer(app, 0); cleanup(() => server.close());
+  const address = await server.listen({ host: "127.0.0.1", port: 0 });
+  const controller = new TerminalController(new WorkflowClient({ baseUrl: address }));
+  cleanup(() => controller.close());
+  await controller.initialize();
+  return { app, controller, project, library, address };
+}
+async function until(controller: TerminalController, check: () => boolean) {
+  for (let i = 0; i < 200; i++) { await controller.refresh(); if (check()) return; await Bun.sleep(30); }
+  throw new Error(`State transition timed out: ${controller.state.error} ${controller.state.task?.status}/${controller.state.run?.status}`);
+}
+
+test("terminal requests produce reviewable drafts; stale approval is refused, auto mode affects only new tasks", async t => {
+  const { controller, app, project } = await context(t);
+  await controller.submit("Build a terminal feature");
+  await until(controller, () => controller.state.run?.status === "draft");
+  const run = controller.state.run!;
+  assert.equal(controller.state.task?.approval, "review");
+  await controller.submit("/graph"); assert.equal(controller.state.screen, "graph");
+  await controller.submit("/auto on");
+  assert.equal(app.getRun(run.id).status, "draft");
+  assert.equal((await loadOrchestration(project)).settings.approval, "review");
+  await app.updatePlan(run.id, { ...run.plan, title: "Edited elsewhere" }, run.revision);
+  await assert.rejects(controller.runAction("approve"), /Draft changed/);
+  await controller.refresh();
+  await controller.submit("/reject"); assert.equal(app.getRun(run.id).status, "rejected");
+  await controller.submit("/new");
+  await controller.submit("Run this automatically");
+  await until(controller, () => controller.state.run?.status === "completed");
+  assert.equal(controller.state.task?.approval, "automatic");
+  await controller.submit("/sessions");
+  const first = controller.state.choices.find(choice => choice.label === "Build a terminal feature"); assert.ok(first);
+  await controller.choose(first.id);
+  assert.equal(controller.state.run?.id, run.id);
+  assert.equal(controller.state.run?.status, "rejected");
+});
+
+test("planner questions, answers, model settings and thinking selection work through the terminal client", async t => {
+  const { controller, app, project, address } = await context(t, { question: true });
+  await assert.rejects(connectTerminal({ project, server: address, demo: true }), /selected server is live/);
+  const attached = await connectTerminal({ project, server: address });
+  assert.equal(attached.owned, false);
+  await attached.close();
+  assert.equal((await attached.client.project()).project, app.project, "detaching must leave the engine running");
+  await controller.submit("Integrate a service");
+  await until(controller, () => controller.state.task?.status === "needs_input");
+  await controller.submit("1");
+  await until(controller, () => controller.state.run?.status === "draft");
+  assert.equal(controller.state.task?.answers[0]?.answer, "Internal");
+  await controller.submit("/models");
+  await controller.choose("test/careful");
+  assert.equal((await app.setup()).projectAgent.model, "careful");
+  await controller.submit("/thinking");
+  await controller.choose("high");
+  assert.equal((await app.setup()).projectAgent.thinking, "high");
+  assert.equal(controller.state.run?.status, "draft");
+});
+
+test("terminal login handles prompts without putting secrets into activity, and cancels sign-in on exit", async t => {
+  let received = "";
+  const auth = new BrowserAuth(async () => authRuntime(async (_provider, _method, interaction) => {
+    received = await interaction.prompt({ type: "secret", message: "API key" });
+    return { type: "api_key", key: received };
+  }));
+  const { controller } = await context(t, { auth });
+  await controller.submit("/login test");
+  await controller.choose("test/api_key");
+  await until(controller, () => !!controller.state.auth?.prompt);
+  await controller.respondAuth("fake-test-key-not-a-credential");
+  await until(controller, () => controller.state.auth?.status === "succeeded");
+  assert.equal(received, "fake-test-key-not-a-credential");
+  assert.ok(!JSON.stringify(controller.state).includes(received));
+  await controller.submit("/login test"); await controller.choose("test/api_key");
+  await until(controller, () => !!controller.state.auth?.prompt);
+  await controller.close();
+  for (let i = 0; i < 30 && auth.current()?.status === "pending"; i++) await Bun.sleep(10);
+  assert.equal(auth.current()?.status, "cancelled");
+});
+
+test("draft refinement keeps streaming across refreshes, ignores unrelated activity, and can be cancelled", async t => {
+  const entered = Promise.withResolvers<AbortSignal>();
+  const { controller, app, library } = await context(t, { plan: async options => {
+    options.emit?.("text_delta", "Checking the revised plan.");
+    entered.resolve(options.signal);
+    await new Promise<void>(resolve => {
+      options.signal.addEventListener("abort", () => resolve(), { once: true });
+      if (options.signal.aborted) resolve();
+    });
+    return { ...options.previousPlan!, title: "Must not be published" };
+  } });
+  await until(controller, () => controller.state.connected);
+  app.engine.coordinatorActivity("text_delta", "Unrelated planning");
+  await Bun.sleep(30);
+  assert.deepEqual(controller.state.live, {});
+  const draft = await app.engine.create(createTemplate("Refine this workflow", "feature", library), library);
+  await controller.openSession({ id: draft.id, kind: "run" });
+  const work = controller.submit("Make review more thorough");
+  try {
+    const signal = await entered.promise;
+    await until(controller, () => Object.values(controller.state.live).includes("Checking the revised plan."));
+    await controller.refresh();
+    assert.ok(Object.values(controller.state.live).includes("Checking the revised plan."));
+    assert.ok(controller.state.events.some(event => event.kind === "user_message" && event.message === "Make review more thorough"));
+    await controller.submit("/cancel");
+    await work;
+    for (let i = 0; !signal.aborted && i < 100; i++) await Bun.sleep(10);
+    assert.equal(signal.aborted, true);
+    assert.equal(app.getRun(draft.id).revision, draft.revision);
+    assert.deepEqual(controller.state.live, {});
+  } finally { await controller.close(); await work; }
+});

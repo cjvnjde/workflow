@@ -6,13 +6,13 @@ import {
   type MaybeRefOrGetter,
   toValue,
 } from "vue";
-import type { WorkflowRun } from "../../src/domain.js";
+import type { WorkflowRun } from "../../src/contracts.js";
 import { isSourceWorkflow } from "../execution-label.js";
 import { readPlanDraft } from "../plan-draft.js";
 import {
   programSourceSchema,
   type ProgramSource,
-} from "../../src/program-schema.js";
+} from "../../src/contracts.js";
 
 type Draft = {
   text: string;

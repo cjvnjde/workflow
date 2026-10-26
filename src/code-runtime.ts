@@ -18,6 +18,8 @@ import type {
 import type { CodeOperation } from "./code-schema.js";
 import { modelOverride, utf8Bytes } from "./program-steps.js";
 import { failureMessage } from "./failure-message.js";
+import { toolReference } from "./tool-sdk.js";
+import type { WorkflowTool } from "./tool-sdk.js";
 
 /** Pure block code runs durably; every host effect is recorded as an activity. */
 export async function executeCode(options: {
@@ -65,6 +67,13 @@ export async function executeCode(options: {
   };
   let inputValue: unknown;
   const context: BlockContext<any> = {
+    call: async (tool, input) => {
+      const parsed = tool.input.parse(input);
+      assertJSON(parsed);
+      const serialized = JSON.stringify(parsed);
+      if (utf8Bytes(serialized) > 256_000) throw new Error("Tool input exceeds 256 KB; pass a focused input or file reference");
+      return tool.output.parse(await effect(() => options.operation({ kind: "tool", tool: toolReference(tool), input: JSON.parse(serialized) })));
+    },
     get input() {
       return inputValue;
     },
@@ -79,7 +88,7 @@ export async function executeCode(options: {
     visit: run.visits[node.id]!,
     ai: (async (args: {
       prompt: string;
-      tools?: "none";
+      tools?: "none" | readonly WorkflowTool[];
       role?: "test-author" | "repair" | "verification" | "review";
       capabilities?: { skills?: string[]; mcp?: Record<string, string[]>; optionalMcp?: string[] };
       instructions?: string;
@@ -89,14 +98,14 @@ export async function executeCode(options: {
       model?: Parameters<typeof modelOverride>[0];
       output?: z.ZodType;
     }) => {
-      if (args.tools === "none" && args.prompt.length > 32_000) throw new Error("No-tools AI prompts must fit within 32000 characters; select focused input first");
+      if (args.tools !== undefined && args.prompt.length > 32_000) throw new Error("AI prompts with explicit tools must fit within 32000 characters; select focused input first");
       const outputSchema = args.output
         ? z.toJSONSchema(args.output)
         : undefined;
       const result = await effect<BlockResult>(() =>
         options.operation({
           kind: "ai",
-          tools: args.tools,
+          tools: typeof args.tools === "string" ? args.tools : args.tools?.map(toolReference),
           role: args.role,
           capabilities: args.capabilities,
           prompt: args.prompt,

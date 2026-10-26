@@ -92,7 +92,7 @@ The journal does not undo Bash edits, Git operations, check-command effects, ext
 ├── tasks/                    # requests and planning history
 ├── attachments/              # uploaded request data
 ├── runs/                     # approval snapshots, events, attempt journals
-├── versions/                 # archived executable workflow bundles
+├── versions/                 # archived workflow bundles, tools.js and manifests
 ├── temporal/                 # managed SQLite execution history and logs
 ├── server-lease/             # live project ownership lease
 └── lock                      # diagnostic owner information

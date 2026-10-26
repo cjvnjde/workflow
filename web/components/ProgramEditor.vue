@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { WorkflowRun } from "../../src/domain.js";
+import type { WorkflowRun } from "../../src/contracts.js";
 import type { PlanDraft } from "../composables/use-draft.js";
 import Icon from "./Icon.vue";
 import CodeEditor from "./CodeEditor.vue";

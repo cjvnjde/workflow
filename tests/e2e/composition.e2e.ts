@@ -270,7 +270,7 @@ test("parallel live responses stay with their own step when a sibling finishes",
   await page.getByLabel("Activity step", { exact: true }).selectOption("");
   await expect(
     page
-      .locator(".activity-feed .event")
+      .locator(".activity-feed .event.node_end")
       .filter({ hasText: "Backend finished." }),
   ).toBeVisible();
   await expect(streams).toHaveCount(1);

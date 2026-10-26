@@ -64,7 +64,7 @@ export class Tasks {
     if (attachments.reduce((sum, item) => sum + item.size, 0) > 20_000_000) { throw new Error("Attachments must total less than 20 MB"); }
     const { settings } = await loadOrchestration(this.engine.project);
     const now = new Date().toISOString();
-    const task = taskSchema.parse({ id: randomUUID(), createdAt: now, updatedAt: now, revision: 0, status: "queued", prompt: sourceRun?.plan.task ?? input.prompt, sourceRunId: sourceRun?.id, attachments, answers: structuredClone(sourceTask?.answers ?? []), approval: sourceRun ? "review" : settings.approval });
+    const task = taskSchema.parse({ id: randomUUID(), createdAt: now, updatedAt: now, revision: 0, status: "queued", prompt: sourceRun?.plan.task ?? input.prompt, sourceRunId: sourceRun?.id, attachments, answers: structuredClone(sourceTask?.answers ?? []), approval: sourceRun ? "review" : input.approval ?? settings.approval });
     this.records.set(task.id, task);
     await this.save(task); this.enqueue(task.id);
     return this.get(task.id);

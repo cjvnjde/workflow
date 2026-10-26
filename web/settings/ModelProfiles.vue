@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { agentSchema } from "../../src/domain.js";
-import type { OrchestrationSettings } from "../../src/orchestration-schema.js";
+import { agentSchema } from "../../src/contracts.js";
+import type { OrchestrationSettings } from "../../src/contracts.js";
 import {
   modelKey,
   type AvailableModel,
-} from "../../src/library-editor-schema.js";
+} from "../../src/contracts.js";
 import { inputValue, inputChecked } from "../form-events.js";
 import Field from "../components/Field.vue";
 import Icon from "../components/Icon.vue";

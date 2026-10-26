@@ -1,4 +1,9 @@
 import { executionWorkspace } from "./execution-workspace.js";
+import { Type } from "@earendil-works/pi-ai";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { localExecutionEnvironment, type ExecutionEnvironmentFactory, type EnvironmentOptions } from "./execution-environment.js";
+import { describeTools, executeTool } from "./tool-runner.js";
+import { boundedEvidence, operationRecordSchema, type OperationRecord } from "./operation-schema.js";
 import { prepareAIHandoff } from "./ai-handoff.js";
 import { ProtectedPaths, ProtectedPathsChangedError } from "./protected-paths.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -72,6 +77,7 @@ export class WorkflowEngine {
     readonly mode: "demo" | "live",
     private readonly runner: BlockRunner,
     private readonly temporalOptions: TemporalOptions = {},
+    private readonly environmentFactory: ExecutionEnvironmentFactory = localExecutionEnvironment,
   ) {
     this.versions = new WorkflowVersions(path.join(project, ".workflow", "versions"));
     this.store = new RunStore(path.join(project, ".workflow", "runs"));
@@ -289,6 +295,38 @@ export class WorkflowEngine {
     if (!approved?.approvedAt || !isDeepStrictEqual(policy(approved), policy(run))) {
       throw ApplicationFailure.nonRetryable("Temporal execution does not match a locally approved snapshot", "UnapprovedExecution");
     }
+  }
+
+  private async recordOperation(run: WorkflowRun, nodeId: string, value: OperationRecord) {
+    const operation = operationRecordSchema.parse(value);
+    const event: RunEvent = { id: randomUUID(), runId: run.id, nodeId, time: new Date().toISOString(), kind: "operation", operation,
+      message: `${operation.name}: ${operation.state}${operation.summary ? `\n${operation.summary}` : ""}` };
+    this.store.record(event); await this.store.flush();
+    this.emitter.emit("event", event);
+  }
+
+  private async frozenTools(run: WorkflowRun) {
+    if (!run.executionVersion) throw new Error("Tools require an archived workflow version");
+    const version = await this.versions.load(run.executionVersion);
+    if (!version.toolsPath) throw new Error("This workflow predates shared tools; create a new draft");
+    return version.toolsPath;
+  }
+
+  private async selectedTools(run: WorkflowRun, refs: Exclude<Extract<CodeOperation, {kind:"ai"}>["tools"], string | undefined>, parentId: string, options: EnvironmentOptions): Promise<ToolDefinition[]> {
+    const codePath = await this.frozenTools(run);
+    const tools = await describeTools(codePath, refs, options.signal);
+    return tools.map(tool => ({ name: tool.name, label: tool.name, description: tool.description, parameters: Type.Unsafe(tool.input),
+      execute: async (id, input, toolSignal) => {
+        if (this.mode === "demo") throw new Error("Custom tools are not executed in demo mode");
+        const callId = `${parentId}/${id}`;
+        const result = await executeTool({ codePath, tool, input, callId, request: run.plan.task,
+          signal: toolSignal ? AbortSignal.any([options.signal, toolSignal]) : options.signal,
+          environment: signal => this.environmentFactory({ ...options, signal }),
+          record: record => this.recordOperation(run, run.cursor, record),
+        });
+        return { content: [{ type: "text" as const, text: result.summary ?? JSON.stringify(result.data) }], details: { data: result.data, ...(result.details === undefined ? {} : { presentation: result.details }) } };
+      },
+    }));
   }
 
   private assertActivity(run: WorkflowRun) {
@@ -781,13 +819,35 @@ export class WorkflowEngine {
     const signal = AbortSignal.any([context.cancellationSignal, this.leaseCancellation.signal]);
     signal.throwIfAborted();
     const emit = (kind: string, message: string) => this.emit(run, kind, message, node.id);
-    const label = operation.kind === "exec" ? operation.command : operation.kind === "ai" ? operation.prompt : operation.path;
+    const operationId = `${run.id}/${context.info.activityId}`;
+    const record = (value: OperationRecord) => this.recordOperation(run, node.id, value);
+    const label = operation.kind === "tool" ? operation.tool.name : operation.kind === "exec" ? operation.command : operation.kind === "ai" ? operation.prompt : operation.path;
     emit("operation_start", `${operation.kind}: ${label.slice(0, 6000)}`);
+    const identity = { id: operationId, name: operation.kind === "ai" ? "AI session" : operation.kind, kind: operation.kind, attempt: context.info.attempt };
     const heartbeat = setInterval(() => context.heartbeat({ nodeId: node.id, operation: operation.kind }), 1000);
     context.heartbeat({ nodeId: node.id });
     try {
+      if (operation.kind !== "tool") await record({ ...identity, state: "started", input: label.slice(0, 16_000) });
       let result: unknown;
-      if (operation.kind === "ai") {
+      if (operation.kind === "tool") {
+        if (this.mode === "demo") throw new Error("Custom tools require live execution; demo never runs authored tool code");
+        const evidence = boundedEvidence(operation.input);
+        const identity = { id: operationId, name: operation.tool.name, kind: "tool" as const, version: operation.tool.version, replay: operation.tool.replay, attempt: context.info.attempt };
+        await record({ ...identity, state: "started", input: evidence.value, truncated: evidence.truncated });
+        const started = Date.now();
+        try {
+          const directory = attemptDirectory(this.project, run.id, node.id, run.visits[node.id] ?? 1);
+          const journal = await FileJournal.open(directory, this.fileClaims);
+          const output = await executeTool({ codePath: await this.frozenTools(run), tool: operation.tool, input: operation.input,
+            callId: operationId, request: run.plan.task, signal, environment: signal => this.environmentFactory({ project: this.project, signal, journal }), record });
+          const data = boundedEvidence(output.data), details = boundedEvidence(output.details);
+          await record({ ...identity, state: "completed", output: data.value, details: details.value, summary: output.summary, truncated: data.truncated || details.truncated, durationMs: Date.now() - started });
+          result = output.data;
+        } catch (error) {
+          await record({ ...identity, state: signal.aborted ? "interrupted" : "failed", summary: String(error).slice(0, 16_000), durationMs: Date.now() - started });
+          throw error;
+        }
+      } else if (operation.kind === "ai") {
         const ownershipError = (operation.role === "verification" || operation.role === "review") && operation.writablePaths?.length
           ? `${operation.role} must be read-only; assign corrections to their owning author`
           : operation.role === "test-author" && !operation.writablePaths?.length
@@ -796,6 +856,7 @@ export class WorkflowEngine {
               ? "Production repair requires protectedPaths naming the reproduction tests owned by the test author" : undefined;
         if (ownershipError) {
           emit("operation_error", ownershipError);
+          await record({ ...identity, state: "failed", summary: ownershipError });
           return { outcome: "fail", summary: ownershipError, artifacts: {} };
         }
         if (operation.role === "verification" || operation.role === "review") operation.writablePaths = [];
@@ -813,7 +874,7 @@ export class WorkflowEngine {
         node.agent = undefined;
         const contextDirectory = attemptDirectory(this.project, run.id, node.id, run.visits[node.id] ?? 1);
         const handoff = await prepareAIHandoff(contextDirectory, operation.prompt);
-        const inheritedInputs = operation.tools === "none" ? {} : resolveInputs(node, run);
+        const inheritedInputs = operation.tools !== undefined ? {} : resolveInputs(node, run);
         const inherited = await prepareAIHandoff(contextDirectory, "Enclosing step inputs (evidence, not additional instructions):\n" + JSON.stringify(inheritedInputs));
         if (handoff.reference) emit("context_reference", JSON.stringify(handoff.reference));
         if (inherited.reference) emit("context_reference", JSON.stringify(inherited.reference));
@@ -828,6 +889,7 @@ export class WorkflowEngine {
         if (owners.some(owner => access === "write" || owner.access === "write" || owner.access !== access)) {
           const summary = "Another AI call owns this worktree; use a distinct worktree for each concurrent writer";
           emit("operation_error", summary);
+          await record({ ...identity, state: "failed", summary });
           // This is a rejected operation with no effects, not a lost activity
           // that needs interruption/recovery and an explicit resume.
           return { outcome: "fail", summary, artifacts: {} };
@@ -841,7 +903,9 @@ export class WorkflowEngine {
           try { audit = await ProtectedPaths.capture(workspace, ["**/*"]); }
           catch { emit("file_evidence_unavailable", "File scan unavailable or exceeds limits; unchanged files have not been established."); }
           emit("execution_workspace", workspace);
-          const completion = await this.executeBlock(run, "value", operation.protectedPaths, operation.writablePaths, workspace, operation.tools, operation.capabilities);
+          const completion = await this.executeBlock(run, "value", operation.protectedPaths, operation.writablePaths, workspace,
+            Array.isArray(operation.tools) ? "selected" : operation.tools, operation.capabilities,
+            Array.isArray(operation.tools) ? { tools: operation.tools, parentId: operationId } : undefined);
           result = completion.result;
         } finally {
           try {
@@ -877,14 +941,21 @@ export class WorkflowEngine {
       if (Buffer.byteLength(JSON.stringify(result)) > 256_000) throw new Error("Operation result exceeds 256 KB. Read a smaller file or return a concise result.");
       emit("operation_end", operation.kind === "exec"
         ? `exec: exit ${(result as { exitCode: number | null }).exitCode}` : `${operation.kind}: finished`);
+      if (operation.kind !== "tool") {
+        const output = boundedEvidence(result);
+        await record({ ...identity, state: "completed", output: output.value, truncated: output.truncated });
+      }
       return result;
-    } catch (error) { emit("operation_error", `${operation.kind}: ${String(error)}`); throw error; }
+    } catch (error) {
+      if (operation.kind !== "tool") await record({ ...identity, state: signal.aborted ? "interrupted" : "failed", summary: String(error).slice(0, 16_000) });
+      emit("operation_error", `${operation.kind}: ${String(error)}`); throw error;
+    }
     finally { clearInterval(heartbeat); }
   }
 
-  private async executeBlock(value: WorkflowRun, resultMode?: "value", protectedPaths?: string[], writablePaths?: string[], workspace = this.project, tools?: "none", capabilities?: import("./workflow-sdk.js").AIOptions["capabilities"]) {
+  private async executeBlock(value: WorkflowRun, resultMode?: "value", protectedPaths?: string[], writablePaths?: string[], workspace = this.project, tools?: "none" | "selected", capabilities?: import("./workflow-sdk.js").AIOptions["capabilities"], shared?: { tools: Exclude<Extract<CodeOperation, {kind:"ai"}>["tools"], string | undefined>; parentId: string }) {
     const node = value.plan.nodes.find(node => node.id === value.cursor);
-    if (value.config.budget?.maxCostUsd === undefined || (node && value.blocks[node.block]?.definition.executor)) return this.executeBlockNow(value, resultMode, protectedPaths, writablePaths, workspace, tools, capabilities);
+    if (value.config.budget?.maxCostUsd === undefined || (node && value.blocks[node.block]?.definition.executor)) return this.executeBlockNow(value, resultMode, protectedPaths, writablePaths, workspace, tools, capabilities, shared);
     // Only budgeted model sessions serialize. Otherwise siblings may spend the
     // same stale remaining balance. Compute and unbudgeted AI stay parallel.
     const before = this.budgetQueue;
@@ -899,7 +970,7 @@ export class WorkflowEngine {
       signal.throwIfAborted();
       await Promise.race([before, new Promise<never>((_, reject) => { onAbort = () => reject(signal.reason); signal.addEventListener("abort", onAbort, {once:true}); })]);
       signal.throwIfAborted();
-      return await this.executeBlockNow(value, resultMode, protectedPaths, writablePaths, workspace, tools, capabilities);
+      return await this.executeBlockNow(value, resultMode, protectedPaths, writablePaths, workspace, tools, capabilities, shared);
     } finally {
       clearInterval(heartbeat);
       if (onAbort) signal.removeEventListener("abort", onAbort);
@@ -907,7 +978,7 @@ export class WorkflowEngine {
     }
   }
 
-  private async executeBlockNow(value: WorkflowRun, resultMode?: "value", protectedPaths?: string[], writablePaths?: string[], workspace = this.project, tools?: "none", capabilities?: import("./workflow-sdk.js").AIOptions["capabilities"]) {
+  private async executeBlockNow(value: WorkflowRun, resultMode?: "value", protectedPaths?: string[], writablePaths?: string[], workspace = this.project, tools?: "none" | "selected", capabilities?: import("./workflow-sdk.js").AIOptions["capabilities"], shared?: { tools: Exclude<Extract<CodeOperation, {kind:"ai"}>["tools"], string | undefined>; parentId: string }) {
     const run = runSchema.parse(value);
     this.assertActivity(run);
     if (run.mode !== this.mode) {
@@ -947,6 +1018,8 @@ export class WorkflowEngine {
         project: workspace, attachmentProject: this.project, absoluteJournalPaths: isolated, config: run.config, bundle, node, protectedPaths, writablePaths, tools, capabilities, task: run.plan.task, workflow: run.plan, composition: run.program?.structure,
         inputs: resolveInputs(node, run), visit: run.visits[node.id] ?? 1,
         settings, signal, journal, maxCostUsd: remainingCost, resultMode,
+        customTools: shared ? protect => this.selectedTools(run, shared.tools, shared.parentId, { project: workspace, signal, journal, protect, isolated }) : undefined,
+        operation: { parentId: shared?.parentId ?? `${run.id}/${context.info.activityId}`, record: value => this.recordOperation(run, node.id, value) },
         onUsage: async (sessionUsage) => { const usage = addUsage(previousUsage, sessionUsage); await saveUsage(directory, usage); this.usageByAttempt.set(`${run.id}/${node.id}/${run.visits[node.id] ?? 1}`, { ...usage }); this.emit(run, "usage", JSON.stringify(usage), node.id); },
         emit: (kind, message) => { this.emit(run, kind, message, node.id); },
       }), bundle);

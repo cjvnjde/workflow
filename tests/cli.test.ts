@@ -143,6 +143,8 @@ test("the package ships a Bun executable and UI, not project state or a developm
   assert.ok(files.includes("dist/cli.js"));
   assert.ok(files.includes("dist/workflow-bundle.js"));
   assert.ok(files.includes("dist/program-runtime.js"));
+  assert.ok(files.includes("dist/tool-worker.js"));
+  assert.ok(files.includes("dist/tool-sdk.d.ts"));
   assert.ok(files.includes("dist/workflow-sdk.d.ts"));
   assert.ok(files.includes("dist/composition-sdk.d.ts"));
   assert.ok(files.includes("examples/implement-reviewed.ts"));
@@ -151,7 +153,7 @@ test("the package ships a Bun executable and UI, not project state or a developm
   assert.ok(
     !files.some((file) => /^(src|tests|node_modules|\.workflow)\//.test(file)),
   );
-  assert.ok(!files.some((file) => file.endsWith(".ts") && !["dist/workflow-sdk.d.ts", "dist/composition-sdk.d.ts"].includes(file) && !file.startsWith("examples/")));
+  assert.ok(!files.some((file) => file.endsWith(".ts") && !(file.startsWith("dist/") && file.endsWith(".d.ts")) && !file.startsWith("examples/")));
 });
 
 test("workflow serves the bundled UI from the install location while using the caller's project", async (t) => {
@@ -339,4 +341,71 @@ test("a killed CLI recovers its lease and Temporal server, then resumes without 
       await process?.exited;
     }
   }
+});
+
+test("workflow exec uses the packaged engine without a web/API server and returns a machine-readable result", async t => {
+  const { project, env, run } = await commandFixture(t);
+  await run(["init"]);
+  await writeFile(path.join(project, "standalone.ts"), `import { workflow, block, step } from "workflow";
+const check = block({run(ctx) { ctx.summary("Terminal completed"); return {passed:true}; }});
+export default workflow({name:"Terminal",flow:step("check",check)});`);
+  const result = await execute("workflow", ["exec", "standalone.ts", "--demo", "--json"], { cwd: project, env, timeout: 30_000 });
+  const completed = runSchema.parse(JSON.parse(result.stdout));
+  assert.equal(completed.status, "completed");
+  assert.equal(completed.attempts[0]?.result?.summary, "Terminal completed");
+  await assert.rejects(access(path.join(project, ".workflow/lock")), { code: "ENOENT" });
+  await access(path.join(project, ".workflow/runs", completed.id, "run.json"));
+
+  await writeFile(path.join(project, "failed.ts"), `import { workflow, block, step } from "workflow";
+const check = block({run() { throw new Error("Expected terminal failure"); }});
+export default workflow({name:"Failure",flow:step("check",check)});`);
+  await assert.rejects(execute("workflow", ["exec", "failed.ts", "--demo", "--json"], { cwd: project, env, timeout: 30_000 }), error => {
+    const failure = z.object({ code: z.literal(1), stdout: z.string() }).parse(error);
+    assert.equal(runSchema.parse(JSON.parse(failure.stdout)).status, "failed");
+    return true;
+  });
+});
+
+test("packaged CLI executes frozen shared tools through its worker", async t => {
+  const { project, env, run } = await commandFixture(t);
+  await run(["init"]);
+  await writeFile(path.join(project, "input.txt"), "packaged worker");
+  await writeFile(path.join(project, "tools.ts"), `import { workflow, block, step, defineTool, z } from "workflow";
+const inspect = defineTool({name:"inspect", description:"Read text", replay:"safe", input:z.object({path:z.string()}),output:z.string(),
+  execute: (input,ctx) => ctx.env.readText(input.path)});
+export default workflow({name:"Tools",flow:step("read",block({async run(ctx){const result=await ctx.call(inspect,{path:"input.txt"});ctx.summary(result);return result;}}))});`);
+  const result = await execute("workflow", ["exec", "tools.ts", "--json"], { cwd: project, env, timeout: 30_000 });
+  const completed = runSchema.parse(JSON.parse(result.stdout));
+  assert.equal(completed.status, "completed", completed.error);
+  assert.equal(completed.attempts[0]?.result?.summary, "packaged worker");
+});
+
+test("headless CLI server supports a separate terminal client and has no GUI routes", async t => {
+  const { project, env, run } = await commandFixture(t);
+  await run(["init"]);
+  const child = spawn("workflow", ["serve", "--no-web", "--demo", "--port", "0"], { cwd: project, env, stdio: ["ignore", "pipe", "pipe"] });
+  let output = "";
+  let diagnostics = "";
+  child.stderr.on("data", chunk => { diagnostics += String(chunk); });
+  const closed = new Promise<number | null>((resolve, reject) => { child.once("close", resolve); child.once("error", reject); });
+  void closed.catch(() => {});
+  try {
+    const address = await new Promise<string>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`Headless server did not start: ${diagnostics}`)), 15_000);
+      child.stdout.on("data", chunk => {
+        output += String(chunk);
+        const address = output.match(/http:\/\/127\.0\.0\.1:\d+/)?.[0];
+        if (address) { clearTimeout(timer); resolve(address); }
+      });
+      child.once("close", () => { clearTimeout(timer); reject(new Error(diagnostics)); });
+      child.once("error", reject);
+    });
+    assert.equal((await fetch(address)).status, 404);
+    const listed = await run(["runs", "--server", address, "--json"]);
+    assert.deepEqual(JSON.parse(listed.stdout), []);
+    const taskResult = await run(["task", "Describe a terminal workflow", "--server", address, "--json"]);
+    const task = z.object({ id: z.string(), status: z.string() }).parse(JSON.parse(taskResult.stdout));
+    const shown = await run(["task-show", task.id, "--server", address, "--json"]);
+    assert.equal(JSON.parse(shown.stdout).id, task.id);
+  } finally { child.kill("SIGTERM"); assert.equal(await closed, 0); }
 });

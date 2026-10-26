@@ -12,7 +12,7 @@ import {
   authOptionsSchema,
   authSessionSchema,
   type AuthSession,
-} from "../../src/auth-schema.js";
+} from "../../src/contracts.js";
 import { request } from "../api.js";
 import Icon from "../components/Icon.vue";
 import AuthLink from "../components/AuthLink.vue";

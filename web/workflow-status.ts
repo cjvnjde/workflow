@@ -1,4 +1,4 @@
-import type { RunEvent, WorkflowRun } from "../src/domain.js";
+import type { RunEvent, WorkflowRun } from "../src/contracts.js";
 export const statusLabel = (status: string) =>
   ({
     draft: "Awaiting approval",
@@ -26,6 +26,12 @@ export function stepState(run: WorkflowRun, id: string) {
 export function currentActivity(event?: RunEvent) {
   if (!event) {
     return "Preparing the next step";
+  }
+  if (event.operation) {
+    const op = event.operation;
+    if (op.state === "failed" || op.state === "interrupted") return `${op.name} needs attention`;
+    if (op.state === "completed") return "Working through the step";
+    return op.summary ?? `Running ${op.name}`;
   }
   if (event.kind === "tool_start") {
     const tool = event.message.split(" ")[0] ?? "tool";

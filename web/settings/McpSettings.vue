@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onScopeDispose, ref, watch } from "vue";
 import { z } from "zod";
-import type { McpServer } from "../../src/capability-schema.js";
+import type { McpServer } from "../../src/contracts.js";
 import { request } from "../api.js";
 import { inputValue } from "../form-events.js";
 import Field from "../components/Field.vue";

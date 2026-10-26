@@ -11,6 +11,7 @@ import type { ImageContent, Usage } from "@earendil-works/pi-ai";
 import type { z } from "zod";
 import { addUsage, emptyUsage, priceUsage } from "./budget.js";
 import { getModelRuntime } from "./model-runtime.js";
+import { boundedEvidence, type OperationRecorder } from "./operation-schema.js";
 
 export type ActivitySink = (kind: string, message: string) => void;
 
@@ -27,6 +28,7 @@ export async function runAgentSession(options: {
   onUsage?: (usage: UsageTotals) => Promise<void>;
   maxCostUsd?: number;
   price?: z.infer<typeof priceSchema>;
+  operation?: { parentId: string; record: OperationRecorder };
   /** Continue a prematurely ended response in the same session and budgets. */
   completion?: { isComplete: () => boolean; prompt: () => string };
 }) {
@@ -75,6 +77,9 @@ export async function runAgentSession(options: {
   let usage = emptyUsage();
   let modelFailure: Error | undefined;
   let usageWrites = Promise.resolve();
+  let operationWrites = Promise.resolve();
+  const recordedCalls = new Set<string>();
+  const requestedInputs = new Map<string, unknown>();
   const tools = options.tools.map((tool) => ({
     ...tool,
     executionMode: "sequential" as const,
@@ -90,7 +95,23 @@ export async function runAgentSession(options: {
         throw error;
       }
 
-      return await tool.execute(...args);
+      if (!options.operation) return await tool.execute(...args);
+      const record = options.operation.record;
+      const identity = { id: `${options.operation.parentId}/${args[0]}`, parentId: options.operation.parentId, name: tool.name, kind: "tool" as const };
+      const evidence = boundedEvidence(args[1]);
+      const started = Date.now();
+      recordedCalls.add(args[0]);
+      await record({ ...identity, state: "started", input: evidence.value, truncated: evidence.truncated });
+      try {
+        const result = await tool.execute(...args);
+        combinedSignal.throwIfAborted();
+        const output = boundedEvidence(result.content), details = boundedEvidence(result.details);
+        await record({ ...identity, state: "completed", output: output.value, details: details.value, truncated: output.truncated || details.truncated, durationMs: Date.now() - started });
+        return result;
+      } catch (error) {
+        await record({ ...identity, state: combinedSignal.aborted ? "interrupted" : "failed", summary: String(error).slice(0, 16_000), durationMs: Date.now() - started });
+        throw error;
+      }
     },
   }));
   const { session } = await createAgentSession({
@@ -166,12 +187,28 @@ export async function runAgentSession(options: {
       emit("agent_retry", event.success ? "Provider connection recovered; continuing the same step." : `Provider retry stopped: ${event.finalError ?? "Request failed"}`);
     } else if (event.type === "compaction_end" && event.result?.usage) {
       recordUsage(event.result.usage);
-    } else if (event.type === "tool_execution_start") {
+    } else if (event.type === "tool_execution_start" && options.operation) {
+      requestedInputs.set(event.toolCallId, event.args);
+    } else if (event.type === "tool_execution_end" && options.operation) {
+      // Pi can reject malformed arguments or unknown tools before execute() runs.
+      // These attempts still need visible evidence, without inventing a host effect.
+      if (!recordedCalls.has(event.toolCallId)) {
+        const input = boundedEvidence(requestedInputs.get(event.toolCallId));
+        const output = boundedEvidence(event.result?.content);
+        const operation = options.operation;
+        operationWrites = operationWrites.then(() => operation.record({
+          id: `${operation.parentId}/${event.toolCallId}`, parentId: operation.parentId,
+          name: event.toolName, kind: "tool", state: event.isError ? "failed" : "completed",
+          input: input.value, output: output.value, truncated: input.truncated || output.truncated,
+        })).catch(error => { budget.abort(error); });
+      }
+      requestedInputs.delete(event.toolCallId);
+    } else if (event.type === "tool_execution_start" && !options.operation) {
       emit(
         "tool_start",
         `${event.toolName} ${JSON.stringify(event.args).slice(0, 2000)}`,
       );
-    } else if (event.type === "tool_execution_end") {
+    } else if (event.type === "tool_execution_end" && !options.operation) {
       const content: unknown = event.result?.content;
       const details = (event.isError || event.toolName === "bash") && Array.isArray(content)
         ? content.flatMap((part: unknown) => part && typeof part === "object" && "type" in part && part.type === "text" && "text" in part && typeof part.text === "string" ? [part.text] : []).join("\n").slice(-8000)
@@ -195,6 +232,7 @@ export async function runAgentSession(options: {
       modelFailure = undefined;
       await session.prompt(message, { images });
       await usageWrites;
+      await operationWrites;
       combinedSignal.throwIfAborted();
       // prompt resolves after Pi has exhausted retries or recovered. Surface a
       // final error before asking for a structured submission or another turn.
@@ -215,6 +253,7 @@ export async function runAgentSession(options: {
     try {
       await abortPromise;
       await usageWrites;
+      await operationWrites;
     } finally {
       emit("model_session_end", JSON.stringify({ durationMs: Date.now() - sessionStartedAt, usage }));
       session.dispose();

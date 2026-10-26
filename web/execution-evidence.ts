@@ -1,4 +1,4 @@
-import type { WorkflowRun } from "../src/domain.js";
+import type { WorkflowRun } from "../src/contracts.js";
 
 /** Intervals are actual step attempts, not planned graph branches. */
 export function executionEvidence(

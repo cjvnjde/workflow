@@ -1,4 +1,4 @@
-import type { RunEvent, WorkflowRun } from "../src/domain.js";
+import type { RunEvent, WorkflowRun } from "../src/contracts.js";
 
 export function recoveryAdvice(
   run: Pick<WorkflowRun, "status" | "error" | "attempts">,

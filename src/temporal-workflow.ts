@@ -237,7 +237,13 @@ export async function executeWorkflow(input: WorkflowRun, loadProgram?: () => Wo
                 retry: { maximumAttempts: 1 },
               });
               const completion = await executeCode({ run, node, block, step: options,
-                operation: value => activities.executeOperation(run, value, identity),
+                operation: value => value.kind === "tool" && value.tool.replay === "safe"
+                  ? proxyActivities<WorkflowActivities>({
+                    startToCloseTimeout: executionTimeoutMs(run.config, run.blocks[node.block]!, node) + 5000,
+                    heartbeatTimeout: "10 seconds", cancellationType: "WAIT_CANCELLATION_COMPLETED",
+                    retry: { maximumAttempts: 3, initialInterval: "100 milliseconds", maximumInterval: "1 second" },
+                  }).executeOperation(run, value, identity)
+                  : activities.executeOperation(run, value, identity),
                 log: message => checkpoint("block_log", message, node.id),
               });
               codeError = completion.error;

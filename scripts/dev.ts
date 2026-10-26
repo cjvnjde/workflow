@@ -18,7 +18,7 @@ async function dev() {
   const stop = () => controller.abort(new Error("Development server stopped"));
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
-  const server = Bun.spawn([process.execPath, "src/cli.ts", "serve"], { stdout: "inherit", stderr: "inherit" });
+  const server = Bun.spawn([process.execPath, "src/cli.ts", "serve", "--no-web"], { stdout: "inherit", stderr: "inherit" });
   let web: ReturnType<typeof Bun.spawn> | undefined;
   let stopping = false;
   const exited = server.exited.then(code => {

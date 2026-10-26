@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { RunEvent, WorkflowRun } from "../src/domain.js";
+import type { RunEvent, WorkflowRun } from "../src/contracts.js";
 import type { runListSchema } from "./api.js";
 
 export type RunList = z.infer<typeof runListSchema>;

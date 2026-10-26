@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import type { z } from "zod";
-import { identifierSchema } from "../../src/domain.js";
-import type { executionSettingsSchema } from "../../src/setup-schema.js";
-import type { OrchestrationSettings } from "../../src/orchestration-schema.js";
+import { identifierSchema } from "../../src/contracts.js";
+import type { executionSettingsSchema } from "../../src/contracts.js";
+import type { OrchestrationSettings } from "../../src/contracts.js";
 import { inputValue } from "../form-events.js";
 import Field from "../components/Field.vue";
 import Icon from "../components/Icon.vue";

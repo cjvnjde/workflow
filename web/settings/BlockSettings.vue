@@ -15,9 +15,9 @@ import {
   identifierSchema,
   type BlockBundle,
   type Library,
-} from "../../src/domain.js";
-import { libraryProposalSchema } from "../../src/library-editor-schema.js";
-import type { OrchestrationSettings } from "../../src/orchestration-schema.js";
+} from "../../src/contracts.js";
+import { libraryProposalSchema } from "../../src/contracts.js";
+import type { OrchestrationSettings } from "../../src/contracts.js";
 import { request } from "../api.js";
 import Field from "../components/Field.vue";
 import CodeEditor from "../components/CodeEditor.vue";

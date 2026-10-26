@@ -1,4 +1,4 @@
-import type { DesignScope } from "../src/design-schema.js";
+import type { DesignScope } from "../src/contracts.js";
 export type DesignRequest = {
   scope: DesignScope;
   prompt?: string;

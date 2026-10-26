@@ -4,7 +4,7 @@ const CodeEditor = defineAsyncComponent(() => import("./CodeEditor.vue"));
 import {
   programSourceSchema,
   type ProgramSource,
-} from "../../src/program-schema.js";
+} from "../../src/contracts.js";
 const props = defineProps<{
   onSubmit: (
     value: ProgramSource & { title: string; task: string },

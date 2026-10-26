@@ -15,7 +15,7 @@ import {
 import RoutedEdge from "./RoutedEdge.vue";
 import { Background } from "@vue-flow/background";
 import { Controls } from "@vue-flow/controls";
-import { resolveAgentSettings, type WorkflowRun } from "../../src/domain.js";
+import { resolveAgentSettings, type WorkflowRun } from "../../src/contracts.js";
 import { compositionLayout, routedPositions } from "../graph-layout.js";
 import { stepState } from "../workflow-status.js";
 import { executionLabel, isSourceWorkflow } from "../execution-label.js";

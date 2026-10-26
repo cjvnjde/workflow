@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { nodeSchema, planSchema, validatePlan, type Library, type WorkflowPlan } from "../src/domain.js";
+import { nodeSchema, planSchema, validatePlan, type Library, type WorkflowPlan } from "../src/contracts.js";
 
 // Forms allow temporarily empty fields. The original domain rules still govern saving.
 const editablePlanSchema = planSchema.extend({

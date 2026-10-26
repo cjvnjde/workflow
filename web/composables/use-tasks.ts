@@ -9,7 +9,7 @@ import {
   taskListSchema,
   taskSchema,
   type TaskRequest,
-} from "../../src/task-schema.js";
+} from "../../src/contracts.js";
 import type { z } from "zod";
 import { request } from "../api.js";
 

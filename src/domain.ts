@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { operationRecordSchema } from "./operation-schema.js";
 import { attachmentSchema, capabilitiesSchema } from "./capability-schema.js";
 import { codeExecutorSchema } from "./code-schema.js";
 import { scriptExecutorSchema } from "./script-schema.js";
@@ -204,6 +205,7 @@ export const eventSchema = z
     kind: z.string(),
     nodeId: z.string().optional(),
     message: z.string(),
+    operation: operationRecordSchema.optional(),
   })
   .strict();
 const flowStructureSchema: z.ZodType<import("./composition-sdk.js").FlowStructure> = z.lazy(() => z.object({
