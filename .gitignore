@@ -16,3 +16,4 @@ test-results/
 .workflow/attachments/
 .workflow/temporal/
 .workflow/server-lease/
+.workflow/triggers/

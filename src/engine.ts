@@ -50,6 +50,8 @@ import { programSourceSchema } from "./program-schema.js";
 import { graphProgram } from "./graph-composition.js";
 import { compositionPlan } from "./composition-plan.js";
 import { loadOrchestration } from "./orchestration-settings.js";
+import { instantiateTrigger, triggerTemplate } from "./trigger-template.js";
+import type { GithubEvent } from "./trigger-schema.js";
 
 const activeStatuses = new Set<WorkflowRun["status"]>(["running", "pausing", "paused", "interrupted"]);
 
@@ -466,6 +468,37 @@ export class WorkflowEngine {
 
   private checkSnapshotSize(run: WorkflowRun) {
     if (Buffer.byteLength(JSON.stringify(run)) > 1_000_000) throw new Error("Workflow snapshot is too large. Reduce source, inputs or block resources.");
+  }
+
+  async snapshotForTrigger(id: string) {
+    const source = this.requireRun(id);
+    if (!["draft", "completed"].includes(source.status)) throw new Error("Choose a draft or completed workflow for this trigger");
+    if (source.mode !== this.mode) throw new Error("The selected workflow belongs to another execution mode");
+    const template = triggerTemplate(source);
+    await this.versions.load(template.executionVersion!);
+    return template;
+  }
+
+  /** The inbox reserves id before calling this; recovery reacquires the same run. */
+  async createTriggeredRun(template: WorkflowRun, id: string, event: GithubEvent) {
+    return this.mutate(async () => {
+      const run = instantiateTrigger(template, id, event);
+      const existing = this.runs.get(id);
+      if (existing) {
+        const policy = (value: WorkflowRun) => JSON.parse(JSON.stringify({ program: value.program, config: value.config,
+          executionVersion: value.executionVersion, mode: value.mode, title: value.plan.title, task: value.plan.task }));
+        if (!isDeepStrictEqual(policy(existing), policy(run))) throw new Error("The queued workflow was edited. Automatic approval requires the frozen trigger snapshot.");
+        return this.get(id);
+      }
+      if (run.mode !== this.mode) throw new Error("Trigger execution mode does not match this application");
+      await this.versions.load(run.executionVersion!);
+      this.checkSnapshotSize(run);
+      await this.store.save(run);
+      this.runs.set(id, run);
+      this.emit(run, "draft", "Created from a frozen trigger workflow and persisted external event.");
+      await this.flushEvents();
+      return this.get(id);
+    });
   }
 
   private async prepareProgram(value: unknown, library: Library) {

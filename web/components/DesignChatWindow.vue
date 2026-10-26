@@ -58,7 +58,9 @@ function contextLabel(context: DesignPageContext) {
     context.section === "providers"
       ? "Providers & models"
       : context.section
-        ? designScopes[context.section].title
+        ? context.section === "triggers"
+          ? "Triggers"
+          : designScopes[context.section].title
         : "Settings";
   return context.blockId ? `${section} · ${context.blockId}` : section;
 }

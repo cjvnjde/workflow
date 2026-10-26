@@ -55,6 +55,7 @@ An external Temporal service is not stopped when Workflow exits. The CLI current
 | Variable | Scope |
 | --- | --- |
 | `WORKFLOW_HOME` | Override Workflow's private user settings/credential directory. |
+| `GH_TOKEN`, `GITHUB_TOKEN` | GitHub trigger authentication, in precedence order; otherwise use GitHub CLI sign-in. |
 | `XDG_CONFIG_HOME` | Absolute base for user configuration when `WORKFLOW_HOME` is absent. |
 | `WORKFLOW_CHROMIUM_PATH` | Test runner: use an existing Chromium executable. |
 | `WORKFLOW_LIVE_MODEL` | Live smoke test's selected model ID. |
@@ -95,6 +96,19 @@ curl http://127.0.0.1:4310/api/tasks \
 ```
 
 Planning is asynchronous. Poll the returned task ID or subscribe to the stream. Once the task is ready, its `runId` identifies the draft to inspect and approve.
+
+### GitHub triggers
+
+| Method and route | Purpose |
+| --- | --- |
+| `GET /api/triggers` | Trigger definitions and the latest 100 event jobs. |
+| `POST /api/triggers` | Save `{ config, id?, revision? }`; edits require the current trigger revision. Configuration includes `name`, `repository`, `event`, `workflowRunId`, `enabled`, filters, `pollSeconds`, optional `maxCostUsd`, and `result`. |
+| `POST /api/triggers/poll` | Poll enabled triggers now and drain eligible queued work. |
+| `POST /api/triggers/:id/test` | Create a reviewable test draft from `{ number }`; no automatic execution/publication. |
+| `POST /api/trigger-events/:id/retry` | Retry failed dispatch or reconcile pending result delivery. |
+| `POST /api/trigger-events/:id/cancel` | Cancel a queued or dispatch-failed event. Use normal workflow controls for an active run. |
+
+Events are `issue.opened` or `pull_request.opened`; result destinations are `local` (default) or `github-comment`. Triggers default to disabled. GitHub access uses `GH_TOKEN`, `GITHUB_TOKEN`, or the GitHub CLI's sign-in; no credential is accepted in trigger JSON. See [the trigger guide](triggers.md) for input shape, frozen versions and the background-service example.
 
 ### Workflow source and execution
 

@@ -107,7 +107,8 @@ const settingsContext = ref<{
     | "cases"
     | "blocks"
     | "capabilities"
-    | "execution";
+    | "execution"
+    | "triggers";
   blockId?: string;
 }>({ section: "providers" });
 const settingsRevision = ref(0);

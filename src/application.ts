@@ -24,6 +24,8 @@ import { mcpServerSchema } from "./capability-schema.js";
 import { inspectMcp } from "./mcp-tools.js";
 import { createProgramSchema } from "./contracts.js";
 import { refineProgram } from "./program-refiner.js";
+import { Triggers } from "./triggers.js";
+import type { GithubTriggerSource } from "./github-trigger-source.js";
 
 import { realpath } from "node:fs/promises";
 import { runDemoBlock, runPiBlock, type BlockRunner } from "./block-runner.js";
@@ -42,6 +44,8 @@ const proposalSchema = z
   .strict();
 
 export interface ApplicationServices {
+  triggerSource?: GithubTriggerSource;
+  startTriggers?: boolean;
   catalog?: typeof availableModels;
   generateLibrary?: typeof generateLibraryChanges;
   plan?: typeof createAiPlan;
@@ -65,6 +69,7 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
   const auth = services.auth ?? new BrowserAuth();
   const attachments = new Attachments(engine.project);
   const tasks = new Tasks(engine, catalog, services.taskPlanner);
+  const triggers = await Triggers.open(engine, services.triggerSource).catch(error => { auth.close(); throw error; });
   const designChats = new DesignChats(engine.project, catalog, services.design, proposals, async (resource, id) => {
     if (resource === "tasks") return tasks.list();
     if (resource === "runs") return engine.list();
@@ -79,7 +84,7 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
   } catch (error) {
     auth.close();
     planning.abort(error);
-    await Promise.allSettled([tasks.close(), designChats.close()]);
+    await Promise.allSettled([tasks.close(), designChats.close(), triggers.close()]);
     throw error;
   }
   const emit = (kind: string, message: string) => { engine.coordinatorActivity(kind, message); };
@@ -97,9 +102,11 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
   });
   const signalFor = (signal?: AbortSignal) => signal
     ? AbortSignal.any([planning.signal, signal]) : planning.signal;
+  if (services.startTriggers !== false) triggers.start();
   return {
     engine,
     tasks,
+    triggers,
     designChats,
     attachments,
     auth,
@@ -243,7 +250,7 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
       auth.close();
       planning.abort(new Error("Application closing"));
       try {
-        await Promise.allSettled([...jobs, tasks.close(), designChats.close()]);
+        await Promise.allSettled([...jobs, tasks.close(), designChats.close(), triggers.close()]);
       } finally { await engine.shutdown(); }
     })(),
   };

@@ -8,6 +8,8 @@ Workflow turns a development request into an inspectable TypeScript graph, then 
 
 **Writing automation:** [Workflows](workflows.md) → [Blocks](blocks.md) → [Configuration](configuration.md). Start from [examples/composed.ts](../examples/composed.ts) for an implementation/review loop.
 
+**Unattended GitHub work:** [Triggers](triggers.md) → [Running and recovering workflows](operations.md). Test a saved workflow, then enable issue or PR triggers.
+
 **Working on the application:** [Architecture](architecture.md) → [Development](development.md) → [CLI and local API](reference.md).
 
 ## Guides
@@ -22,6 +24,7 @@ Workflow turns a development request into an inspectable TypeScript graph, then 
 | [Writing blocks](blocks.md) | `block()`, context operations, AI outputs, model overrides, command results, artifacts, and reusable library modules. |
 | [Shared tools](tools.md) | Typed tools callable by blocks and models, replay rules, frozen implementations, structured activity, and environments. |
 | [Configuration](configuration.md) | Providers, model profiles, task instructions, AI settings chats, skills, MCP, limits, and stored configuration. |
+| [GitHub triggers](triggers.md) | Persistent polling, event filters, frozen workflows, queues, test drafts, result comments, and background operation. |
 | [Running and recovering workflows](operations.md) | Statuses, activity, pause/resume, cancellation, file recovery, version archives, backups, and troubleshooting. |
 | [Command and API reference](reference.md) | CLI commands, environment variables, HTTP routes, and concurrency headers. |
 | [Engine and clients](clients.md) | Headless execution, terminal control, embedding, shared client, and separate builds. |
@@ -36,6 +39,8 @@ Workflow turns a development request into an inspectable TypeScript graph, then 
 | [implement-reviewed.ts](../examples/implement-reviewed.ts) | The supported imperative `run(ctx)` style, with explicit awaited steps. |
 | [scripts-only.ts](../examples/scripts-only.ts) | Running commands without model calls, including existing script compatibility. |
 | [shared-tools.ts](../examples/shared-tools.ts) | One typed file tool used directly by a block and selected for an AI review. |
+| [github-event-report.ts](../examples/github-event-report.ts) | A trigger workflow that turns an issue/PR input into a report without model calls. |
+| [workflow.service](../examples/workflow.service) | Adaptable systemd user-service unit for keeping a project running. |
 
 The examples use project tools and, where applicable, configured model profiles. Read their commands and adapt them to your project before approving execution.
 

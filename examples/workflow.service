@@ -1,0 +1,19 @@
+# Copy this example to ~/.config/systemd/user/workflow.service and replace the
+# paths. ExecStart needs the absolute Bun path when Bun is installed via mise.
+[Unit]
+Description=Workflow project automation
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/absolute/path/to/your/project
+ExecStart=/absolute/path/to/bun /absolute/path/to/workflow/dist/cli.js serve
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+# Include gh, Git and your project's tools in PATH. Keep credentials outside
+# this unit: gh auth login or a private EnvironmentFile can supply them.
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=default.target

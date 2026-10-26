@@ -10,6 +10,7 @@ import { BrowserAuth } from "../../src/browser-auth.js";
 import { authRuntime } from "../auth-fixture.js";
 import { userPaths } from "../../src/user-settings.js";
 import { Workspace } from "../../src/workspace.js";
+import { githubEventSchema } from "../../src/trigger-schema.js";
 
 const project = await mkdtemp(path.join(os.tmpdir(), "workflow-e2e-"));
 const temporalCache = path.join(userPaths().directory, "cache", "temporal");
@@ -74,6 +75,15 @@ const runtime = authRuntime(async (provider, method, interaction) => {
 });
 runtime.logout = async (provider?: string) => { if (provider) { connections.delete(provider); } };
 const server = await createServer(engine, 4311, {
+  triggerSource: {
+    poll: async () => [],
+    item: async (config, number) => githubEventSchema.parse({ id: `fixture:${config.repository}:${number}`, kind: config.event,
+      repository: config.repository, number, title: "Trigger browser fixture", body: "A deterministic external event.",
+      url: `https://github.com/${config.repository}/issues/${number}`, author: "octocat", labels: [],
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
+    findComment: async () => undefined,
+    comment: async () => { throw new Error("Browser fixtures must not publish comments"); },
+  },
   design: async (options) => {
     options.emit("tool_start", "Inspecting project settings…");
     await new Promise((resolve) => setTimeout(resolve, 400));

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   eventSchema, projectSchema, runListSchema, runSchema, taskListSchema, taskSchema,
+  triggerStateSchema, triggerSchema, triggerJobSchema, type TriggerConfig,
   type CreateProgram, type RunAction, type RunEvent, type WorkflowRun,
 } from "./contracts.js";
 
@@ -61,6 +62,13 @@ export class WorkflowClient {
     return this.request(`/api/runs/${encodeURIComponent(id)}/${action}`, runSchema, { method: "POST", body: {}, revision, signal });
   }
   tasks(signal?: AbortSignal) { return this.request("/api/tasks", taskListSchema, { signal }); }
+  triggers(signal?: AbortSignal) { return this.request("/api/triggers", triggerStateSchema, { signal }); }
+  saveTrigger(config: TriggerConfig, id?: string, revision?: number) {
+    return this.request("/api/triggers", triggerSchema, { method: "POST", body: { config, id, revision } });
+  }
+  testTrigger(id: string, number: number) { return this.request(`/api/triggers/${encodeURIComponent(id)}/test`, triggerJobSchema, { method: "POST", body: { number } }); }
+  pollTriggers() { return this.request("/api/triggers/poll", triggerStateSchema, { method: "POST", body: {} }); }
+  triggerEventAction(id: string, action: "retry" | "cancel") { return this.request(`/api/trigger-events/${encodeURIComponent(id)}/${action}`, triggerJobSchema, { method: "POST", body: {} }); }
   task(id: string, signal?: AbortSignal) { return this.request(`/api/tasks/${encodeURIComponent(id)}`, taskSchema, { signal }); }
   createTask(prompt: string, signal?: AbortSignal) { return this.request("/api/tasks", taskSchema, { method: "POST", body: { prompt }, signal }); }
   answerTask(id: string, answer: string, revision: number, signal?: AbortSignal) {

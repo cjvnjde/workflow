@@ -20,6 +20,7 @@ import TaskCases from "./TaskCases.vue";
 import BlockSettings from "./BlockSettings.vue";
 import Capabilities from "./Capabilities.vue";
 import ExecutionSettings from "./ExecutionSettings.vue";
+import TriggerSettings from "./TriggerSettings.vue";
 const props = defineProps<{
   library: Library;
   onSaved: () => Promise<void>;
@@ -37,7 +38,8 @@ const emit = defineEmits<{
         | "cases"
         | "blocks"
         | "capabilities"
-        | "execution";
+        | "execution"
+        | "triggers";
       blockId?: string;
     },
   ];
@@ -49,6 +51,7 @@ const tabs = [
   ["blocks", "Blocks"],
   ["capabilities", "Skills & MCP"],
   ["execution", "Execution"],
+  ["triggers", "Triggers"],
 ] as const;
 const tab = ref<(typeof tabs)[number][0]>("providers");
 const selectedBlock = ref("");
@@ -73,6 +76,8 @@ const execution = ref<z.infer<typeof executionSettingsSchema>>();
 const savedExecution = ref("");
 const blockDirty = ref(false);
 const modelDirty = ref(false);
+const triggerDirty = ref(false);
+const triggerEditor = ref<InstanceType<typeof TriggerSettings>>();
 const blockEditor = ref<InstanceType<typeof BlockSettings>>();
 const modelEditor = ref<InstanceType<typeof ModelSettings>>();
 const loadedDesignRevision = ref(props.designRevision);
@@ -91,7 +96,11 @@ const executionDirty = computed(
 );
 const hasEdits = computed(
   () =>
-    dirty.value || executionDirty.value || blockDirty.value || modelDirty.value,
+    dirty.value ||
+    executionDirty.value ||
+    blockDirty.value ||
+    modelDirty.value ||
+    triggerDirty.value,
 );
 function discardSettings() {
   if (busy.value) return;
@@ -104,6 +113,7 @@ function discardAll() {
   discardSettings();
   blockEditor.value?.discard();
   modelEditor.value?.discard();
+  triggerEditor.value?.discard();
 }
 async function load() {
   const version = ++loadSequence;
@@ -213,7 +223,7 @@ function design(scope: DesignScope, prompt?: string) {
 function changeTab(id: (typeof tabs)[number][0]) {
   if (
     id !== tab.value &&
-    (blockDirty.value || modelDirty.value) &&
+    (blockDirty.value || modelDirty.value || triggerDirty.value) &&
     !window.confirm("Discard unsaved changes in this section?")
   ) {
     return;
@@ -316,7 +326,16 @@ function reload() {
         v-model="execution"
         v-model:approval="state.settings.approval"
       />
-      <div v-if="!['providers', 'blocks'].includes(tab)" class="settings-save">
+      <TriggerSettings
+        v-if="tab === 'triggers'"
+        ref="triggerEditor"
+        @dirty="triggerDirty = $event"
+        @busy="busy = $event"
+      />
+      <div
+        v-if="!['providers', 'blocks', 'triggers'].includes(tab)"
+        class="settings-save"
+      >
         <span>{{
           dirty || executionDirty ? "Unsaved changes" : "All changes saved"
         }}</span

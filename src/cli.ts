@@ -97,7 +97,7 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
     process.once("SIGINT", stop); process.once("SIGTERM", stop);
     let app: Awaited<ReturnType<typeof createApplication>> | undefined;
     try {
-      app = await createApplication({ project, mode: values.demo ? "demo" : "live",
+      app = await createApplication({ project, mode: values.demo ? "demo" : "live", startTriggers: false,
         temporal: { address: values["temporal-address"], namespace: values["temporal-namespace"] } });
       controller.signal.throwIfAborted();
       const draft = await app.createProgram(program, controller.signal);

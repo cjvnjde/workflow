@@ -87,6 +87,8 @@ A saved workflow version contains its bundled deterministic code and SDK manifes
 
 ## Persistence and trust
 
+The trigger service owns a SQLite inbox/outbox under `.workflow/triggers/`. Polling admits event identities and advances its checkpoint in one transaction. Each event reserves a run ID and references an immutable workflow/configuration version. Dispatch uses the normal engine approval path and project execution limit; it never starts Temporal directly. An interrupted dispatch reacquires that same run. Result comments have a persisted posting intent and reconcile by marker before any retry. [GitHub triggers](triggers.md) describes activation, filters, recovery and deployment.
+
 The project lease prevents competing Workflow servers from owning the same project. A run's approval snapshot and Temporal identity are checked at activity boundaries. Revision checks protect draft/settings edits from stale browser writes. Version hashes protect archive integrity.
 
 These are execution consistency measures. AI and command tools still use the server user's local access. File journals recover managed writes; they cannot reverse arbitrary shell, Git, or remote effects. The HTTP server has local host/origin and mutation-header guards, but no remote multi-user authentication.
@@ -105,6 +107,7 @@ Paths below are relative to the repository checkout. The packaged CLI includes c
 | Client contract and transport | `src/contracts.ts`, `src/client.ts` |
 | Optional GUI serving / compatibility | `src/web-server.ts`, `src/server.ts` |
 | Task persistence and planning | `src/tasks.ts`, `src/task-planner.ts`, `src/task-schema.ts` |
+| External triggers and queued dispatch | `src/triggers.ts`, `src/trigger-store.ts`, `src/trigger-template.ts`, `src/github-trigger-source.ts`, `src/trigger-schema.ts` |
 | Public authoring API | `src/workflow-sdk.ts`, `src/composition-sdk.ts` |
 | Source validation and preview | `src/program-compiler.ts`, `src/composition-plan.ts`, `src/source-format.ts` |
 | Durable execution | `src/engine.ts`, `src/temporal-workflow.ts`, `src/composition-runtime.ts` |

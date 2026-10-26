@@ -81,6 +81,12 @@ export async function createHttpServer(app: WorkflowApplication, port = 4310) {
   server.post("/api/design", request => app.designChats.create(request.body));
   server.get<{ Params: { scope: string } }>("/api/design/:scope/latest", request => app.latestDesign(request.params.scope));
   server.get("/api/tasks", async () => app.tasks.list(true));
+  server.get("/api/triggers", () => app.triggers.state());
+  server.post("/api/triggers", request => app.triggers.save(request.body));
+  server.post("/api/triggers/poll", async () => { await app.triggers.tick(true); return app.triggers.state(); });
+  server.post<{ Params: { id: string } }>("/api/triggers/:id/test", request => app.triggers.test(request.params.id, request.body));
+  server.post<{ Params: { id: string; action: string } }>("/api/trigger-events/:id/:action", request =>
+    app.triggers.action(request.params.id, z.enum(["retry", "cancel"]).parse(request.params.action)));
   server.post("/api/tasks", async (request, reply) => reply.code(202).send(await app.tasks.create(request.body)));
   server.get("/api/auth/options", () => app.auth.options());
   server.get("/api/auth/session", async () => app.auth.current());

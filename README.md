@@ -13,6 +13,7 @@ Finishing a coding task often takes several kinds of work: understand the reques
 - **Use code for predictable operations.** A test, build, or push can run directly without a model call. AI is a capability inside a TypeScript block.
 - **Turn feedback into a controlled loop.** A test block returns diagnostics; an implementation block fixes the problem. Conditions, explicit outcomes, and visit limits decide what happens next.
 - **Keep progress across interruptions.** Temporal records execution history. Completed work is retained, and interrupted attempts have an explicit recovery and retry path.
+- **React to GitHub events.** Configure new-issue and new-PR triggers against a tested workflow. Persistent polling and a project queue retain work across restarts; results can stay local or be posted as a GitHub comment. [Set up triggers](docs/triggers.md).
 
 It is useful when you want a repeatable development process with autonomous execution and inspectable results. For a one-off question, there may be no reason to create a workflow.
 
@@ -144,6 +145,7 @@ Start at **[docs/README.md](docs/README.md)** for reading paths and a complete i
 | Build reusable code and AI blocks | [Writing blocks](docs/blocks.md) · [Contracts, testing and evidence](docs/block-contracts-and-evidence.md) |
 | Configure models, task instructions, skills, and MCP | [Configuration](docs/configuration.md) |
 | Understand statuses, retries, recovery, and backups | [Running and recovering workflows](docs/operations.md) |
+| Run automatically for new GitHub issues or PRs | [GitHub triggers](docs/triggers.md) |
 | Work entirely in a terminal | [Terminal workspace](docs/terminal.md) |
 | Embed the engine or build another UI | [Engine and clients](docs/clients.md) |
 | Use the CLI or local HTTP API | [Command and API reference](docs/reference.md) |

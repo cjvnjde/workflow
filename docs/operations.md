@@ -94,6 +94,7 @@ The journal does not undo Bash edits, Git operations, check-command effects, ext
 ├── runs/                     # approval snapshots, events, attempt journals
 ├── versions/                 # archived workflow bundles, tools.js and manifests
 ├── temporal/                 # managed SQLite execution history and logs
+├── triggers/                 # SQLite trigger settings, inbox, checkpoints and outbox
 ├── server-lease/             # live project ownership lease
 └── lock                      # diagnostic owner information
 ```
