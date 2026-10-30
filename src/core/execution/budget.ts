@@ -35,7 +35,11 @@ export function priceUsage(
   cacheWrite1h = 0,
 ) {
   const totalInput = input + cacheRead + cacheWrite;
-  const tier = [...(price.tiers ?? [])]
+  const tier = [
+    ...(price.tiers ??
+      // Stryker disable next-line ArrayDeclaration: A lone string has no numeric threshold, so it still falls back to base rates.
+      []),
+  ]
     .sort((a, b) => b.inputTokensAbove - a.inputTokensAbove)
     .find((candidate) => totalInput > candidate.inputTokensAbove);
   const rates = tier ?? price;
@@ -53,6 +57,7 @@ export function priceUsage(
 export function estimateBudget(
   plan: WorkflowPlan,
   library: Library,
+  // Stryker disable next-line StringLiteral: Only "demo" has a distinct path; an empty default behaves exactly like "live".
   mode: "live" | "demo" = "live",
 ): BudgetEstimate {
   const budget = budgetSchema.parse(library.config.budget ?? {});

@@ -11,6 +11,8 @@ export default {
   concurrency: 1,
   timeoutMS: 10000,
   dryRunTimeoutMinutes: 20,
+  // The full repository still needs its own baseline before enforcing a score.
+  thresholds: { high: 80, low: 60, break: 0 },
   htmlReporter: { fileName: "reports/mutation/full/index.html" },
   jsonReporter: { fileName: "reports/mutation/full/mutation.json" },
 };

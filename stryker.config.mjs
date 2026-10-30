@@ -33,6 +33,7 @@ export default {
   reporters: ["clear-text", "progress", "html", "json"],
   htmlReporter: { fileName: "reports/mutation/index.html" },
   jsonReporter: { fileName: "reports/mutation/mutation.json" },
-  // This reports only the focused source scope, not whole-repository coverage.
-  thresholds: { high: 80, low: 60, break: 0 },
+  // Guard the focused scope against new survivors. Equivalent budget mutants
+  // have narrowly scoped source comments and remain visible as ignored.
+  thresholds: { high: 100, low: 100, break: 100 },
 };
