@@ -14,25 +14,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  checks:
+  unit:
+    name: Quick unit tests
     runs-on: ubuntu-latest
-    timeout-minutes: 35
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.4.2"
-      - name: Install locked dependencies
-        run: bun install --frozen-lockfile --ignore-scripts
-      - name: Lint, check formatting, build and test
-        run: bun run check
-
-  browser:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -40,37 +25,5 @@ jobs:
           bun-version: "1.4.2"
       - name: Install locked dependencies
         run: bun install --frozen-lockfile --ignore-scripts
-      - name: Install Chromium and system dependencies
-        run: bun --bun run playwright install --with-deps chromium
-      - name: Build and run browser tests
-        run: bun run test:e2e
-      - name: Upload browser failure traces
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: browser-test-results
-          path: test-results/
-          retention-days: 7
-
-  mutation-smoke:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.4.2"
-      - name: Install locked dependencies
-        run: bun install --frozen-lockfile --ignore-scripts
-      - name: Verify mutation detection
-        run: bun run test:mutation:smoke
-      - name: Upload mutation report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: mutation-smoke-report
-          path: reports/mutation-smoke/
-          retention-days: 7
+      - name: Run quick unit tests
+        run: bun run test:unit

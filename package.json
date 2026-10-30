@@ -59,6 +59,7 @@
     "prepare": "bun run build",
     "start": "bun dist/cli.js",
     "test": "bun run build && bun test --timeout 30000 tests/*.test.ts",
+    "test:unit": "bun scripts/test-unit.ts",
     "test:mutation": "stryker run",
     "test:mutation:dry": "stryker run --dryRunOnly",
     "test:mutation:smoke": "stryker run stryker.smoke.config.mjs",
