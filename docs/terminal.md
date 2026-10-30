@@ -34,6 +34,8 @@ Use `workflow status` to see the host and URL, and `workflow stop` when you want
 
 ## Work through a task
 
+Use `/data` to choose a step visit and inspect its stored inputs, outputs and AI context. `/data <step-id> <visit>` opens a particular invocation, preserving earlier loop results. The terminal bounds large displays and supplies a CLI export command; the browser's **Data** tab provides search, copy and individual downloads. See [Inspecting workflow data](inspecting-data.md).
+
 1. Type your request and press **Enter**. **Shift+Enter** or **Ctrl+J** inserts a new line.
 2. Watch planning activity. If the planner needs information, type your answer or an option number.
 3. Review the graph in the sidebar, or open `/graph` for a full-width view. `/source` shows the proposed code; `/step` opens step details.

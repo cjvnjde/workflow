@@ -3,6 +3,7 @@ import {
   eventSchema, projectSchema, runListSchema, runSchema, taskListSchema, taskSchema,
   usageReportSchema,
   setupJobSchema, setupJobsLatestSchema, type StartSetup,
+  attemptEvidenceSchema,
   triggerStateSchema, triggerSchema, triggerJobSchema, type TriggerConfig,
   type CreateProgram, type RunAction, type RunEvent, type WorkflowRun,
 } from "./contracts.js";
@@ -85,6 +86,20 @@ export class WorkflowClient {
   runs(signal?: AbortSignal) { return this.request("/api/runs", runListSchema, { signal }); }
   run(id: string, signal?: AbortSignal) { return this.request(`/api/runs/${encodeURIComponent(id)}`, runSchema, { signal }); }
   events(id: string, signal?: AbortSignal) { return this.request(`/api/runs/${encodeURIComponent(id)}/events`, z.array(eventSchema), { signal }); }
+  attemptEvidence(runId: string, nodeId: string, visit: number, signal?: AbortSignal) {
+    return this.request(`/api/runs/${encodeURIComponent(runId)}/attempts/${encodeURIComponent(nodeId)}/${visit}/evidence`, attemptEvidenceSchema, { signal });
+  }
+  evidenceContentUrl(runId: string, nodeId: string, visit: number, contentId: string, download = false) {
+    return this.url(`/api/runs/${encodeURIComponent(runId)}/attempts/${encodeURIComponent(nodeId)}/${visit}/content/${encodeURIComponent(contentId)}${download ? "?download=1" : ""}`);
+  }
+  async evidenceContent(runId: string, nodeId: string, visit: number, contentId: string, signal?: AbortSignal): Promise<string> {
+    const response = await (this.options.fetch ?? globalThis.fetch)(this.evidenceContentUrl(runId, nodeId, visit, contentId), { signal, headers: this.headers() });
+    if (!response.ok) {
+      const error = await response.json().catch(() => undefined) as { error?: string } | undefined;
+      throw new WorkflowApiError(error?.error ?? `Evidence request failed (${response.status})`, response.status);
+    }
+    return response.text();
+  }
   createProgram(body: CreateProgram, signal?: AbortSignal) { return this.request("/api/programs", runSchema, { method: "POST", body, signal }); }
   action(id: string, action: RunAction, revision?: number, signal?: AbortSignal) {
     return this.request(`/api/runs/${encodeURIComponent(id)}/${action}`, runSchema, { method: "POST", body: {}, revision, signal });

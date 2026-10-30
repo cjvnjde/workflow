@@ -54,11 +54,15 @@ import { instantiateTrigger, triggerTemplate } from "./trigger-template.js";
 import type { GithubEvent } from "./trigger-schema.js";
 import { createAccountingContext, UsageStore } from "./usage-store.js";
 import { withProjectSettingsSnapshot } from "./settings-publication.js";
+import { EvidenceStore } from "./evidence-store.js";
+import { evidenceIdentitySchema, serializeEvidenceValue, serializeStepEvidence, type StepEvidenceTransport } from "./evidence-schema.js";
 
 const activeStatuses = new Set<WorkflowRun["status"]>(["running", "pausing", "paused", "interrupted"]);
 
 export class WorkflowEngine {
   readonly usage: UsageStore;
+  readonly evidence: EvidenceStore;
+  private readonly capturedOutputs = new Set<string>();
   private readonly executionWorkspaces = new Map<string, { token: symbol; access: "read" | "write" | "legacy" }[]>();
   private readonly usageByAttempt = new Map<string, UsageTotals>();
   private readonly runs = new Map<string, WorkflowRun>();
@@ -86,6 +90,7 @@ export class WorkflowEngine {
     private readonly environmentFactory: ExecutionEnvironmentFactory = localExecutionEnvironment,
   ) {
     this.usage = new UsageStore(project);
+    this.evidence = new EvidenceStore(project);
     this.versions = new WorkflowVersions(path.join(project, ".workflow", "versions"));
     this.store = new RunStore(path.join(project, ".workflow", "runs"));
     this.taskQueue = `workflow-${createHash("sha256").update(project).digest("hex").slice(0, 32)}`;
@@ -161,6 +166,7 @@ export class WorkflowEngine {
         executeBlock: (run, identity) => this.executeBlock(this.scopeAttempt(run, identity)),
         executeOperation: (run, operation, identity) => this.executeOperation(this.scopeAttempt(run, identity), operation),
         settleAttempt: (run, commit, identity) => this.settleAttempt(run, commit, identity),
+        recordStepEvidence: (runId, identity, capture) => this.recordStepEvidence(runId, identity, capture),
       } satisfies WorkflowActivities,
       maxConcurrentActivityTaskExecutions: 12,
       maxHeartbeatThrottleInterval: "1 second", defaultHeartbeatThrottleInterval: "1 second",
@@ -366,12 +372,38 @@ export class WorkflowEngine {
     }
   }
 
+  private async recordStepEvidence(runId: string, identity: AttemptIdentity, capture: StepEvidenceTransport) {
+    const key = evidenceIdentitySchema.parse({ runId, ...identity });
+    const run = this.requireRun(runId);
+    this.assertActivity(run);
+    if (!run.attempts.some(attempt => attempt.nodeId === key.nodeId && attempt.visit === key.visit)) throw new Error("Unknown execution attempt");
+    await this.evidence.captureStep(key, capture);
+  }
+
+  async attemptEvidence(runId: string, nodeId: string, visit: number) {
+    const identity = evidenceIdentitySchema.parse({ runId, nodeId, visit });
+    return this.evidence.readAttempt(this.requireRun(runId), identity, await this.usage.sessions());
+  }
+
+  async evidenceContent(runId: string, nodeId: string, visit: number, contentId: string) {
+    const identity = evidenceIdentitySchema.parse({ runId, nodeId, visit });
+    // Content ownership is entirely in this attempt's sidecars; reading the
+    // project-wide cost ledger for every downloaded value would be redundant.
+    return this.evidence.content(await this.evidence.readAttempt(this.requireRun(runId), identity), contentId);
+  }
+
   private saveProjection(value: WorkflowRun, event?: { kind: string; message: string; nodeId?: string }) {
     const run = runSchema.parse(value);
     this.assertSnapshot(run);
     const operation = this.projections.then(async () => {
       const current = this.runs.get(run.id);
       if (current?.deletedAt) return;
+      for (const attempt of run.attempts) {
+        const key = `${run.id}/${attempt.nodeId}/${attempt.visit}`;
+        if (!attempt.result || this.capturedOutputs.has(key)) continue;
+        await this.evidence.captureOutput({ runId: run.id, nodeId: attempt.nodeId, visit: attempt.visit }, attempt.result);
+        this.capturedOutputs.add(key);
+      }
       if (current && current.revision > run.revision) {
         // Concurrent branches may deliver checkpoints out of order. Keep the
         // newest projection, but retain every branch's activity event.
@@ -905,7 +937,7 @@ export class WorkflowEngine {
     const heartbeat = setInterval(() => context.heartbeat({ nodeId: node.id, operation: operation.kind }), 1000);
     context.heartbeat({ nodeId: node.id });
     try {
-      if (operation.kind !== "tool") await record({ ...identity, state: "started", input: label.slice(0, 16_000) });
+      if (operation.kind !== "tool") await record({ ...identity, state: "started", input: label.slice(0, 16_000), truncated: label.length > 16_000 });
       let result: unknown;
       if (operation.kind === "tool") {
         if (this.mode === "demo") throw new Error("Custom tools require live execution; demo never runs authored tool code");
@@ -926,6 +958,9 @@ export class WorkflowEngine {
           throw error;
         }
       } else if (operation.kind === "ai") {
+        await this.evidence.captureCall({ runId: run.id, nodeId: node.id, visit: run.visits[node.id] ?? 1 }, operationId, {
+          prompt: operation.prompt, instructions: operation.instructions, contextMode: operation.context ?? "workflow",
+        });
         const ownershipError = (operation.role === "verification" || operation.role === "review") && operation.writablePaths?.length
           ? `${operation.role} must be read-only; assign corrections to their owning author`
           : operation.role === "test-author" && !operation.writablePaths?.length
@@ -1073,6 +1108,19 @@ export class WorkflowEngine {
     const signal = AbortSignal.any([context.cancellationSignal, this.leaseCancellation.signal, AbortSignal.timeout(executionTimeoutMs(run.config, bundle, node))]);
     signal.throwIfAborted();
     const directory = attemptDirectory(this.project, run.id, node.id, run.visits[node.id] ?? 1);
+    const inputs = resolveInputs(node, run);
+    // A nested ctx.ai call has its own context capture; it must not replace its
+    // containing TypeScript step's raw/effective input snapshot.
+    if (resultMode !== "value") {
+      const identity = { runId: run.id, nodeId: node.id, visit: run.visits[node.id] ?? 1 };
+      if (!await this.evidence.hasInputs(identity)) {
+        const dependencies = node.inputs.map(input => ({
+          producerNodeId: input.node, producerVisit: run.attempts.findLast(attempt => attempt.nodeId === input.node && attempt.result)?.visit ?? null,
+          kind: "artifact" as const, usedBy: "inputs" as const, artifact: input.artifact, inputName: input.as ?? input.artifact,
+        }));
+        for (const capture of serializeStepEvidence({ kind: "inputs", raw: serializeEvidenceValue(inputs), effective: serializeEvidenceValue(inputs), prompt: node.goal, dependencies })) await this.evidence.captureStep(identity, capture);
+      }
+    }
     const journal = run.executionProtocol === 2 ? await FileJournal.open(directory, this.fileClaims) : undefined;
     const previousUsage = await loadUsage(directory);
     let spent = 0;
@@ -1100,7 +1148,7 @@ export class WorkflowEngine {
       const isolated = workspace !== this.project && workspace !== await realpath(this.project);
       const result = validateBlockResult(await runner({
         project: workspace, attachmentProject: this.project, absoluteJournalPaths: isolated, config: run.config, bundle, node, protectedPaths, writablePaths, tools, capabilities, task: run.plan.task, workflow: run.plan, composition: run.program?.structure,
-        inputs: resolveInputs(node, run), visit: run.visits[node.id] ?? 1,
+        inputs, visit: run.visits[node.id] ?? 1,
         settings, signal, journal, maxCostUsd: remainingCost, resultMode, context: aiContext,
         customTools: shared ? protect => this.selectedTools(run, shared.tools, shared.parentId, { project: workspace, signal, journal, protect, isolated }) : undefined,
         operation: { parentId: shared?.parentId ?? `${run.id}/${context.info.activityId}`, record: value => this.recordOperation(run, node.id, value) },

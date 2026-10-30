@@ -4,6 +4,7 @@ import { attachmentSchema, capabilitiesSchema } from "./capability-schema.js";
 import { codeExecutorSchema } from "./code-schema.js";
 import { scriptExecutorSchema } from "./script-schema.js";
 import { programSourceSchema } from "./program-schema.js";
+import { evidenceValueSchema } from "./evidence-value.js";
 
 export const identifierSchema = z
   .string()
@@ -216,6 +217,8 @@ const flowStructureSchema: z.ZodType<import("./composition-sdk.js").FlowStructur
   id: identifierSchema, label: z.string().max(200), children: z.array(flowStructureSchema).max(200),
   condition: z.string().max(2000).optional(), concurrency: z.number().int().min(1).max(8).optional(), maxIterations: z.number().int().min(1).max(30).optional(),
   step: z.object({
+    inputPreview: z.object({ kind: z.enum(["none", "literal", "deferred"]), value: evidenceValueSchema.optional(), expression: z.string().max(8000).optional(), truncated: z.boolean().optional() }).strict().optional(),
+    promptPreview: z.object({ kind: z.enum(["none", "literal", "deferred"]), value: evidenceValueSchema.optional(), expression: z.string().max(8000).optional(), truncated: z.boolean().optional() }).strict().optional(),
     reference: z.union([identifierSchema, z.object({ kind: z.literal("code"), name: z.string().optional(), description: z.string().optional(), source: z.string(), timeoutMs: z.number().optional(), maxOperations: z.number().optional() }).strict()]),
     options: z.object({ label: z.string().optional(), prompt: z.string().optional(), inputs: z.record(z.string(), z.unknown()).optional(), model: z.union([z.string(), agentOverrideSchema]).optional(), maxVisits: z.number().optional(), on: z.object({pass:z.enum(["continue","stop","repeat"]).optional(),retry:z.enum(["continue","stop","repeat"]).optional(),fail:z.enum(["continue","stop","repeat"]).optional()}).strict().optional() }).strict(),
   }).strict().optional(),

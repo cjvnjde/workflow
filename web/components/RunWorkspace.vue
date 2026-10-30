@@ -20,6 +20,7 @@ import { usageCost } from "../usage-presentation.js";
 const WorkflowGraph = defineAsyncComponent(() => import("./WorkflowGraph.vue"));
 const PlanEditor = defineAsyncComponent(() => import("./PlanEditor.vue"));
 const ProgramEditor = defineAsyncComponent(() => import("./ProgramEditor.vue"));
+const DataInspector = defineAsyncComponent(() => import("./DataInspector.vue"));
 const props = defineProps<{
   run: WorkflowRun;
   draft: PlanDraft;
@@ -89,6 +90,7 @@ const now = ref(Date.now());
 const tabs = [
   ["results", "Results", "file"],
   ["workflow", "Workflow", "workflow"],
+  ["data", "Data", "search"],
   ["activity", "Activity", "log"],
   ["artifacts", "Artifacts", "folder"],
   ["edit", "Editor", "code"],
@@ -741,36 +743,9 @@ function selectStep(id: string) {
                 >{{ run.visits[node.id] ?? 0 }} / {{ node.maxVisits }}</strong
               >
             </div>
-            <h3>Context received</h3>
-            <template v-if="node.inputs.length"
-              ><div
-                v-for="(input, index) in node.inputs"
-                :key="index"
-                class="handoff-label"
-              >
-                {{ input.node }} / {{ input.artifact
-                }}<small
-                  >{{ input.as ?? input.artifact }} ·
-                  {{ input.required ? "required" : "optional" }}</small
-                >
-              </div></template
-            >
-            <template
-              v-else-if="node.context && Object.keys(node.context).length"
-            >
-              <details v-for="(value, name) in node.context" :key="name">
-                <summary>{{ name }}</summary>
-                <pre>{{ value }}</pre>
-              </details>
-            </template>
-            <pre v-else-if="selectedGroup?.step?.options.inputs">{{
-              JSON.stringify(selectedGroup.step.options.inputs, null, 2)
-            }}</pre>
-            <p v-else-if="run.program?.structure" class="muted">
-              The composition resolves this step's inputs when it starts.
-              Inspect the TypeScript for dynamic handoffs.
-            </p>
-            <p v-else class="muted">Task and attachments only.</p>
+            <h3>Inputs & outputs</h3>
+            <p class="muted">Review declared sources before execution, then inspect each visit's stored values and model context.</p>
+            <button class="quiet" @click="tab = 'data'">Inspect step data</button>
             <template v-if="selectedGroup?.step">
               <h3>Outcome actions</h3>
               <div
@@ -838,6 +813,7 @@ function selectStep(id: string) {
             <button @click="tab = 'edit'">View TypeScript</button>
           </aside>
         </div>
+        <DataInspector v-if="tab === 'data'" :run="run" :events="events" :selected="selected" @select="selected = $event" @editor="tab = 'edit'" @activity="tab = 'activity'" />
         <ActivityFeed
           v-if="tab === 'activity'"
           :key="run.id"

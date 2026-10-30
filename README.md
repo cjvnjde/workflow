@@ -18,6 +18,7 @@ Finishing a coding task often takes several kinds of work: understand the reques
 - **Give different work to different models.** Describe model profiles for implementation, careful review, or routine work. Let the orchestrator assign them, or choose models in code.
 - **Use code for predictable operations.** A test, build, or push can run directly without a model call. AI is a capability inside a TypeScript block.
 - **Control what models receive.** Pass selected typed outputs between steps. Each AI call starts fresh; `context: "none"` omits inherited workflow context, independently of tool access.
+- **Inspect each handoff.** Compare inputs before and after schema processing, follow parallel producer visits, and inspect full stored outputs, prompts and tool feedback in the [data inspector](docs/inspecting-data.md).
 - **Turn feedback into a controlled loop.** A test block returns diagnostics; an implementation block fixes the problem. Conditions, explicit outcomes, and visit limits decide what happens next.
 - **Keep progress across interruptions.** Temporal records execution history. Completed work is retained, and interrupted attempts have an explicit recovery and retry path.
 - **React to GitHub events.** Configure new-issue and new-PR triggers against a tested workflow. Persistent polling and a project queue retain work across restarts; results can stay local or be posted as a GitHub comment. [Set up triggers](docs/triggers.md).
@@ -151,6 +152,8 @@ Import the source through **New task → Use a TypeScript workflow**, or save it
 Use `defineTool()` for typed operations shared by code and models: call one with `ctx.call(tool, input)` or expose it through `ctx.ai({ tools: [tool], ... })`. Implementations are frozen with approval, and structured activity records connect each call to its file/command effects. See [shared tools and replay rules](docs/tools.md) and the [example](examples/shared-tools.ts).
 
 For an implementation/review loop driven by `review.approved`, see [the composed workflow example](examples/composed.ts). The [workflow guide](docs/workflows.md) explains conditions, outcomes, typed handoffs, model overrides, and limits.
+
+The **Data** inspector shows each step visit's raw and effective inputs, typed output, producer dependencies, and supplied AI context. Parallel branches can pass separate named outputs to the same consumer. Explore the [zero-model-call handoff example](examples/parallel-handoffs.ts), or use `/data` in the terminal and `workflow data <run-id> <step-id> --json` to export stored evidence. [Inspecting workflow data](docs/inspecting-data.md) explains the controls and capture limits.
 
 ## Documentation
 

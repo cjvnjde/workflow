@@ -4,8 +4,9 @@ import { z } from "zod";
 import { WorkflowClient, waitForRun } from "./client.js";
 import type { CreateProgram, RunAction, WorkflowRun } from "./contracts.js";
 import { discoverProjectServer } from "./host-discovery.js";
+import { exportAttemptEvidence, formatEvidenceExport } from "./evidence-export.js";
 
-export const clientCommands = ["run", "runs", "show", "events", "watch", "approve", "reject", "pause", "resume", "cancel", "recover", "tasks", "task", "task-show", "answer", "usage"];
+export const clientCommands = ["run", "runs", "show", "events", "watch", "approve", "reject", "pause", "resume", "cancel", "recover", "tasks", "task", "task-show", "answer", "usage", "data"];
 export async function readProgram(project: string, filename: string | undefined, inputJson: string): Promise<CreateProgram> {
   if (!filename?.endsWith(".ts")) throw new Error("Expected a project-relative TypeScript file (*.ts)");
   const relative = path.relative(project, path.resolve(project, filename));
@@ -41,6 +42,17 @@ export async function runClientCommand(command: string, args: string[], options:
   const served = await client.project(AbortSignal.timeout(5000));
   // An explicit endpoint selects that server's project, including over an SSH tunnel.
   if (!options.server && await realpath(served.project) !== await realpath(options.project)) throw new Error("The local server belongs to another project");
+  if (command === "data") {
+    if (args.length < 2 || args.length > 3) throw new Error("Use workflow data <run-id> <step-id> [visit] [--json].");
+    const signal = AbortSignal.timeout(60_000);
+    const run = await client.run(z.string().uuid().parse(args[0]), signal);
+    const nodeId = args[1]!;
+    const visit = args[2] ? z.coerce.number().int().positive().parse(args[2]) : run.visits[nodeId];
+    if (!visit) throw new Error("This step has not run yet. Use workflow show to inspect the draft.");
+    const evidence = await exportAttemptEvidence(client, run.id, nodeId, visit, signal);
+    console.log(options.json ? JSON.stringify(evidence) : formatEvidenceExport(evidence));
+    return;
+  }
   if (command === "usage") {
     if (args.length > 1) throw new Error("workflow usage accepts at most one task or run ID");
     const signal = AbortSignal.timeout(15_000);

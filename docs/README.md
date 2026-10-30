@@ -8,6 +8,8 @@ Workflow turns a development request into an inspectable TypeScript graph, then 
 
 **Writing automation:** [Workflows](workflows.md) → [Blocks](blocks.md) → [Configuration](configuration.md). Start from [examples/composed.ts](../examples/composed.ts) for an implementation/review loop.
 
+**Understanding execution:** [Inspecting workflow data](inspecting-data.md) covers exact step inputs and outputs, parallel handoffs, historical visits and AI context.
+
 **Unattended GitHub work:** [Triggers](triggers.md) → [Running and recovering workflows](operations.md). Test a saved workflow, then enable issue or PR triggers.
 
 **Working on the application:** [Architecture](architecture.md) → [Development](development.md) → [CLI and local API](reference.md).
@@ -37,6 +39,7 @@ Workflow turns a development request into an inspectable TypeScript graph, then 
 | File | Purpose |
 | --- | --- |
 | [composed.ts](../examples/composed.ts) | Implementation, deterministic tests, concurrent inspection, a typed approval loop, and a conditional report. |
+| [parallel-handoffs.ts](../examples/parallel-handoffs.ts) | Two parallel producers with named typed inputs and an inspectable schema transformation; no AI calls. |
 | [implement-reviewed.ts](../examples/implement-reviewed.ts) | The supported imperative `run(ctx)` style, with explicit awaited steps. |
 | [scripts-only.ts](../examples/scripts-only.ts) | Running commands without model calls, including existing script compatibility. |
 | [shared-tools.ts](../examples/shared-tools.ts) | One typed file tool used directly by a block and selected for an AI review. |

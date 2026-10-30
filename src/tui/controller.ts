@@ -7,6 +7,7 @@ import {
   type AuthSession, type AvailableModel, type OrchestrationState, type RunAction, type RunEvent, type Setup, type SetupJob, type TaskRequest, type UsageReport, type WorkflowRun,
 } from "../contracts.js";
 import { commands, short } from "./presentation.js";
+import { exportAttemptEvidence, formatEvidenceExport } from "../evidence-export.js";
 
 export type Session = { id: string; kind: "task" | "run"; title: string; status: string; time: string; runId?: string };
 export type Choice = { id: string; label: string; detail: string };
@@ -333,6 +334,32 @@ export class TerminalController extends EventEmitter {
       return;
     }
     if (command === "/settings") { await this.settings(); return; }
+    if (command === "/data") {
+      const run = this.state.run;
+      if (!run) throw new Error("Open a workflow first with /sessions.");
+      const [nodeId, requestedVisit, ...extra] = rest;
+      if (extra.length) throw new Error("Use /data [step-id] [visit].");
+      const show = async (nodeId: string, visit: number) => {
+        const value = await exportAttemptEvidence(this.client, run.id, nodeId, visit, this.signal(60_000), 256_000);
+        if (this.state.run?.id !== run.id) return;
+        const text = formatEvidenceExport(value);
+        this.state.screen = "step"; this.state.panelTitle = `${nodeId} · visit ${visit} · stored data`;
+        this.state.detail = `${text.slice(0, 256_000)}${text.length > 256_000 ? "\n\nTerminal display truncated at 256,000 characters; download full content in the browser Data tab." : ""}\n\nSnapshot of this visit. /data ${nodeId} ${visit} refreshes it.\nExport: workflow data ${run.id} ${nodeId} ${visit} --json`;
+      };
+      if (nodeId) {
+        const visit = requestedVisit ? z.coerce.number().int().positive().parse(requestedVisit) : run.visits[nodeId];
+        if (!visit) throw new Error("This step has not run yet. Use /step or /source to inspect its planned inputs.");
+        await show(nodeId, visit);
+      } else {
+        if (!run.attempts.length) throw new Error("No step visits are recorded yet. Use /step or /source to inspect the draft.");
+        this.picker("Step data", "Choose a visit to inspect its exact stored inputs, outputs and AI context.", run.attempts.toReversed().map(attempt => ({
+          id: `${attempt.nodeId}:${attempt.visit}`, label: `${attempt.nodeId} · visit ${attempt.visit}`,
+          detail: attempt.error ?? attempt.result?.summary ?? (attempt.finishedAt ? "Finished" : "In progress"),
+          action: () => show(attempt.nodeId, attempt.visit),
+        })));
+      }
+      return;
+    }
     if (command === "/setup") { await this.projectSetup(argument); return; }
     if (command === "/models" || command === "/model") { await this.models(argument); return; }
     if (command === "/thinking") { await this.thinking(); return; }

@@ -305,6 +305,7 @@ export const runPiBlock: BlockRunner = async (execution) => {
       requireVision: false,
       onUsage: execution.onUsage,
       accounting: execution.accounting,
+      contextMode: execution.context ?? "workflow",
       maxCostUsd: execution.maxCostUsd,
       price:
         config.budget?.prices[

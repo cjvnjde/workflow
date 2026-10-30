@@ -19,6 +19,7 @@ import type { CodeOperation } from "./code-schema.js";
 import type { Block, CodeBlock, StepOptions, WorkflowDefinition } from "./workflow-sdk.js";
 import { describeFlow } from "./composition-sdk.js";
 import { executeFlow, FlowDispatchStopped } from "./composition-runtime.js";
+import { serializeEvidenceValue, serializeStepEvidence, type EvidenceDependency, type StepEvidenceTransport } from "./evidence-value.js";
 
 export type AttemptIdentity = { nodeId: string; visit: number };
 
@@ -27,12 +28,13 @@ export type WorkflowActivities = {
   settleAttempt(run: WorkflowRun, commit: boolean, identity?: AttemptIdentity): Promise<{ recovery: RecoveryResult; usage: UsageTotals }>;
   executeOperation(run: WorkflowRun, operation: CodeOperation, identity?: AttemptIdentity): Promise<unknown>;
   executeBlock(run: WorkflowRun, identity?: AttemptIdentity): Promise<{ result: BlockResult; checks: CheckResult[] }>;
+  recordStepEvidence(runId: string, identity: AttemptIdentity, capture: StepEvidenceTransport): Promise<void>;
 };
 
 export const pauseSignal = defineSignal("pause");
 export const resumeSignal = defineSignal("resume");
 export const stateQuery = defineQuery<WorkflowRun>("state");
-const { saveProjection, settleAttempt } = proxyActivities<WorkflowActivities>({
+const { saveProjection, settleAttempt, recordStepEvidence } = proxyActivities<WorkflowActivities>({
   startToCloseTimeout: "30 seconds",
   retry: { maximumAttempts: 5 },
 });
@@ -43,6 +45,7 @@ export async function executeWorkflow(input: WorkflowRun, loadProgram?: () => Wo
     throw ApplicationFailure.nonRetryable("Invalid workflow execution snapshot", "InvalidSnapshot");
   }
   const run = parsed.data;
+  const captureInputs = patched("step-data-evidence-v1");
   let paused = false;
   let resumeEpoch = 0;
   let resumeNotice = false;
@@ -82,7 +85,7 @@ export async function executeWorkflow(input: WorkflowRun, loadProgram?: () => Wo
     await saveProjection(run, { kind, message, nodeId });
   };
 
-  const executeNode = async (node: WorkflowNode, body?: (identity: AttemptIdentity) => Promise<{ result: BlockResult; checks: CheckResult[] }>, stopped: () => boolean = () => false): Promise<BlockResult> => {
+  const executeNode = async (node: WorkflowNode, body?: (identity: AttemptIdentity) => Promise<{ result: BlockResult; checks: CheckResult[] }>, stopped: () => boolean = () => false, before?: (identity: AttemptIdentity) => Promise<void>): Promise<BlockResult> => {
     while (true) {
       while (true) {
         while (!stopped() && (paused || interrupted.size || run.activeNodes!.length >= 8)) await condition(() => stopped() || !paused && interrupted.size === 0 && run.activeNodes!.length < 8);
@@ -148,6 +151,7 @@ export async function executeWorkflow(input: WorkflowRun, loadProgram?: () => Wo
       });
       let completion: Awaited<ReturnType<WorkflowActivities["executeBlock"]>>;
       try {
+        if (before) await before(identity);
         completion = body ? await body(identity) : await activities.executeBlock(run, identity);
       } catch (error) {
         attempt.finishedAt = new Date().toISOString();
@@ -197,7 +201,8 @@ export async function executeWorkflow(input: WorkflowRun, loadProgram?: () => Wo
       const program = loadProgram?.();
       if (!program || (!program.flow && typeof program.run !== "function")) throw new Error("Export default workflow({name, flow}) or workflow({name, async run(ctx) {…}}).");
       const canonical = (value: unknown): string => JSON.stringify(value, (_key, item) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
-      if (program.flow && (!structured || canonical(describeFlow(program.flow)) !== canonical(run.program.structure))) throw new Error("Composition differs from its reviewed structure. Use deterministic declarations.");
+      const previews = (shape: import("./composition-sdk.js").FlowStructure): boolean => !!(shape.step?.inputPreview || shape.step?.promptPreview) || shape.children.some(previews);
+      if (program.flow && (!structured || canonical(describeFlow(program.flow, { evidence: !!run.program.structure && previews(run.program.structure) })) !== canonical(run.program.structure))) throw new Error("Composition differs from its reviewed structure. Use deterministic declarations.");
       // User code can keep and customize local state. Never expose the frozen
       // approval snapshot itself: mutating a model option or an input must not
       // invalidate later checkpoints.
@@ -207,7 +212,7 @@ export async function executeWorkflow(input: WorkflowRun, loadProgram?: () => Wo
       const pending = new Set<Promise<unknown>>();
       const activeIds = new Set<string>();
       const scope = new CancellationScope();
-      const step = (id: string, reference: Block | CodeBlock<any, any> | string, options: StepOptions = {}, envelope = false, stopped?: () => boolean): Promise<any> => {
+      const step = (id: string, reference: Block | CodeBlock<any, any> | string, options: StepOptions = {}, envelope = false, stopped?: () => boolean, dependencies: EvidenceDependency[] = []): Promise<any> => {
         if (!structured && pending.size) return Promise.reject(new Error("Await each ctx.step before starting another; use parallel() for explicit parallel composition."));
         if (activeIds.has(id)) return Promise.reject(new Error(`Step ${id} is already active`));
         activeIds.add(id);
@@ -237,6 +242,11 @@ export async function executeWorkflow(input: WorkflowRun, loadProgram?: () => Wo
                 retry: { maximumAttempts: 1 },
               });
               const completion = await executeCode({ run, node, block, step: options,
+                recordInputs: captureInputs ? async values => {
+                  for (const part of serializeStepEvidence({ kind: "inputs", ...values, prompt: options.prompt ?? run.plan.task, dependencies })) {
+                    await recordStepEvidence(run.id, identity, part);
+                  }
+                } : undefined,
                 operation: value => value.kind === "tool" && value.tool.replay === "safe"
                   ? proxyActivities<WorkflowActivities>({
                     startToCloseTimeout: executionTimeoutMs(run.config, run.blocks[node.block]!, node) + 5000,
@@ -254,7 +264,17 @@ export async function executeWorkflow(input: WorkflowRun, loadProgram?: () => Wo
             const data = result.artifacts.data === undefined ? undefined : JSON.parse(result.artifacts.data);
             return envelope ? { ...result, data } : data;
           }
-          const result = await executeNode(node, undefined, stopped);
+          const result = await executeNode(node, undefined, stopped, captureInputs && run.program!.composition !== "graph" ? async identity => {
+            // Legacy agent/script blocks receive string handoffs. Preserve the
+            // original typed call separately from that effective host input.
+            const artifacts: EvidenceDependency[] = node.inputs.map(input => ({
+              producerNodeId: input.node, producerVisit: run.attempts.findLast(attempt => attempt.nodeId === input.node && attempt.result)?.visit ?? null,
+              kind: "artifact", usedBy: "inputs", artifact: input.artifact, inputName: input.as ?? input.artifact,
+            }));
+            for (const part of serializeStepEvidence({ kind: "inputs", raw: serializeEvidenceValue(options.inputs ?? {}), effective: serializeEvidenceValue(resolveInputs(node, run)), prompt: node.goal, dependencies: [...dependencies, ...artifacts] })) {
+              await recordStepEvidence(run.id, identity, part);
+            }
+          } : undefined);
           let data: unknown;
           if (result.artifacts.data) {
             try { data = JSON.parse(result.artifacts.data); }
@@ -274,7 +294,8 @@ export async function executeWorkflow(input: WorkflowRun, loadProgram?: () => Wo
         output = await scope.run(() => program.flow ? executeFlow({
           recordDecisions: patched("flow-decision-evidence-v1"),
           flow: program.flow, structure: run.program!.structure!, input, request: run.plan.task, models,
-          step: (node, options, stopped) => step(node.id, node.block, options, true, stopped),
+          visit: id => run.visits[id]!,
+          step: (node, options, stopped, dependencies) => step(node.id, node.block, options, true, stopped, dependencies),
           group: async (id, state) => { (run.groups ??= {})[id] = { ...run.groups?.[id], ...state }; await checkpoint("group_state", `${id}: ${state.state}${state.iteration ? ` · iteration ${state.iteration}` : ""}`, id); if (state.decision) await checkpoint("flow_decision", JSON.stringify({ groupId: id, iteration: state.iteration, ...state.decision }), id); },
         }) : program.run!({ input, request: run.plan.task, models, step, stepResult: (id, block, options) => step(id, block, options, true) }));
         if (pending.size) throw new Error("The workflow returned before its step finished. Await every ctx.step call.");

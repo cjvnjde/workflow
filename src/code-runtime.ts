@@ -20,6 +20,7 @@ import { modelOverride, utf8Bytes } from "./program-steps.js";
 import { failureMessage } from "./failure-message.js";
 import { toolReference } from "./tool-sdk.js";
 import type { WorkflowTool } from "./tool-sdk.js";
+import { serializeEvidenceValue, type EvidenceValue } from "./evidence-value.js";
 
 /** Pure block code runs durably; every host effect is recorded as an activity. */
 export async function executeCode(options: {
@@ -29,6 +30,7 @@ export async function executeCode(options: {
   step: StepOptions;
   operation(value: CodeOperation): Promise<unknown>;
   log(message: string): Promise<void>;
+  recordInputs?(value: { raw: EvidenceValue; effective: EvidenceValue; inputError?: string }): Promise<void>;
 }): Promise<{ result: BlockResult; error?: string }> {
   const { run, node, block, step } = options;
   const definition = block.options;
@@ -174,8 +176,17 @@ export async function executeCode(options: {
     },
   };
   try {
-    const input = JSON.parse(JSON.stringify(step.inputs ?? {}));
-    inputValue = definition.input ? definition.input.parse(input) : input;
+    const rawInputs = options.recordInputs ? serializeEvidenceValue(step.inputs ?? {}) : undefined;
+    try {
+      const input = JSON.parse(JSON.stringify(step.inputs ?? {}));
+      inputValue = definition.input ? definition.input.parse(input) : input;
+    } catch (error) {
+      const message = failureMessage(error).slice(0, 16_000);
+      await options.recordInputs?.({ raw: rawInputs!, effective: { state: "unavailable", reasonCode: "validation-failed", reason: "Input normalization or schema validation failed" }, inputError: message });
+      throw error;
+    }
+    // Observability is separate from user effects and consumes no maxOperations.
+    await options.recordInputs?.({ raw: rawInputs!, effective: serializeEvidenceValue(inputValue) });
     const raw = await Promise.race([
       scope.run(() => Promise.resolve(definition.run(context))),
       scope.cancelRequested,

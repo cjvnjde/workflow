@@ -129,6 +129,15 @@ export async function createHttpServer(app: WorkflowApplication, port = 4310) {
   server.put<{ Params: { id: string } }>("/api/runs/:id/plan", async request => app.updatePlan(request.params.id, request.body, expectedRevision(request.headers)));
   server.delete<{ Params: { id: string } }>("/api/runs/:id", async request => app.removeRun(request.params.id));
   server.get<{ Params: { id: string } }>("/api/runs/:id/events", async request => app.events(request.params.id));
+  server.get<{ Params: { id: string; nodeId: string; visit: string } }>("/api/runs/:id/attempts/:nodeId/:visit/evidence", request =>
+    app.attemptEvidence(request.params.id, request.params.nodeId, z.coerce.number().int().positive().parse(request.params.visit)));
+  server.get<{ Params: { id: string; nodeId: string; visit: string; contentId: string }; Querystring: { download?: string } }>("/api/runs/:id/attempts/:nodeId/:visit/content/:contentId", async (request, reply) => {
+    const content = await app.evidenceContent(request.params.id, request.params.nodeId, z.coerce.number().int().positive().parse(request.params.visit), request.params.contentId);
+    reply.header("x-content-type-options", "nosniff");
+    reply.header("content-security-policy", "default-src 'none'; sandbox");
+    if (request.query.download === "1") reply.header("content-disposition", `attachment; filename="evidence-${content.ref.id}.${content.ref.mediaType === "application/json" ? "json" : content.ref.mediaType.startsWith("text/") ? "txt" : "bin"}"`);
+    return reply.type(content.ref.mediaType).send(content.data);
+  });
   server.post<{ Params: { id: string } }>("/api/runs/:id/refine", async (request, reply) => cancellable(reply, signal => app.refine(request.params.id, request.body, expectedRevision(request.headers), signal)));
   server.post<{ Params: { id: string } }>("/api/runs/:id/approve", async request => app.approve(request.params.id, expectedRevision(request.headers)));
   server.post<{ Params: { id: string } }>("/api/runs/:id/reject", async request => app.reject(request.params.id));

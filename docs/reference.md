@@ -27,6 +27,7 @@ Run project commands from the target project's directory. Configuration is in th
 | `workflow events <run-id>`, `workflow watch <run-id>` | Read activity or wait for completion/attention. |
 | `workflow task "Request" [--max-task-cost USD]`, `workflow tasks`, `workflow task-show <task-id>` | Create/list/inspect planning requests. The optional limit includes planning and execution. |
 | `workflow usage [task-or-run-id] [--json]` | Read project or shared task usage totals, phases, model sessions, and spending limits from the running host. |
+| `workflow data <run-id> <step-id> [visit] [--json]` | Inspect stored inputs, outputs and AI context for one visit. Omit the visit for the latest one; JSON includes content references and loaded text. |
 | `workflow answer <task-id> "Answer"` | Answer the current planning question. |
 | `workflow runs` | List runs on the local project server. |
 | `workflow pause <run-id>` | Finish active steps, then pause new dispatch. |
@@ -150,6 +151,8 @@ Events are `issue.opened` or `pull_request.opened`; result destinations are `loc
 | `POST /api/runs/:id/pause`, `/resume`, `/cancel`, `/recover` | Execution controls. |
 | `DELETE /api/runs/:id` | Remove a deletable run and its linked task from visible history. |
 | `GET /api/runs/:id/events` | Persisted activity. |
+| `GET /api/runs/:id/attempts/:nodeId/:visit/evidence` | Exact stored input/output and AI-session evidence for a step visit, with explicit unavailable states. |
+| `GET /api/runs/:id/attempts/:nodeId/:visit/content/:hash` | Fetch verified content owned by that attempt; `?download=1` requests an attachment. |
 | `GET /api/stream` | Server-sent events for task/run updates and live activity. |
 | `POST /api/format` | Format `{ source, language, cursorOffset? }` without executing it. |
 

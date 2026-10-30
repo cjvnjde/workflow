@@ -113,7 +113,7 @@ function programFiles(
   const registry = `{${imports.map((item) => `${JSON.stringify(item.id)}:${item.variable}`).join(",")}}`;
   files.set(
     entry,
-    `${header}\nimport {describeFlow as describe, __workflowTools} from "workflow";\nexport const __tools = __workflowTools;\nexport const __structure = () => definition.flow ? describe(definition.flow) : undefined;\nexport default {...definition,blocks:${registry}};`,
+    `${header}\nimport {describeFlow as describe, __workflowTools} from "workflow";\nexport const __tools = __workflowTools;\nexport const __structure = () => definition.flow ? describe(definition.flow,{evidence:true}) : undefined;\nexport default {...definition,blocks:${registry}};`,
   );
   const check = `${filename}.check.ts`;
   files.set(

@@ -5,6 +5,7 @@ import type {
   Outcome,
   StepResult,
 } from "./workflow-sdk.js";
+import { evidenceBytes, serializeEvidenceValue, type EvidenceValue } from "./evidence-value.js";
 
 export interface FlowContext<I = Record<string, unknown>> {
   readonly input: I;
@@ -114,6 +115,7 @@ export function repeatUntil(
 }
 
 /** Serializable structure for previewing a flow without running any block or condition. */
+export type InputPreview = { kind: "none" | "literal" | "deferred"; value?: EvidenceValue; expression?: string; truncated?: boolean };
 export type FlowStructure = {
   kind: FlowNode["kind"];
   id: string;
@@ -123,6 +125,8 @@ export type FlowStructure = {
   concurrency?: number;
   maxIterations?: number;
   step?: {
+    inputPreview?: InputPreview;
+    promptPreview?: InputPreview;
     reference:
       | string
       | {
@@ -145,7 +149,7 @@ export type FlowStructure = {
 };
 
 /** @internal Used by the compiler and runtime to verify the reviewed structure. */
-export function describeFlow(root: FlowNode): FlowStructure {
+export function describeFlow(root: FlowNode, options: { evidence?: boolean } = {}): FlowStructure {
   const ids = new Set<string>();
   const ancestors = new Set<FlowNode>();
   let count = 0;
@@ -198,6 +202,7 @@ export function describeFlow(root: FlowNode): FlowStructure {
             ? node.block
             : (node.block.options.name ?? id));
         base.step = {
+          ...(options.evidence ? { inputPreview: preview(o.inputs), promptPreview: preview(o.prompt) } : {}),
           reference:
             typeof node.block === "string"
               ? node.block
@@ -205,7 +210,7 @@ export function describeFlow(root: FlowNode): FlowStructure {
                   kind: "code",
                   name: node.block.options.name,
                   description: node.block.options.description,
-                  source: node.block.options.run.toString(),
+                  source: options.evidence ? Function.prototype.toString.call(node.block.options.run) : node.block.options.run.toString(),
                   timeoutMs: node.block.options.timeoutMs,
                   maxOperations: node.block.options.maxOperations,
                 },
@@ -237,7 +242,7 @@ export function describeFlow(root: FlowNode): FlowStructure {
       case "when":
         if (typeof node.condition !== "function")
           throw new Error(`Missing condition at ${id}`);
-        base.condition = node.condition.toString().slice(0, 2000);
+        base.condition = (options.evidence ? Function.prototype.toString.call(node.condition) : node.condition.toString()).slice(0, 2000);
         children.push(child(node.then, 0));
         if (node.otherwise) children.push(child(node.otherwise, 1));
         break;
@@ -251,7 +256,7 @@ export function describeFlow(root: FlowNode): FlowStructure {
           throw new Error(
             `Loop ${id} needs an until condition and maxIterations between 1 and 30`,
           );
-        base.condition = node.until.toString().slice(0, 2000);
+        base.condition = (options.evidence ? Function.prototype.toString.call(node.until) : node.until.toString()).slice(0, 2000);
         base.maxIterations = node.maxIterations;
         children.push(child(node.body, 0));
         break;
@@ -262,4 +267,18 @@ export function describeFlow(root: FlowNode): FlowStructure {
     return base;
   }
   return visit(root, "root", 0);
+}
+
+function preview(value: unknown): InputPreview {
+  if (value === undefined) return { kind: "none" };
+  if (typeof value !== "function") {
+    const captured = serializeEvidenceValue(value);
+    return { kind: "literal", value: captured.state === "json" && evidenceBytes(JSON.stringify(captured.value)) > 8000
+      ? { state: "unavailable", reasonCode: "oversized", reason: "Literal preview exceeds 8 KB; the original value remains in the workflow source and is captured when the step runs." }
+      : captured };
+  }
+  // Reading a descriptor must never execute the deferred callback or a custom
+  // toString property attached to that function.
+  const expression = Function.prototype.toString.call(value);
+  return { kind: "deferred", expression: expression.slice(0, 8000), truncated: expression.length > 8000 };
 }

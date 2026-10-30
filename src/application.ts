@@ -125,6 +125,8 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
     listRuns: (includeDeleted = true) => engine.list(includeDeleted),
     getRun: (id: string) => engine.get(id),
     events: (id: string) => engine.events(id),
+    attemptEvidence: (id: string, nodeId: string, visit: number) => engine.attemptEvidence(id, nodeId, visit),
+    evidenceContent: (id: string, nodeId: string, visit: number, contentId: string) => engine.evidenceContent(id, nodeId, visit, contentId),
     approve: (id: string, revision?: number) => operation(() => engine.approve(id, revision)),
     reject: (id: string) => operation(() => engine.reject(id)),
     pause: (id: string) => operation(() => engine.pause(id)),

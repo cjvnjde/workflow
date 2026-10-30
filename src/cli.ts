@@ -53,6 +53,7 @@ async function main() {
   workflow run <file.ts> [--input JSON] [--approve] [--wait]
   workflow task "Request" [--max-task-cost USD]  Budget planning and execution together
   workflow usage [task-or-run-id] [--json]  Inspect persisted project/session spending
+  workflow data <run-id> <step-id> [visit] [--json]  Inspect exact saved step data and AI context
   workflow tasks               List tasks
   workflow task-show <task-id>  Inspect planning, questions, and the linked run
   workflow answer <task-id> "Answer"

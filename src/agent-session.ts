@@ -14,6 +14,7 @@ import { getModelRuntime } from "./model-runtime.js";
 import { boundedEvidence, type OperationRecorder } from "./operation-schema.js";
 import { createAccountingContext, UsageStore } from "./usage-store.js";
 import type { AccountingContext } from "./usage-schema.js";
+import { EvidenceStore, type SessionEvidenceIdentity } from "./evidence-store.js";
 
 export type ActivitySink = (kind: string, message: string) => void;
 
@@ -31,6 +32,7 @@ export async function runAgentSession(options: {
   maxCostUsd?: number;
   price?: z.infer<typeof priceSchema>;
   accounting?: AccountingContext;
+  contextMode?: "workflow" | "none";
   operation?: { parentId: string; record: OperationRecorder };
   /** Continue a prematurely ended response in the same session and budgets. */
   completion?: { isComplete: () => boolean; prompt: () => string };
@@ -90,6 +92,20 @@ export async function runAgentSession(options: {
   let modelFailure: Error | undefined;
   let usageWrites = Promise.resolve();
   let operationWrites = Promise.resolve();
+  let evidenceWrites = Promise.resolve();
+  const evidenceStore = new EvidenceStore(accounting.project);
+  const evidenceIdentity: SessionEvidenceIdentity | undefined = accounting.runId && accounting.nodeId && accounting.visit
+    ? { runId: accounting.runId, nodeId: accounting.nodeId, visit: accounting.visit, sessionId: tracked.id, operationId: accounting.operationId, activityAttempt: accounting.activityAttempt }
+    : undefined;
+  const captureEvidence = (write: Promise<void>) => {
+    void write.catch(error => { budget.abort(error); });
+    evidenceWrites = Promise.allSettled([evidenceWrites, write]).then(results => {
+      const failed = results.find(result => result.status === "rejected");
+      if (failed?.status === "rejected") throw failed.reason;
+    });
+    // Await all already-started writes, including when an earlier one failed.
+    void evidenceWrites.catch(() => {});
+  };
   const recordedCalls = new Set<string>();
   const requestedInputs = new Map<string, unknown>();
   const tools = options.tools.map((tool) => ({
@@ -169,6 +185,13 @@ export async function runAgentSession(options: {
     }
   };
   const unsubscribe = session.subscribe((event) => {
+    // Capture the SDK's requested arguments and final feedback, including calls
+    // rejected before our tool wrapper runs. Compact activity logs are separate.
+    if (evidenceIdentity && event.type === "tool_execution_start") {
+      captureEvidence(evidenceStore.captureSessionTool(evidenceIdentity, { callId: event.toolCallId, name: event.toolName, state: "started", input: event.args }));
+    } else if (evidenceIdentity && event.type === "tool_execution_end") {
+      captureEvidence(evidenceStore.captureSessionTool(evidenceIdentity, { callId: event.toolCallId, name: event.toolName, state: event.isError ? "failed" : "completed", output: event.result?.content, details: event.result?.details }));
+    }
     if (
       event.type === "message_update" &&
       event.assistantMessageEvent.type === "text_delta"
@@ -236,16 +259,35 @@ export async function runAgentSession(options: {
   combinedSignal.addEventListener("abort", abort, { once: true });
   try {
     combinedSignal.throwIfAborted();
+    if (evidenceIdentity) {
+      await evidenceStore.captureSessionContext(evidenceIdentity, {
+        systemPrompt: session.systemPrompt,
+        settings: { ...settings, provider: model.provider, model: model.id, thinking: session.thinkingLevel },
+        contextMode: options.contextMode,
+        tools: session.getActiveToolNames().map(name => {
+          const definition = session.getToolDefinition(name);
+          if (!definition) throw new Error(`Active tool definition unavailable: ${name}`);
+          return { name, description: definition.description, parameters: definition.parameters };
+        }),
+      });
+    }
     emit(
       "agent_start",
       `${model.provider}/${model.id} · thinking ${session.thinkingLevel}`,
     );
     emit("model_session", JSON.stringify({ sessionId: tracked.id, operationId: accounting.operationId, scopeId: accounting.scopeId, nodeId: accounting.nodeId, visit: accounting.visit, provider: model.provider, model: model.id, thinking: session.thinkingLevel, tools: options.tools.map(tool => tool.name) }));
+    let promptIndex = 0;
     const prompt = async (message: string, images?: ImageContent[]) => {
       modelFailure = undefined;
+      if (evidenceIdentity) {
+        await evidenceStore.captureSessionPrompt(evidenceIdentity, { index: promptIndex, kind: promptIndex === 0 ? "initial" : "continuation", text: message, images });
+      }
+      promptIndex += 1;
+      combinedSignal.throwIfAborted();
       await session.prompt(message, { images });
       await usageWrites;
       await operationWrites;
+      await evidenceWrites;
       combinedSignal.throwIfAborted();
       // prompt resolves after Pi has exhausted retries or recovered. Surface a
       // final error before asking for a structured submission or another turn.
@@ -265,9 +307,9 @@ export async function runAgentSession(options: {
     combinedSignal.removeEventListener("abort", abort);
     unsubscribe();
     try {
-      await abortPromise;
-      await usageWrites;
-      await operationWrites;
+      const writes = await Promise.allSettled([abortPromise, usageWrites, operationWrites, evidenceWrites]);
+      const failed = writes.find(write => write.status === "rejected");
+      if (failed?.status === "rejected") throw failed.reason;
     } finally {
       try {
         await tracked.finish(signal.aborted ? "cancelled" : sessionError || combinedSignal.aborted ? "failed" : "completed", sessionError ? String(sessionError) : undefined);

@@ -6,6 +6,7 @@ import type {
 } from "./workflow-sdk.js";
 import type { FlowStructure } from "./composition-sdk.js";
 import type { StepOptions } from "./workflow-sdk.js";
+import type { EvidenceDependency } from "./evidence-schema.js";
 
 export type GroupState = {
   state: "running" | "completed" | "failed" | "skipped";
@@ -15,6 +16,7 @@ export type GroupState = {
 };
 type State = {
   results: Map<string, StepResult>;
+  visits: Map<string, number>;
   iterations: Map<string, number>;
   written: Set<string>;
   last?: StepResult;
@@ -32,38 +34,47 @@ export async function executeFlow(options: {
   input: Record<string, unknown>;
   request: string;
   models: FlowContext["models"];
+  /** Actual completed visit, including explicit retries after interruptions. */
+  visit?(id: string): number;
   step(
     node: FlowStep<any>,
     options: StepOptions,
     stopped: () => boolean,
+    dependencies: EvidenceDependency[],
   ): Promise<StepResult>;
   group(id: string, state: GroupState): Promise<void>;
 }): Promise<string> {
   const state: State = {
     results: new Map(),
+    visits: new Map(),
     iterations: new Map(),
     written: new Set(),
   };
   const clone = <T>(value: T): T =>
     value === undefined ? value : JSON.parse(JSON.stringify(value));
-  const context = (state: State): FlowContext => ({
+  const context = (state: State, usedBy?: () => EvidenceDependency["usedBy"] | undefined, dependencies?: EvidenceDependency[]): FlowContext => ({
     input: clone(options.input),
     request: options.request,
     models: clone(options.models),
-    output: (reference: string | FlowStep<any>) =>
-      clone(
-        state.results.get(
-          typeof reference === "string" ? reference : reference.id,
-        )?.data,
-      ) as any,
-    result: (reference: string | FlowStep<any>) =>
-      clone(
-        state.results.get(
-          typeof reference === "string" ? reference : reference.id,
-        ),
-      ) as any,
+    output: (reference: string | FlowStep<any>) => {
+      const id = typeof reference === "string" ? reference : reference.id;
+      recordRead(id, "output", state, usedBy?.(), dependencies);
+      return clone(state.results.get(id)?.data) as any;
+    },
+    result: (reference: string | FlowStep<any>) => {
+      const id = typeof reference === "string" ? reference : reference.id;
+      recordRead(id, "result", state, usedBy?.(), dependencies);
+      return clone(state.results.get(id)) as any;
+    },
     iteration: (id) => state.iterations.get(id) ?? 0,
   });
+  const recordRead = (id: string, kind: EvidenceDependency["kind"], state: State, usedBy?: EvidenceDependency["usedBy"], dependencies?: EvidenceDependency[]) => {
+    if (!usedBy || !dependencies) return;
+    const producerVisit = state.visits.get(id) ?? null;
+    if (!dependencies.some(item => item.producerNodeId === id && item.producerVisit === producerVisit && item.kind === kind && item.usedBy === usedBy)) {
+      dependencies.push({ producerNodeId: id, producerVisit, kind, usedBy });
+    }
+  };
   const predicate = (fn: (ctx: FlowContext) => boolean, state: State) => {
     const answer = fn(context(state));
     if (typeof answer !== "boolean")
@@ -97,25 +108,30 @@ export async function executeFlow(options: {
     if (node.kind === "step") {
       try {
         await options.group(shape.id, { state: "running" });
-        const ctx = context(state);
+        const dependencies: EvidenceDependency[] = [];
+        // Keep the shared callback context and original evaluation order. Only
+        // the active provenance label changes between prompt and input reads.
+        let usedBy: EvidenceDependency["usedBy"] | undefined = "prompt";
+        const ctx = context(state, () => usedBy, dependencies);
+        const label = node.options.label;
+        const prompt = typeof node.options.prompt === "function" ? node.options.prompt(ctx) : node.options.prompt;
+        usedBy = "inputs";
+        const inputs = typeof node.options.inputs === "function" ? node.options.inputs(ctx) : node.options.inputs;
+        usedBy = undefined;
         const result = await options.step(
           node,
           {
-            label: node.options.label,
-            prompt:
-              typeof node.options.prompt === "function"
-                ? node.options.prompt(ctx)
-                : node.options.prompt,
-            inputs:
-              typeof node.options.inputs === "function"
-                ? node.options.inputs(ctx)
-                : node.options.inputs,
+            label,
+            prompt,
+            inputs,
             model: node.options.model,
             maxVisits: node.options.maxVisits,
           },
           () => stopped(stop),
+          dependencies,
         );
         state.results.set(node.id, result);
+        state.visits.set(node.id, options.visit?.(node.id) ?? (state.visits.get(node.id) ?? 0) + 1);
         state.written.add(node.id);
         state.last = result;
         await options.group(shape.id, { state: "completed" });
@@ -157,6 +173,7 @@ export async function executeFlow(options: {
         const shared: Stop = { parent: stop, loop };
         const branches: State[] = node.children.map(() => ({
           results: new Map(state.results),
+          visits: new Map(state.visits),
           iterations: new Map(state.iterations),
           written: new Set(),
         }));
@@ -190,6 +207,7 @@ export async function executeFlow(options: {
         for (const branch of branches)
           for (const id of branch.written) {
             state.results.set(id, branch.results.get(id)!);
+            state.visits.set(id, branch.visits.get(id)!);
             state.written.add(id);
           }
         // A join's result is deterministic: the last declared branch that ran,

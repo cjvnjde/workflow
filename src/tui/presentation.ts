@@ -160,6 +160,7 @@ export const commands = [
   ["/retry", "Retry failed task planning"], ["/recover", "Retry managed-file recovery"],
   ["/settings", "Project settings and connections"], ["/models", "Choose the project model"], ["/thinking", "Choose model thinking level"],
   ["/setup", "Project setup: status, start, resume, cancel, regenerate"],
+  ["/data", "Inspect a step visit's inputs, outputs and AI context"],
   ["/login", "Connect a provider"], ["/logout", "Disconnect a provider"], ["/source", "Read workflow source"],
   ["/step", "Inspect a step and its results"], ["/help", "Commands and keyboard shortcuts"], ["/quit", "Close the terminal workspace"],
 ] as const;
