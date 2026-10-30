@@ -72,6 +72,8 @@ bun test --timeout 30000 tests/composition.test.ts
 
 Tests use disposable projects. They cover SDK behavior, API validation, approval, commands/files, parallel execution, spending, worker loss, restart/recovery, CLI packaging, and terminal setup. Model integration fixtures use local fake providers or mocks; ordinary test suites do not need paid model credentials. Engine tests use real local Temporal services.
 
+GitHub Actions runs on pushes to `main`, every pull request, and manual dispatch. Separate jobs run `bun run check`, the Chromium browser suite, and the mutation smoke check. Superseded runs are cancelled; browser failure traces and mutation reports are retained for seven days. Dependencies are installed from `bun.lock` without the prepare hook, so each job builds only when needed.
+
 The terminal tests render through OpenTUI's native test renderer and exercise typing, command completion, graph layout, resizing, and masked secret input. Controller tests use the real HTTP adapter, and a Bun pseudo-terminal test runs the packaged `tui` command through planning, approval, execution, and clean shutdown. Run them after building with `bun test --timeout 45000 tests/tui*.test.ts`. Markdown parser caches and credentials use isolated test directories. Source development uses `bun run workflow tui`.
 
 For browser checks:
@@ -96,16 +98,16 @@ The pinned Temporal SDK may print `v8.promiseHooks.createHook is not available` 
 Stryker requires Node.js 22+ for its coordinator; tests still run on Bun through its built-in command runner. See the [Stryker configuration reference](https://stryker-mutator.io/docs/stryker-js/configuration/).
 
 ```sh
-bun run test:mutation:smoke  # a handful of mutants and two tests; no build or Temporal
+bun run test:mutation:smoke  # approval guards and usage display; no build or Temporal
 bun run test:mutation:dry    # instrument and build all targets, run tests once; no active mutants
 bun run test:mutation        # opt-in full mutation run; can take a long time
 ```
 
 The main configuration mutates TypeScript in `src/` and `web/`, excluding declarations and frozen legacy sources. Vue single-file components and browser journeys are outside this scope. It builds the instrumented distribution once inside Stryker's sandbox so CLI and worker tests exercise the same mutations as source imports. Local `.workflow/` state and existing build output are excluded from that sandbox.
 
-The command runner cannot select tests by coverage, so `coverageAnalysis` is off and every mutant runs the backend/integration suite. Concurrency is limited to one to keep local Temporal service usage bounded. Mutation testing is separate from `check` and CI. No minimum score is enforced until a full baseline is established; the smoke check requires all of its mutants to be killed to verify mutation activation.
+The command runner cannot select tests by coverage, so `coverageAnalysis` is off and every mutant in the full configuration runs the backend/integration suite. Concurrency is limited to one to keep local Temporal service usage bounded. The initial run has a 20-minute limit to accommodate instrumentation and local service startup. Full mutation testing is opt-in and separate from `check` and CI. No minimum score is enforced until a full baseline is established; CI runs the focused smoke check with a 100% threshold.
 
-HTML and JSON reports go to `reports/mutation/`, with smoke reports in `reports/mutation-smoke/`. Both reports and `.stryker-tmp/` are ignored by Git, ESLint, and Prettier. The smoke configuration inherits the main configuration and narrows mutation to the token-total function's return expression and its focused tests.
+HTML and JSON reports go to `reports/mutation/`, with smoke reports in `reports/mutation-smoke/`. Both reports and `.stryker-tmp/` are ignored by Git, ESLint, and Prettier. The smoke configuration inherits the main configuration and narrows mutation to usage arithmetic/formatting and the engine's snapshot/activity approval guards. Keep its source line ranges aligned when those functions move. Its tests cover forged approvals, changed frozen policies/programs, wrong or missing Temporal identities, transport serialization, valid execution, and pricing display boundaries.
 
 To focus the main configuration on a source file while retaining the normal build and test suite:
 
@@ -181,7 +183,7 @@ The installed CLI and `bun run start` default to a detached host. Use `bun run s
 
 ## Code quality
 
-Run `bun run check` before submitting changes. It runs ESLint with zero warnings, checks Prettier formatting, typechecks TypeScript and Vue templates, builds the distributable artifacts, and runs the unit and integration tests. CI runs the same command with locked dependencies. Browser journeys are available separately through `bun run test:e2e`.
+Run `bun run check` before submitting changes. It runs ESLint with zero warnings, checks Prettier formatting, typechecks TypeScript and Vue templates, builds the distributable artifacts, and runs the unit and integration tests. CI runs the same command with locked dependencies, plus browser journeys (`bun run test:e2e`) and the focused mutation check (`bun run test:mutation:smoke`).
 
 Use `bun run lint:fix` for safe lint fixes and `bun run format` to format supported repository files. `bun run format:web` limits formatting to the browser application. ESLint uses its flat config with the recommended JavaScript, TypeScript and Vue rules; Prettier owns formatting. Prefer type-only imports, `const`, explicit module ownership, and meaningful error causes. Narrow, documented exceptions cover heterogeneous SDK generics, control-character validation and integrity checks during cleanup. Historical workflow sources are excluded from automated lint and formatting rewrites to preserve replay behavior.
 

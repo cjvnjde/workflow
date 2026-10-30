@@ -11,7 +11,8 @@ export default {
   // Each runner executes integration tests with real local Temporal services.
   concurrency: 1,
   timeoutMS: 10000,
-  dryRunTimeoutMinutes: 10,
+  // A full instrumented integration run can exceed ten minutes on a loaded runner.
+  dryRunTimeoutMinutes: 20,
   ignorePatterns: [
     ".workflow",
     ".agents",

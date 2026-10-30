@@ -2,9 +2,8 @@ import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
-import { Client, Connection, WorkflowFailedError } from "@temporalio/client";
+import { ActivityFailure, WorkflowFailedError } from "@temporalio/client";
 import { ApplicationFailure } from "@temporalio/activity";
-import { z } from "zod";
 import type { BlockExecution } from "../src/core/execution/block-runner.js";
 import { runDemoBlock } from "../src/core/execution/block-runner.js";
 import { WorkflowEngine } from "../src/core/engine.js";
@@ -459,21 +458,18 @@ test("rejecting a draft never executes it and the execution mode cannot silently
 
 test("starting a Temporal workflow directly cannot bypass local approval", async (t) => {
   let executions = 0;
-  const { engine, project, library, cleanup } = await setup(t, async (execution) => {
+  const { engine, project, library } = await setup(t, async (execution) => {
     executions += 1;
     return passingResult(execution);
   });
   const legitimate = await engine.create(createTemplate("Approved", "bug", library), library);
   await engine.approve(legitimate.id);
   await engine.waitForIdle();
-  const receipt = z
-    .object({ port: z.number() })
-    .parse(
-      JSON.parse(await readFile(path.join(project, ".workflow/temporal/server.json"), "utf8")),
-    );
-  const connection = await Connection.connect({ address: `127.0.0.1:${receipt.port}` });
-  cleanup(() => connection.close());
-  const client = new Client({ connection });
+  assert.equal(engine.get(legitimate.id).status, "completed");
+  assert.equal(executions, 3, "The worker must execute a legitimately approved workflow");
+  // Use the established transport: this test exercises approval, not a second
+  // connection's startup/backoff under a full instrumented suite's load.
+  const client = engine["environment"]!.client;
   assert.ok(legitimate.temporalWorkflowId);
   const description = await client.workflow.getHandle(legitimate.temporalWorkflowId).describe();
   const draft = await engine.create(createTemplate("Not approved", "bug", library), library);
@@ -488,12 +484,19 @@ test("starting a Temporal workflow directly cannot bypass local approval", async
     unauthorized.result(),
     (error: unknown) =>
       error instanceof WorkflowFailedError &&
-      error.cause instanceof Error &&
+      error.cause instanceof ActivityFailure &&
       error.cause.cause instanceof ApplicationFailure &&
-      error.cause.cause.type === "UnapprovedExecution",
+      error.cause.cause.type === "UnapprovedExecution" &&
+      error.cause.cause.nonRetryable,
   );
   assert.equal(executions, 0);
-  assert.equal(engine.get(draft.id).status, "draft");
+  assert.deepEqual(engine.get(draft.id), draft);
+  const persisted = JSON.parse(
+    await readFile(path.join(project, ".workflow/runs", draft.id, "run.json"), "utf8"),
+  );
+  assert.equal(persisted.status, "draft");
+  assert.equal(persisted.approvedAt, undefined);
+  assert.deepEqual(persisted.attempts, []);
 });
 
 test("demo still uses Temporal but never executes configured check commands", async (t) => {

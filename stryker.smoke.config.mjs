@@ -3,12 +3,19 @@ import config from "./stryker.config.mjs";
 /** @type {import('@stryker-mutator/api/core').PartialStrykerOptions} */
 export default {
   ...config,
-  // This source-only test needs no distribution build or Temporal service.
+  // These source-only tests need no distribution build or Temporal service.
   buildCommand: undefined,
-  commandRunner: { command: "bun test --timeout 30000 tests/usage-presentation.test.ts" },
-  mutate: ["web/features/usage/usage-presentation.ts:13-14"],
+  commandRunner: {
+    command:
+      "bun test --timeout 30000 tests/usage-presentation.test.ts tests/engine-approval.test.ts",
+  },
+  mutate: [
+    "web/features/usage/usage-presentation.ts:13-30",
+    "src/core/engine.ts:544-569",
+    "src/core/engine.ts:643-655",
+  ],
   htmlReporter: { fileName: "reports/mutation-smoke/index.html" },
   jsonReporter: { fileName: "reports/mutation-smoke/mutation.json" },
-  // A broken mutant activation path would leave these arithmetic mutants alive.
+  // Verify that approval guards and usage arithmetic/formatting detect every scoped mutant.
   thresholds: { high: 100, low: 100, break: 100 },
 };
