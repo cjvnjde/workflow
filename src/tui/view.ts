@@ -3,7 +3,7 @@ import {
   StyledText, fg, bold, t, type CliRenderer, type KeyEvent, type PasteEvent, type TreeSitterClient,
 } from "@opentui/core";
 import { TerminalController, commandHelp, type TuiState } from "./controller.js";
-import { colors, commands, graphLines, plain, short, transcript, type Card } from "./presentation.js";
+import { colors, commands, graphLines, plain, short, setupSummary, transcript, type Card } from "./presentation.js";
 
 type CardView = { box: BoxRenderable; heading: TextRenderable; body: TextRenderable | MarkdownRenderable; signature: string };
 
@@ -242,12 +242,18 @@ export class TerminalWorkspace {
   }
   private renderActions(state: TuiState) {
     const run = state.run;
-    const signature = `${state.screen}/${run?.id}/${run?.status}/${state.task?.status}`;
+    const signature = `${state.screen}/${run?.id}/${run?.status}/${state.task?.status}/${state.setupJob?.id}/${state.setupJob?.revision}/${!!state.setup?.completedSetup}`;
     if (signature === this.actionSignature) return;
     this.actionSignature = signature;
     for (const child of this.actions.getChildren()) { this.actions.remove(child); child.destroyRecursively(); }
     const buttons: [string, string, string][] = [];
-    if (run?.status === "draft") buttons.push([" Approve & start ", "/approve", colors.mint], [" Reject ", "/reject", colors.red], [" View source ", "/source", colors.muted]);
+    if (state.screen === "setup") {
+      const job = state.setupJob;
+      if (job?.actions.canResume) buttons.push([" Resume setup ", "/setup resume", colors.mint]);
+      if (job?.actions.canCancel) buttons.push([" Cancel setup ", "/setup cancel", colors.red]);
+      if (!job || !["queued", "running", "cancelling"].includes(job.status)) buttons.push(job || state.setup?.completedSetup
+        ? [" Regenerate ", "/setup regenerate", colors.yellow] : [" Start setup ", "/setup start", colors.mint]);
+    } else if (run?.status === "draft") buttons.push([" Approve & start ", "/approve", colors.mint], [" Reject ", "/reject", colors.red], [" View source ", "/source", colors.muted]);
     else if (run?.status === "running") buttons.push([" Pause ", "/pause", colors.yellow], [" Cancel ", "/cancel", colors.red]);
     else if (run && ["paused", "interrupted"].includes(run.status)) buttons.push([" Resume / retry ", "/resume", colors.mint], [" Cancel ", "/cancel", colors.red]);
     else if (state.task && ["planning", "queued", "needs_input"].includes(state.task.status)) buttons.push([" Stop planning ", "/cancel", colors.red]);
@@ -255,7 +261,7 @@ export class TerminalWorkspace {
     for (const [label, command, color] of buttons) {
       this.actions.add(new TextRenderable(this.renderer, { content: label, fg: color, bg: colors.raised, height: 1, onMouseDown: () => { void this.controller.submit(command); } }));
     }
-    this.actions.visible = buttons.length > 0 && ["chat", "graph"].includes(state.screen);
+    this.actions.visible = buttons.length > 0 && ["chat", "graph", "setup"].includes(state.screen);
   }
   render() {
     if (this.destroyed) return;
@@ -295,6 +301,7 @@ export class TerminalWorkspace {
     }
     if (state.screen === "picker") { this.setDetail(state.panelTitle, plain(state.panelDescription)); this.updateChoices(); }
     if (state.screen === "step" || state.screen === "session") this.setDetail(state.panelTitle, plain(state.detail));
+    if (state.screen === "setup") this.setDetail("Project setup", setupSummary(state.setup, state.setupJob, state.setupUsage));
     if (state.screen === "help") this.setDetail("Make yourself at home", `${commandHelp}\n\nEnter         Send message or run command\nShift+Enter   New line (Ctrl+J also works)\nTab           Complete a slash command\n↑ / ↓         Choose commands or picker items\nCtrl+N        New session\nCtrl+P        Session history\nCtrl+G        Toggle graph\nPgUp / PgDn   Scroll activity\nEsc           Return to conversation\nCtrl+C        Close workspace\n\nClick a tool card to expand its output.\nWhile a draft is open, a message asks the planner to refine it.\nAfter completion, a message creates another task.\nAutomatic approval applies to new tasks only.`);
     if (state.screen === "auth") {
       const auth = state.auth;
@@ -311,10 +318,10 @@ export class TerminalWorkspace {
     if (this.promptId !== state.auth?.prompt?.id || !secret) { this.secret = ""; this.promptId = state.auth?.prompt?.id; }
     this.secretDisplay.visible = secret; this.composer.visible = !secret;
     if (secret) { this.composer.blur(); this.renderSecret(); } else if (!this.composer.focused) this.composer.focus();
-    this.inputBox.title = secret ? " Hidden input " : state.screen === "picker" ? " Filter · ↑ ↓ select · Enter open "
+    this.inputBox.title = secret ? " Hidden input " : state.screen === "setup" ? " /setup commands · Esc return " : state.screen === "picker" ? " Filter · ↑ ↓ select · Enter open "
       : state.task?.status === "needs_input" ? " Your answer " : state.run?.status === "draft" ? " Refine the plan · or /approve " : " Message ";
     this.inputBox.borderColor = secret ? colors.yellow : this.composer.focused ? colors.mint : colors.border;
-    this.composer.placeholder = state.screen === "picker" ? "Type to filter…" : state.screen === "auth" ? "Respond to the provider prompt…"
+    this.composer.placeholder = state.screen === "setup" ? "/setup start · /setup resume · /setup cancel" : state.screen === "picker" ? "Type to filter…" : state.screen === "auth" ? "Respond to the provider prompt…"
       : state.task?.status === "needs_input" ? "Type your answer, or choose an option number…" : "Describe a task, or type / for commands…";
     this.status.content = short(state.error || state.busy || state.notice || (state.run?.status === "draft" ? "Review the graph and source, then approve when you are ready." : ""), Math.max(20, width - 6));
     this.status.fg = state.error ? colors.red : state.busy ? colors.blue : colors.muted;

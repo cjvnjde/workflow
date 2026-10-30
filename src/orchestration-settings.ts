@@ -7,6 +7,7 @@ import { atomicWrite } from "./atomic-file.js";
 import { resolveAgentSettings } from "./domain.js";
 import { validateModelChoice } from "./library-proposals.js";
 import type { AvailableModel } from "./library-editor-schema.js";
+import { readSettingsPart, withProjectSettingsWrite } from "./settings-publication.js";
 
 const filename = (project: string) => path.join(project, ".workflow", "orchestration.json");
 async function contents(project: string) {
@@ -15,10 +16,13 @@ async function contents(project: string) {
 }
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 export async function loadOrchestration(project: string) {
-  const text = await contents(project);
-  return { revision: hash(text), settings: orchestrationSchema.parse(text ? JSON.parse(text) : {}), projectCapabilities: await discoverProjectCapabilities(project) };
+  return readSettingsPart(project, "orchestration", async () => {
+    const text = await contents(project);
+    return { revision: hash(text), settings: orchestrationSchema.parse(text ? JSON.parse(text) : {}), projectCapabilities: await discoverProjectCapabilities(project) };
+  });
 }
 export async function saveOrchestration(project: string, value: unknown, models: AvailableModel[]) {
+  return withProjectSettingsWrite(project, async () => {
   const input = orchestrationStateSchema.parse(value);
   const current = await loadOrchestration(project);
   if (current.revision !== input.revision) { throw new Error("Settings changed in another session. Reload settings before saving."); }
@@ -34,4 +38,5 @@ export async function saveOrchestration(project: string, value: unknown, models:
     if (hash(await contents(project)) !== input.revision) { throw new Error("Settings changed while saving. Reload and try again."); }
   });
   return await loadOrchestration(project);
+  });
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onScopeDispose, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onScopeDispose, ref, watch } from "vue";
 import type { z } from "zod";
 import type { Library } from "../../src/contracts.js";
 import {
@@ -22,12 +22,16 @@ import Capabilities from "./Capabilities.vue";
 import ExecutionSettings from "./ExecutionSettings.vue";
 import TriggerSettings from "./TriggerSettings.vue";
 import UsageSummary from "../components/UsageSummary.vue";
+import SetupProgress from "../components/SetupProgress.vue";
+import type { SetupJobsController } from "../composables/use-setup-jobs.js";
 const props = defineProps<{
   library: Library;
   onSaved: () => Promise<void>;
   designRevision: number;
   applyingDesign: boolean;
   usageRevision: number;
+  setupController: SetupJobsController;
+  demo: boolean;
 }>();
 const emit = defineEmits<{
   dirty: [dirty: boolean];
@@ -83,6 +87,8 @@ const triggerEditor = ref<InstanceType<typeof TriggerSettings>>();
 const blockEditor = ref<InstanceType<typeof BlockSettings>>();
 const modelEditor = ref<InstanceType<typeof ModelSettings>>();
 const loadedDesignRevision = ref(props.designRevision);
+const editorRevision = ref(0);
+const staleSettings = ref(false);
 let loadSequence = 0;
 const controller = new AbortController();
 const refreshingDesign = computed(
@@ -130,11 +136,17 @@ async function load() {
     if (version !== loadSequence || controller.signal.aborted) {
       return;
     }
+    if (hasEdits.value) {
+      staleSettings.value = true;
+      return;
+    }
     state.value = loaded;
     saved.value = JSON.stringify(loaded.settings);
     models.value = catalog.models;
     execution.value = config;
     savedExecution.value = JSON.stringify(config);
+    staleSettings.value = false;
+    editorRevision.value++;
   } finally {
     if (version === loadSequence) {
       loadedDesignRevision.value = revision;
@@ -144,6 +156,11 @@ async function load() {
 watch(
   () => props.designRevision,
   () => {
+    if (hasEdits.value) {
+      staleSettings.value = true;
+      loadedDesignRevision.value = props.designRevision;
+      return;
+    }
     void load().catch((failure: unknown) => {
       if (!controller.signal.aborted) {
         error.value = String(failure);
@@ -245,12 +262,15 @@ async function providersSaved() {
     savedExecution.value = JSON.stringify(config);
   }
   await props.onSaved();
+  await props.setupController.refresh();
 }
-function reload() {
+async function reload() {
   if (
-    !(dirty.value || executionDirty.value) ||
+    !hasEdits.value ||
     window.confirm("Discard unsaved settings and reload?")
   ) {
+    discardAll();
+    await nextTick();
     void perform(load);
   }
 }
@@ -279,6 +299,13 @@ function reload() {
     </nav>
     <div v-if="error" class="inline-error" role="alert">{{ error }}</div>
     <div v-if="notice" class="setup-notice" role="status">{{ notice }}</div>
+    <div v-if="staleSettings" class="setup-notice" role="status">
+      Project settings changed while you were editing. Your unsaved edits are
+      preserved.
+      <button :disabled="busy || applyingDesign" @click="reload">
+        Reload saved settings
+      </button>
+    </div>
     <div v-if="hasEdits" class="unsaved-bar" role="status">
       <span><Icon name="file" :size="15" />You have unsaved edits.</span>
       <button :disabled="busy || applyingDesign" @click="discardAll">
@@ -295,38 +322,19 @@ function reload() {
     >
       <ModelSettings
         v-if="tab === 'providers'"
+        :key="editorRevision"
         ref="modelEditor"
         :on-saved="providersSaved"
         @busy="busy = $event"
         @dirty="modelDirty = $event"
       />
-      <section
+      <SetupProgress
         v-if="tab === 'providers'"
-        class="project-bootstrap"
-        aria-label="Generate project library"
-      >
-        <Icon name="workflow" :size="25" />
-        <div>
-          <strong>Turn your defaults into a reusable library</strong>
-          <p>
-            After saving a default model, run <code>workflow setup</code> in
-            this project to generate model roles, task instructions, and
-            TypeScript blocks together. Or design and review one section at a
-            time here.
-          </p>
-        </div>
-        <button
-          :disabled="busy || !models.length || hasEdits"
-          @click="
-            design(
-              'profiles',
-              'Inspect this project and its connected model catalog. Propose cost-aware profiles for implementation, careful review, and routine tasks. Keep the selected project default as the planner. After these profiles are applied, help me design task instructions and reusable TypeScript blocks section by section.',
-            )
-          "
-        >
-          <Icon name="spark" :size="16" />Design with AI
-        </button>
-      </section>
+        :controller="setupController"
+        :blocked="hasEdits || busy || applyingDesign"
+        :default-limit="execution?.budget?.maxSetupCostUsd"
+        :demo="demo"
+      />
       <ModelProfiles
         v-if="tab === 'profiles'"
         v-model="state.settings"
@@ -338,7 +346,7 @@ function reload() {
       <BlockSettings
         v-if="tab === 'blocks'"
         ref="blockEditor"
-        :key="designRevision"
+        :key="editorRevision"
         :library="library"
         :settings="state.settings"
         :on-saved="onSaved"

@@ -58,6 +58,8 @@ Initialization never calls a model and refuses to overwrite existing configurati
 
 `workflow setup` is the explicit AI bootstrap. Your saved default inspects the repository and proposes model profiles, task instructions, and reusable TypeScript blocks. All three proposals are validated before publishing; generated block source is typechecked. Task instructions describe review, bug-fix, feature, and documentation work without forcing every request through a fixed graph. The default planner composes the actual graph later.
 
+The command starts a saved background job and prints its ID. Follow it in Settings, with `/setup` in the TUI, or with `workflow setup --wait`. `workflow setup-status` reports progress and spending. After a failure or host restart, `workflow setup-resume <job-id> --wait` retries the unfinished stage while keeping earlier accepted proposals. Closing either interface leaves the core job running.
+
 Choose a project-specific default with `workflow setup --model openai/gpt-6.1-sol --thinking medium`, or select it in Settings before running setup. Omit those flags to use the existing project/shared default. Setup uses the connected model catalog; a model name in a guide is not a guarantee of account access. Repeating completed setup keeps the saved library; use `--regenerate` to redesign it. Check the generated commands and blocks in Settings before using them on consequential work.
 
 ## Connect a model
@@ -66,7 +68,7 @@ Choose a project-specific default with `workflow setup --model openai/gpt-6.1-so
 2. Choose **Continue with ChatGPT**, follow the sign-in link, and complete authorization. Return to Workflow after the callback says authentication succeeded.
 3. Alternatively, expand **Use an API key**, select a provider, and save its key.
 4. Select an available project model and thinking level, then save.
-5. Run `workflow setup` for the full bootstrap, or use **Model profiles → Generate with AI** and the other Settings sections to design one section at a time.
+5. Use **Settings → Providers & models → Generate project setup** or run `workflow setup` for the full bootstrap. The saved job can be followed and resumed from either interface. Section-specific **Generate with AI** remains available for focused settings changes.
 
 Workflow offers account sign-in for ChatGPT and API keys for other providers. Use the connected catalog to choose models; availability depends on the connection. Refresh connections and models if a new selection is missing. Existing drafts keep their saved model choices, so changing defaults does not repair an already-created draft automatically.
 

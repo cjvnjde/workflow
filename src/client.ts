@@ -2,9 +2,11 @@ import { z } from "zod";
 import {
   eventSchema, projectSchema, runListSchema, runSchema, taskListSchema, taskSchema,
   usageReportSchema,
+  setupJobSchema, setupJobsLatestSchema, type StartSetup,
   triggerStateSchema, triggerSchema, triggerJobSchema, type TriggerConfig,
   type CreateProgram, type RunAction, type RunEvent, type WorkflowRun,
 } from "./contracts.js";
+import { setupSchema } from "./setup-schema.js";
 
 export interface RequestOptions {
   method?: string;
@@ -73,6 +75,13 @@ export class WorkflowClient {
   usage(signal?: AbortSignal) { return this.request("/api/usage", usageReportSchema, { signal }); }
   taskUsage(id: string, signal?: AbortSignal) { return this.request(`/api/tasks/${encodeURIComponent(id)}/usage`, usageReportSchema, { signal }); }
   runUsage(id: string, signal?: AbortSignal) { return this.request(`/api/runs/${encodeURIComponent(id)}/usage`, usageReportSchema, { signal }); }
+  setupState(signal?: AbortSignal) { return this.request("/api/setup", setupSchema, { signal }); }
+  startSetup(body: StartSetup = {}, signal?: AbortSignal) { return this.request("/api/setup-jobs", setupJobSchema, { method: "POST", body, signal }); }
+  latestSetup(signal?: AbortSignal) { return this.request("/api/setup-jobs/latest", setupJobsLatestSchema, { signal }); }
+  setupJob(id: string, signal?: AbortSignal) { return this.request(`/api/setup-jobs/${encodeURIComponent(id)}`, setupJobSchema, { signal }); }
+  resumeSetup(id: string, revision: number, signal?: AbortSignal, maxSetupCostUsd?: number) { return this.request(`/api/setup-jobs/${encodeURIComponent(id)}/resume`, setupJobSchema, { method: "POST", body: { revision, maxSetupCostUsd }, signal }); }
+  cancelSetup(id: string, revision: number, signal?: AbortSignal) { return this.request(`/api/setup-jobs/${encodeURIComponent(id)}/cancel`, setupJobSchema, { method: "POST", body: { revision }, signal }); }
+  setupUsage(id: string, signal?: AbortSignal) { return this.request(`/api/setup-jobs/${encodeURIComponent(id)}/usage`, usageReportSchema, { signal }); }
   runs(signal?: AbortSignal) { return this.request("/api/runs", runListSchema, { signal }); }
   run(id: string, signal?: AbortSignal) { return this.request(`/api/runs/${encodeURIComponent(id)}`, runSchema, { signal }); }
   events(id: string, signal?: AbortSignal) { return this.request(`/api/runs/${encodeURIComponent(id)}/events`, z.array(eventSchema), { signal }); }

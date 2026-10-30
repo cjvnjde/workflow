@@ -10,6 +10,7 @@ import { validateCodeBlocks } from "./program-compiler.js";
 import { formatBlock } from "./source-format.js";
 import { scriptBundle } from "./script-migration.js";
 import { publishLibraryFiles } from "./library-files.js";
+import { withProjectSettingsWrite } from "./settings-publication.js";
 import {
   approvedLibrarySchema, libraryChangesSchema, libraryProposalSchema, modelKey,
   type AvailableModel, type LibraryProposal,
@@ -86,7 +87,7 @@ export class LibraryProposals {
   private mutations = Promise.resolve();
   constructor(private readonly project: string) {}
   private async mutate<T>(action: () => Promise<T>) {
-    const result = this.mutations.then(async () => {
+    const result = this.mutations.then(() => withProjectSettingsWrite(this.project, async () => {
       const release = await lockfile.lock(path.join(this.project, ".workflow", "config.json"), {
         lockfilePath: path.join(this.project, ".workflow", "library-write-lease"),
         stale: 10_000, update: 2000,
@@ -94,7 +95,7 @@ export class LibraryProposals {
       });
       try { return await action(); }
       finally { await release(); }
-    });
+    }));
     this.mutations = result.then(() => {}, () => {});
     return await result;
   }

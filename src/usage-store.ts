@@ -55,6 +55,16 @@ export class UsageStore {
     return Promise.all((await entries(path.join(this.directory, "scopes"))).filter(name => /^[\da-f-]{36}\.json$/.test(name)).map(async name => usageScopeSchema.parse(JSON.parse(await readFile(path.join(this.directory, "scopes", name), "utf8")))));
   }
   async getScope(scopeId: string) { return usageScopeSchema.parse(JSON.parse(await readFile(this.scopeFile(scopeId), "utf8"))); }
+  async raiseScopeLimit(scopeId: string, maximum: number) {
+    z.number().positive().parse(maximum);
+    return serial(this.scopeFile(scopeId), async () => {
+      const scope = await this.getScope(scopeId);
+      if (scope.maxCostUsd !== undefined && maximum < scope.maxCostUsd) throw new Error("A resumed spending limit cannot be lower than the captured limit.");
+      scope.maxCostUsd = maximum;
+      await atomicWrite(this.scopeFile(scopeId), JSON.stringify(scope));
+      return scope;
+    });
+  }
   async ensureScope(input: { id?: string; owner: UsageScope["owner"]; maxCostUsd?: number; taskId?: string; runId?: string }) {
     const scopeId = input.id ?? input.owner.id;
     return serial(this.scopeFile(scopeId), async () => {

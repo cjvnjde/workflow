@@ -17,6 +17,7 @@ import { apiUrl, request } from "./api.js";
 import { useDraft } from "./composables/use-draft.js";
 import { useWorkflowData } from "./composables/use-workflow-data.js";
 import { useTasks } from "./composables/use-tasks.js";
+import { useSetupJobs } from "./composables/use-setup-jobs.js";
 import { statusLabel } from "./workflow-status.js";
 import type { DesignRequest } from "./design-types.js";
 import TaskComposer from "./components/TaskComposer.vue";
@@ -26,7 +27,7 @@ import TaskPlanning from "./components/TaskPlanning.vue";
 import RunWorkspace from "./components/RunWorkspace.vue";
 import Icon from "./components/Icon.vue";
 import SessionSwitcher from "./components/SessionSwitcher.vue";
-import ProjectSetup from "./components/ProjectSetup.vue";
+import SetupProgress from "./components/SetupProgress.vue";
 import UsageSummary from "./components/UsageSummary.vue";
 import { parseSessionLocation, sessionLink } from "./session-location.js";
 const SettingsPage = defineAsyncComponent(
@@ -55,6 +56,7 @@ const {
   taskStreams,
   events,
   usageRevision,
+  setupRevision,
   liveText,
   liveTextByNode,
   coordinatorActivity,
@@ -121,6 +123,14 @@ const settingsContext = ref<{
   blockId?: string;
 }>({ section: "providers" });
 const settingsRevision = ref(0);
+const setupJobs = useSetupJobs({
+  revision: () =>
+    `${setupRevision.value}:${settingsRevision.value}:${JSON.stringify(project.value?.config.agent)}`,
+  completed: async () => {
+    await settingsSaved();
+    settingsRevision.value++;
+  },
+});
 const applyingDesign = ref(false);
 const designChatCount = ref(0);
 const sidebar = ref(false);
@@ -385,12 +395,6 @@ async function copySession(kind: "link" | "terminal" | "id") {
 watch(sessionId, () => {
   copiedSession.value = "";
 });
-function generateSetup() {
-  design(
-    "project",
-    "Set up a reusable workflow library for this project using my selected default model. Inspect the repository and connected model catalog. Propose a small set of reusable TypeScript blocks, model profiles for implementation, careful review, and routine work, and task instructions for code review, bug fixes, features, and documentation. Use current available models suited to each role; keep the project default as the planner. Prefer deterministic TypeScript or commands over model calls for checks and Git operations. Pass only explicit bounded inputs and outputs between blocks; do not forward whole conversations. Preserve existing project customizations. Start with one model-profile proposal for review, then guide me through task instructions and blocks section by section.",
-  );
-}
 function selectEntry(item: (typeof entries.value)[number]) {
   navigate("task", () => {
     selectedTask.value = item.id.startsWith("run:") ? undefined : item.id;
@@ -772,6 +776,8 @@ async function designApplied() {
           :design-revision="settingsRevision"
           :applying-design="applyingDesign"
           :usage-revision="usageRevision"
+          :setup-controller="setupJobs"
+          :demo="project.mode === 'demo'"
           @dirty="settingsDirty = $event"
           @context="settingsContext = $event"
           @design="design"
@@ -784,13 +790,12 @@ async function designApplied() {
             Share the goal. Choose what flows between steps. Follow the work
             anywhere.
           </p>
-          <ProjectSetup
+          <SetupProgress
             v-if="project"
-            :revision="`${settingsRevision}:${JSON.stringify(project.config.agent)}`"
-            :blocks="Object.keys(project.blocks).length"
+            :controller="setupJobs"
+            compact
             :demo="project.mode === 'demo'"
             @settings="navigate('settings')"
-            @generate="generateSetup"
           />
           <TaskComposer
             :key="composerKey"

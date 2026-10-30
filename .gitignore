@@ -21,3 +21,9 @@ test-results/
 .workflow/triggers/
 
 .workflow/host-manager-lease/
+
+.workflow/settings-publications/
+.workflow/settings-publication.json
+.workflow/settings-write-lease/
+
+.workflow/setup-jobs/

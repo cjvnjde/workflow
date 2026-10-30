@@ -5,6 +5,7 @@ import type { Library } from "./domain.js";
 import { approvedLibrarySchema } from "./library-editor-schema.js";
 import { atomicWrite } from "./atomic-file.js";
 import { codeExecutorSchema } from "./code-schema.js";
+import { publicationCheckpoint } from "./settings-publication.js";
 
 const missing = (error: unknown) => error instanceof Error && "code" in error && error.code === "ENOENT";
 const sourcePath = (project: string, id: string) => path.join(project, ".workflow", "blocks", id, "block.ts");
@@ -52,6 +53,7 @@ export async function publishLibraryFiles(project: string, blocks: Library["bloc
   const sourceBaselines = recoverBaselines ?? Object.fromEntries([...previous].map(([id, source]) => [id, fingerprint(source)]));
   const snapshot = JSON.stringify(approvedLibrarySchema.parse({ version: 1, blocks, sourceBaselines }), null, 2) + "\n";
   await atomicWrite(filename, snapshot, 0o600, beforePublish);
+  await publicationCheckpoint(project, "library:inline");
   // Keep the complete inline snapshot active until every editable source file
   // exists. A crash here retains usable code; reapplying repairs materialization.
   for (const { id, source } of sources) {
@@ -61,9 +63,11 @@ export async function publishLibraryFiles(project: string, blocks: Library["bloc
         throw new Error(`Block ${id} source changed while publishing. The new library snapshot is saved; the manual file edit was preserved. Review and reapply the proposal.`);
       }
     });
+    await publicationCheckpoint(project, `library:source:${id}`);
   }
   const manifest = JSON.stringify(approvedLibrarySchema.parse({ version: 1, blocks, sourceFiles: sources.map(item => item.id) }), null, 2) + "\n";
   await atomicWrite(filename, manifest, 0o600, async () => {
     if (await readFile(filename, "utf8") !== snapshot) throw new Error("The library changed while publishing editable source files. Reload before retrying.");
   });
+  await publicationCheckpoint(project, "library:manifest");
 }

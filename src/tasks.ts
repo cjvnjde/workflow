@@ -13,6 +13,7 @@ import { availableModels } from "./available-models.js";
 import { newTaskSchema, taskSchema, type TaskRequest } from "./task-schema.js";
 import { createTemplate } from "./templates.js";
 import { createAccountingContext, UsageStore } from "./usage-store.js";
+import { withProjectSettingsSnapshot } from "./settings-publication.js";
 
 export class Tasks {
   private readonly records = new Map<string, TaskRequest>();
@@ -55,6 +56,9 @@ export class Tasks {
     }
   }
   async create(value: unknown) {
+    return withProjectSettingsSnapshot(this.engine.project, () => this.createFromSnapshot(value));
+  }
+  private async createFromSnapshot(value: unknown) {
     if (this.closed) { throw new Error("Server is shutting down"); }
     const input = newTaskSchema.parse(value);
     const sourceRun = input.sourceRunId ? this.engine.get(input.sourceRunId) : undefined;
@@ -75,7 +79,7 @@ export class Tasks {
     return this.get(task.id);
   }
   private enqueue(id: string) {
-    this.queue = this.queue.then(async () => {
+    this.queue = this.queue.then(() => withProjectSettingsSnapshot(this.engine.project, async () => {
       const task = this.records.get(id)!;
       if (this.closed || task.status !== "queued") { return; }
       const controller = new AbortController(); this.controllers.set(id, controller);
@@ -136,7 +140,7 @@ export class Tasks {
         this.emit(task, "planning_error", task.error);
         await this.save(task);
       } finally { this.controllers.delete(id); }
-    }).catch((error: unknown) => { console.error("Task persistence failed:", error instanceof Error ? error.message : "unknown error"); });
+    })).catch((error: unknown) => { console.error("Task persistence failed:", error instanceof Error ? error.message : "unknown error"); });
   }
   async answer(id: string, value: unknown) {
     if (this.closed) { throw new Error("Server is shutting down"); }

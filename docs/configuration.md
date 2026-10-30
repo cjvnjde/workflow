@@ -45,7 +45,13 @@ Planning uses your configured project/shared default model and thinking level. A
 
 Setup refreshes the connected catalog and requests current, task-appropriate profiles: inexpensive models for routine work, suitable coding models for implementation, and stronger reasoning where justified. It does not invent unavailable model IDs. OpenAI's current family includes GPT-6.1 Sol/Terra and GPT-6 Astra/Luna; actual provider/account access and cached catalogs may differ. [Official model catalog](https://developers.openai.com/api/docs/models/all).
 
-`workflow setup --model provider/model-id --thinking medium` saves a project override before generating configuration. `workflow model` changes the shared user default instead. A completed setup is recorded in `.workflow/setup.json`; use `--regenerate` to intentionally redesign the library. Existing runs keep their approved snapshots.
+`workflow setup --model provider/model-id --thinking medium` freezes that choice for the setup job and saves it as the project default when setup succeeds. `workflow model` changes the shared user default instead. A completed setup is recorded in `.workflow/setup.json`; use `--regenerate` to intentionally redesign the library. Existing runs keep their approved snapshots.
+
+The setup panel in Settings and `/setup` in the terminal attach to the same saved core job. Generation checkpoints each accepted stage, then publishes the validated profiles, instructions and blocks together. Resume an unfinished job to retain completed stages and the same setup spending limit. Regeneration creates a new job; a failed regeneration does not remove the previously published setup. Unsaved form changes remain yours to reconcile after setup updates the saved settings.
+
+![Shared setup progress and usage in an illustrative test project](screenshots/project-setup.png)
+
+This capture uses a test provider and simulated usage to demonstrate saved progress and cost reporting.
 
 ## Task instructions
 

@@ -4,16 +4,18 @@ import { WorkflowClient } from "../client.js";
 import {
   authOptionsSchema, authSessionSchema, executionSettingsSchema, modelCatalogSchema, orchestrationStateSchema,
   projectSchema, runListSchema, runSchema, setupSchema, taskListSchema, taskSchema,
-  type AuthSession, type AvailableModel, type OrchestrationState, type RunAction, type RunEvent, type Setup, type TaskRequest, type WorkflowRun,
+  type AuthSession, type AvailableModel, type OrchestrationState, type RunAction, type RunEvent, type Setup, type SetupJob, type TaskRequest, type UsageReport, type WorkflowRun,
 } from "../contracts.js";
 import { commands, short } from "./presentation.js";
 
 export type Session = { id: string; kind: "task" | "run"; title: string; status: string; time: string; runId?: string };
 export type Choice = { id: string; label: string; detail: string };
-export type Screen = "chat" | "graph" | "source" | "step" | "picker" | "help" | "auth" | "session";
+export type Screen = "chat" | "graph" | "source" | "step" | "picker" | "help" | "auth" | "session" | "setup";
 export interface TuiState {
   project?: z.infer<typeof projectSchema>;
   setup?: Setup;
+  setupJob?: SetupJob;
+  setupUsage?: UsageReport;
   orchestration?: OrchestrationState;
   approval: "review" | "automatic";
   connected: boolean;
@@ -49,6 +51,7 @@ export class TerminalController extends EventEmitter {
   private ownsAuth = false;
   private authGeneration = 0;
   private refiningRun?: string;
+  private setupJobId?: string;
   private refinement?: AbortController;
   private readonly localNotes = new Map<string, RunEvent[]>();
 
@@ -133,7 +136,51 @@ export class TerminalController extends EventEmitter {
         }
       }
     }
+    if (this.state.screen === "setup") await this.readSetupJob();
     this.changed();
+  }
+  private async readSetupJob() {
+    const reference = this.setupJobId;
+    const job = reference ? await this.client.setupJob(reference, this.signal()) : (await this.client.latestSetup(this.signal())).job;
+    if (this.closed || reference !== this.setupJobId) return;
+    const previous = this.state.setupJob;
+    this.state.setupJob = job ?? undefined;
+    if (job) {
+      const usage = await this.client.setupUsage(job.id, this.signal());
+      if (this.closed || reference !== this.setupJobId) return;
+      this.state.setupUsage = usage;
+      if (job.status === "completed" && (previous?.id !== job.id || previous.status !== "completed")) await this.loadSettings();
+    } else this.state.setupUsage = undefined;
+  }
+  private async projectSetup(argument: string) {
+    const tokens = argument.split(/\s+/).filter(Boolean);
+    const budgetIndex = tokens.indexOf("--max-setup-cost");
+    const maxSetupCostUsd = budgetIndex < 0 ? undefined : Number(tokens[budgetIndex + 1]);
+    if (maxSetupCostUsd !== undefined) {
+      if (!Number.isFinite(maxSetupCostUsd) || maxSetupCostUsd <= 0) throw new Error("--max-setup-cost needs a positive dollar amount.");
+      tokens.splice(budgetIndex, 2);
+    }
+    const [action = "status", reference, ...extra] = tokens;
+    if (extra.length) throw new Error("Use /setup [start|regenerate|resume|cancel|status] [job-id].");
+    if (maxSetupCostUsd !== undefined && !["start", "regenerate", "resume"].includes(action)) throw new Error("A setup spending limit applies to start, regenerate or resume.");
+    if (!["status", "start", "regenerate", "resume", "cancel"].includes(action)) {
+      if (reference || !z.string().uuid().safeParse(action).success) throw new Error("Use /setup [start|regenerate|resume|cancel|status] [job-id].");
+      this.setupJobId = action;
+    } else if (action === "start" || action === "regenerate") {
+      if (reference) throw new Error("Starting setup does not take a job ID.");
+      const job = await this.client.startSetup({ regenerate: action === "regenerate", maxSetupCostUsd }, this.signal(60_000));
+      this.setupJobId = job.id;
+    } else if (action === "resume" || action === "cancel") {
+      const job = reference ? await this.client.setupJob(reference, this.signal()) : this.state.setupJob ?? (await this.client.latestSetup(this.signal())).job;
+      if (!job) throw new Error("No setup job yet. Use /setup start after choosing a default model.");
+      const updated = action === "resume"
+        ? await this.client.resumeSetup(job.id, job.revision, this.signal(), maxSetupCostUsd)
+        : await this.client.cancelSetup(job.id, job.revision, this.signal());
+      this.setupJobId = updated.id;
+    } else this.setupJobId = reference;
+    this.state.screen = "setup";
+    await this.loadSettings();
+    await this.readSetupJob();
   }
   private async loadSettings() {
     const [setup, orchestration] = await Promise.all([
@@ -181,6 +228,7 @@ export class TerminalController extends EventEmitter {
         await this.respondAuth(text); return;
       }
       if (text.startsWith("/")) { await this.command(text); return; }
+      if (this.state.screen === "setup") throw new Error("Use /setup start, /setup resume or /setup cancel. Press Esc to return to your task.");
       const generation = this.generation;
       const task = this.state.task;
       if (task?.status === "needs_input") {
@@ -285,6 +333,7 @@ export class TerminalController extends EventEmitter {
       return;
     }
     if (command === "/settings") { await this.settings(); return; }
+    if (command === "/setup") { await this.projectSetup(argument); return; }
     if (command === "/models" || command === "/model") { await this.models(argument); return; }
     if (command === "/thinking") { await this.thinking(); return; }
     if (command === "/login") { await this.login(argument); return; }
@@ -307,6 +356,7 @@ export class TerminalController extends EventEmitter {
     this.picker("Settings", `Project model: ${agent.provider ?? "not set"}/${agent.model ?? "not set"}\nThinking: ${agent.thinking ?? "default"} · ${execution.maxSteps} max steps\n${orchestration.settings.profiles.length} model profiles · ${orchestration.settings.cases.length} task instructions`, [
       { id: "model", label: "Project model", detail: "Choose from connected providers", action: () => this.models() },
       { id: "thinking", label: "Thinking level", detail: agent.thinking ?? "default", action: () => this.thinking() },
+      { id: "setup", label: "Project setup", detail: "Generate or resume profiles, task instructions and blocks", action: () => this.projectSetup("") },
       { id: "approval", label: "Approval for new tasks", detail: this.state.approval === "automatic" ? "Automatic — tasks start immediately" : "Review graph before execution", action: async () => { await this.command("/auto"); await this.settings(); } },
       { id: "login", label: "Connect a provider", detail: "ChatGPT sign-in or an API key", action: () => this.login() },
       { id: "logout", label: "Disconnect a provider", detail: `${setup.providers.length} connections`, action: () => this.command("/logout") },

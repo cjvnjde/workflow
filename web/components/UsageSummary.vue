@@ -15,7 +15,7 @@ import Icon from "./Icon.vue";
 
 const props = withDefaults(
   defineProps<{
-    scope: "project" | "task" | "run";
+    scope: "project" | "task" | "run" | "setup";
     scopeId?: string;
     revision?: string | number;
     active?: boolean;
@@ -33,15 +33,17 @@ const endpoint = computed(() =>
   props.scope === "project"
     ? "/api/usage"
     : props.scopeId
-      ? `/api/${props.scope === "task" ? "tasks" : "runs"}/${encodeURIComponent(props.scopeId)}/usage`
+      ? `/api/${props.scope === "task" ? "tasks" : props.scope === "setup" ? "setup-jobs" : "runs"}/${encodeURIComponent(props.scopeId)}/usage`
       : undefined,
 );
 const title = computed(() =>
   props.scope === "project"
     ? "Project AI usage"
-    : (report.value?.scope.kind ?? props.scope) === "task"
-      ? "Task cost"
-      : "Workflow cost",
+    : props.scope === "setup"
+      ? "Setup cost"
+      : (report.value?.scope.kind ?? props.scope) === "task"
+        ? "Task cost"
+        : "Workflow cost",
 );
 const partial = computed(
   () =>
@@ -158,9 +160,11 @@ function time(value: string) {
         {{
           scope === "project"
             ? "Recorded across this project, including setup, settings design and retained task history."
-            : report.scope.kind === "task"
-              ? "Planning, refinement and execution for this task, including retries and recovery."
-              : "Recorded planning, refinement and execution for this workflow."
+            : scope === "setup"
+              ? "All recorded stages and retries in this setup operation share this total."
+              : report.scope.kind === "task"
+                ? "Planning, refinement and execution for this task, including retries and recovery."
+                : "Recorded planning, refinement and execution for this workflow."
         }}
       </p>
       <div

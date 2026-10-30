@@ -7,7 +7,7 @@ import { TerminalController } from "../src/tui/controller.js";
 import { TerminalWorkspace } from "../src/tui/view.js";
 import { WorkflowClient } from "../src/client.js";
 import { graphLines, activityCard, transcript } from "../src/tui/presentation.js";
-import { runSchema } from "../src/contracts.js";
+import { runSchema, setupJobSchema } from "../src/contracts.js";
 import { createTemplate } from "../src/templates.js";
 import { fixture } from "./helpers.js";
 
@@ -81,6 +81,39 @@ test("draft graph, execution cards and actions are visible without a browser", a
     assert.match(ui.captureCharFrame(), /revision 3/);
     ui.resize(70, 24); ui.view.render(); await ui.renderOnce();
     assert.match(ui.captureCharFrame(), /Workflow graph/);
+  } finally { await ui.close(); }
+});
+
+test("setup renders saved stages and disables cancellation during publication", async () => {
+  const ui = await display(110, 40);
+  try {
+    const now = new Date().toISOString();
+    ui.controller.state.screen = "setup";
+    ui.controller.state.setupJob = setupJobSchema.parse({
+      id: crypto.randomUUID(), usageScopeId: crypto.randomUUID(), revision: 4, createdAt: now, updatedAt: now,
+      status: "interrupted", stage: "blocks", model: { provider: "test", model: "careful", thinking: "low" }, instructions: "",
+      stages: [
+        { id: "profiles", status: "completed", attempt: 1, summary: "Profiles saved" },
+        { id: "cases", status: "completed", attempt: 1, summary: "Task instructions saved" },
+        { id: "blocks", status: "interrupted", attempt: 1 },
+        { id: "validation", status: "pending", attempt: 0 },
+        { id: "applying", status: "pending", attempt: 0 },
+      ], actions: { canResume: true, canCancel: true },
+    });
+    ui.view.render(); await ui.renderOnce();
+    const stopped = ui.captureCharFrame();
+    assert.match(stopped, /Model profiles · completed/);
+    assert.match(stopped, /Reusable blocks · interrupted/);
+    assert.match(stopped, /Resume setup/);
+    assert.match(stopped, /Cancel setup/);
+    ui.controller.state.setupJob = { ...ui.controller.state.setupJob, revision: 5, status: "running", stage: "applying", actions: { canResume: false, canCancel: false } };
+    ui.view.render(); await ui.renderOnce();
+    const publishing = ui.captureCharFrame();
+    assert.match(publishing, /Publication is finishing/);
+    assert.doesNotMatch(publishing, /Cancel setup/);
+    assert.doesNotMatch(publishing, /Resume setup/);
+    ui.resize(65, 28); ui.view.render(); await ui.renderOnce();
+    assert.match(ui.captureCharFrame(), /Project setup/);
   } finally { await ui.close(); }
 });
 

@@ -155,35 +155,8 @@ svg { vertical-align: middle; }
 .session-access-actions { display: flex; flex-wrap: wrap; gap: 4px; }
 .session-access-actions button { min-height: 28px; font-size: 10px; padding: 5px 7px; color: var(--ctp-subtext0); }
 .session-copy-notice { color: var(--ctp-green); font-size: 11px; flex-basis: 100%; }
-.project-setup { text-align: left; padding: 18px; margin: 0 0 24px; background: var(--ui-raised); border: 1px solid var(--ui-edge); border-radius: 14px; }
-.project-setup-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 12px; margin-bottom: 16px; }
-.project-setup-heading strong { font-size: 12px; }
-.project-setup-heading > span { color: var(--ctp-subtext0); font-size: 11px; }
-.setup-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.setup-steps button { align-items: flex-start; justify-content: flex-start; text-align: left; padding: 10px 7px; gap: 8px; background: transparent; border-color: transparent; min-width: 0; }
-.setup-step-number { flex-shrink: 0; width: 22px; height: 22px; border: 1px solid var(--ui-control-edge); border-radius: 50%; display: grid; place-items: center; color: var(--ctp-subtext0); font-size: 10px; }
-.setup-steps .complete .setup-step-number { color: var(--ctp-green); background: color-mix(in srgb, var(--ctp-green) 8%, transparent); border-color: transparent; }
-.setup-steps button > span:last-child { min-width: 0; }
-.setup-steps strong { display: block; font-size: 11px; font-weight: 500; }
-.setup-steps small { display: block; margin-top: 4px; font-size: 10px; color: var(--ctp-subtext0); line-height: 1.5; overflow: hidden; text-overflow: ellipsis; }
-.project-setup.ready { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; padding: 10px 14px; background: transparent; }
-.setup-ready-model { display: flex; align-items: center; gap: 8px; color: var(--accent); }
-.setup-ready-model span { color: var(--ctp-subtext0); font-size: 10px; }
-.setup-ready-model strong { color: var(--ctp-text); margin-left: 4px; font-size: 11px; font-weight: 500; }
-.setup-library-count { color: var(--ctp-subtext0); font-size: 10px; }
-.project-setup.ready > button { margin-left: auto; padding: 4px 6px; min-height: 26px; font-size: 10px; }
-.project-bootstrap { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 20px 24px; margin: 24px 0 0; border: 1px solid var(--ui-edge); border-radius: 14px; background: var(--ui-selected); }
-.project-bootstrap > svg { flex-shrink: 0; color: var(--accent); }
-.project-bootstrap > div { flex: 1; min-width: 180px; }
-.project-bootstrap strong { font-size: 13px; }
-.project-bootstrap p { color: var(--ctp-subtext0); font-size: 12px; line-height: 1.6; margin: 6px 0 0; }
 @media (max-width: 600px) {
-  .setup-steps { grid-template-columns: 1fr; gap: 4px; }
-  .project-setup-heading { margin-bottom: 8px; }
-  .setup-steps button { padding: 7px; }
-  .setup-steps small { margin-top: 2px; }
   .session-id { flex-wrap: wrap; }
   .session-id code { flex-basis: 100%; }
   .session-dialog { padding: 22px; }
-  .project-bootstrap { padding: 20px; }
 }

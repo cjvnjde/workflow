@@ -5,6 +5,7 @@ import { parseArgs } from "node:util";
 import { initializeProject, loadLibrary } from "./library.js";
 import { clientCommands, runClientCommand, readProgram, printRun, executionExitCode } from "./terminal-client.js";
 import { waitForRun } from "./client.js";
+import { setupCommands, runSetupCommand } from "./setup-client.js";
 
 async function main() {
   const { values, positionals } = parseArgs({
@@ -38,6 +39,9 @@ async function main() {
     console.log(`Usage:
   workflow init [--instructions "Project constraints"]  Create local configuration; no AI call
   workflow setup [--model provider/id] [--thinking level] [--instructions "Preferences"] [--regenerate] [--max-setup-cost USD]
+  workflow setup-status [setup-id] [--json]
+  workflow setup-resume <setup-id> [--wait]  Continue saved stages without repeating accepted work
+  workflow setup-cancel <setup-id>          Explicitly stop active generation
   workflow profiles [--instructions "Model preferences"]
   workflow [start] [--port 4310] [--no-web] [--demo] [--json]  Start or reuse a background host
   workflow status [--json]      Inspect this project's host
@@ -96,7 +100,15 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
   };
   const maxTaskCostUsd = costLimit(values["max-task-cost"]), maxSetupCostUsd = costLimit(values["max-setup-cost"]);
   if (maxTaskCostUsd !== undefined && command !== "task") throw new Error("--max-task-cost is a task request override; configure project defaults in Settings for other workflows.");
-  if (maxSetupCostUsd !== undefined && !["setup", "generate"].includes(command)) throw new Error("--max-setup-cost applies to workflow setup or generate.");
+  if (maxSetupCostUsd !== undefined && !["setup", "generate", "setup-resume"].includes(command)) throw new Error("--max-setup-cost applies to workflow setup, generate, or an explicit setup-resume increase.");
+  if (setupCommands.includes(command)) {
+    await runSetupCommand(command, positionals.slice(1), { project, port: values.port, server: values.server,
+      model: values.model, thinking: values.thinking, instructions: values.instructions, regenerate: values.regenerate, maxSetupCostUsd,
+      json: values.json, wait: values.wait, demo: values.demo, web: values["no-web"] ? false : undefined,
+      temporal: { address: values["temporal-address"], namespace: values["temporal-namespace"], workflowBundlePath: values["temporal-workflow-bundle"] },
+    });
+    return;
+  }
   if (["start", "status", "stop"].includes(command)) {
     if (positionals.length > 1 || values.server) throw new Error(`Use workflow ${command} from the project folder, with optional --port and --json.`);
     const { startProjectHost, projectHostStatus, stopProjectHost } = await import("./host-lifecycle.js");
@@ -172,26 +184,6 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
         : "No test command detected. Add commands and block checks before relying on test-gated completion.",
     );
     console.log("Next: workflow login (once per user), workflow model (choose a default), then workflow setup to tailor blocks, model profiles, and task workflows to this project.");
-    return;
-  }
-  if (command === "setup" || command === "generate") {
-    const { initializeSetup } = await import("./initialize-setup.js");
-    if (values.thinking && !values.model) throw new Error("Use --thinking together with --model provider/id, or workflow thinking to change your user default.");
-    if (values.model) {
-      const split = values.model.indexOf("/");
-      if (split < 1 || split === values.model.length - 1) throw new Error("Use --model provider/model-id.");
-      const [{ availableModels }, { projectModelSettings, updateProjectModel }] = await Promise.all([import("./available-models.js"), import("./project-model.js")]);
-      const catalog = await availableModels(AbortSignal.timeout(30_000), true);
-      const provider = values.model.slice(0, split), model = values.model.slice(split + 1);
-      const choice = catalog.models.find(item => item.provider === provider && item.id === model);
-      if (!choice) throw new Error(`Model ${values.model} is not available from your connected providers. Run workflow login or workflow model.`);
-      const thinking = values.thinking ?? (choice.thinkingLevels.includes("medium") ? "medium" : choice.thinkingLevels[0] ?? "off");
-      await updateProjectModel(project, { configRevision: (await projectModelSettings(project)).configRevision, agent: { provider, model, thinking } }, catalog.models);
-    }
-    console.log("Tailoring reusable blocks, model profiles, and task workflows with your default model…");
-    const setup = await initializeSetup(project, { instructions: values.instructions, maxSetupCostUsd, regenerate: values.regenerate || command === "generate", emit: (_kind, message) => console.error(message) });
-    if (setup.status === "unconnected") throw new Error("No connected provider. Run workflow login, choose workflow model, then retry workflow setup.");
-    console.log(`${setup.status === "existing" ? "Kept" : "Generated"} ${setup.profiles} model profiles, ${setup.cases} task workflows, and ${setup.blocks} blocks. Run workflow or workflow tui to start working.`);
     return;
   }
   if (command === "profiles") {

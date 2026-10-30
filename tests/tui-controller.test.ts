@@ -14,16 +14,17 @@ import { createTemplate } from "../src/templates.js";
 import { loadOrchestration } from "../src/orchestration-settings.js";
 import { authRuntime } from "./auth-fixture.js";
 import { fixture, passingRunner } from "./helpers.js";
+import { bundleSchema } from "../src/domain.js";
 
 const model = { provider: "test", id: "careful", name: "Careful", reasoning: true, thinkingLevels: ["low", "medium", "high"], contextWindow: 32000, maxTokens: 4000, cost: null };
-async function context(t: TestContext, options: { question?: boolean; auth?: BrowserAuth; plan?: ApplicationServices["plan"] } = {}) {
+async function context(t: TestContext, options: { question?: boolean; auth?: BrowserAuth; plan?: ApplicationServices["plan"]; design?: ApplicationServices["design"] } = {}) {
   const { project, library, cleanup } = await fixture(t);
   const cache = path.join(userPaths().directory, "cache", "temporal");
   const previous = process.env.WORKFLOW_HOME;
   process.env.WORKFLOW_HOME = path.join(project, "user-settings");
   await cp(cache, path.join(project, "user-settings", "cache", "temporal"), { recursive: true }).catch(() => {});
   t.after(() => { if (previous === undefined) delete process.env.WORKFLOW_HOME; else process.env.WORKFLOW_HOME = previous; });
-  const app = await createApplication({ project, mode: options.question || options.plan ? "live" : "demo", runner: passingRunner, plan: options.plan,
+  const app = await createApplication({ project, mode: options.question || options.plan || options.design ? "live" : "demo", runner: passingRunner, plan: options.plan, design: options.design,
     catalog: async () => ({ models: [model], warnings: [] }), providers: async () => [], auth: options.auth,
     taskPlanner: async ({ task, emit }) => {
       emit("text_delta", "Let me clarify the integration.");
@@ -41,7 +42,7 @@ async function context(t: TestContext, options: { question?: boolean; auth?: Bro
 }
 async function until(controller: TerminalController, check: () => boolean) {
   for (let i = 0; i < 200; i++) { await controller.refresh(); if (check()) return; await Bun.sleep(30); }
-  throw new Error(`State transition timed out: ${controller.state.error} ${controller.state.task?.status}/${controller.state.run?.status}`);
+  throw new Error(`State transition timed out: ${controller.state.error} ${controller.state.task?.status}/${controller.state.run?.status}; setup ${controller.state.setupJob?.status}: ${controller.state.setupJob?.error ?? ""}`);
 }
 
 test("terminal requests produce reviewable drafts; stale approval is refused, auto mode affects only new tasks", async t => {
@@ -116,6 +117,62 @@ test("session IDs reopen the same task and run across terminal controllers with 
     await assert.rejects(other.openSessionById("partial-id"), /full task or run ID/);
     assert.equal(other.state.run?.id, runId);
   } finally { await other.close(); }
+});
+
+test("terminal setup attaches to a shared job and resumes only its unfinished stages after detaching", async t => {
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const calls: string[] = [];
+  const { controller, app, address } = await context(t, { design: async options => {
+    calls.push(options.scope);
+    if (options.scope === "profiles") return { message: "Profiles saved", proposal: {
+      scope: "profiles", summary: "Use an independent reviewer", coordinatorProfile: "",
+      profiles: [{ id: "reviewer", name: "Reviewer", description: "Review the result", enabled: true, agent: { provider: "test", model: "careful", thinking: "high" } }],
+    } };
+    if (options.scope === "cases") {
+      if (calls.filter(scope => scope === "cases").length === 1) {
+        entered.resolve(); await release.promise; throw new Error("Transient setup fixture failure");
+      }
+      return { message: "Task instructions saved", proposal: { scope: "cases", summary: "Keep reusable task instructions", instructions: "Use focused handoffs", suggestBlocks: true, cases: options.settings.cases } };
+    }
+    return { message: "Blocks validated", proposal: { scope: "blocks", summary: "Add a deterministic text helper", changes: {
+      summary: "Normalize short notes", blocks: [{ rationale: "No model request needed", bundle: bundleSchema.parse({
+        definition: { id: "format-note", name: "Format note", description: "Trim a short note", executor: { kind: "code",
+          source: 'import {block,z} from "workflow";export default block({input:z.object({text:z.string()}),run(ctx){return ctx.input.text.trim();}});' } }, skills: [],
+      }) }],
+    } } };
+  } });
+  const initial = await app.setup();
+  await app.updateProjectModel({ configRevision: initial.configRevision, agent: { provider: "test", model: "careful", thinking: "low" } });
+  await controller.submit("/setup");
+  assert.equal(controller.state.screen, "setup");
+  assert.equal(controller.state.setupJob, undefined);
+  assert.deepEqual(calls, [], "Opening setup is read-only");
+  await controller.submit("/setup start --max-setup-cost 1");
+  assert.equal(controller.state.error, "");
+  await Promise.race([entered.promise, Bun.sleep(10_000).then(() => { throw new Error("Setup did not enter cases"); })]);
+  const jobId = controller.state.setupJob!.id;
+  await controller.close();
+  const other = new TerminalController(new WorkflowClient({ baseUrl: address }));
+  try {
+    await other.initialize();
+    await other.submit(`/setup ${jobId}`);
+    assert.equal(other.state.setupJob?.id, jobId);
+    assert.equal(other.state.setupJob?.status, "running", "Detaching the first terminal must not cancel the job");
+    assert.equal(other.state.setupJob?.stages[0]?.status, "completed");
+    release.resolve();
+    await until(other, () => other.state.setupJob?.status === "failed");
+    const scope = other.state.setupJob!.usageScopeId;
+    await other.submit("/setup resume --max-setup-cost 2");
+    assert.equal(other.state.error, "");
+    await until(other, () => other.state.setupJob?.status === "completed");
+    assert.deepEqual(calls, ["profiles", "cases", "cases", "blocks"]);
+    assert.equal(other.state.setupJob?.usageScopeId, scope);
+    assert.equal(other.state.setupJob?.maxSetupCostUsd, 2);
+    assert.equal(other.state.setup?.completedSetup?.jobId, jobId);
+    assert.equal(other.state.setupJob?.actions.canCancel, false);
+    assert.equal(other.state.setupJob?.actions.canResume, false);
+  } finally { release.resolve(); await other.close(); }
 });
 
 test("a terminal-started background engine survives both clients and is discovered on an ephemeral port", async t => {

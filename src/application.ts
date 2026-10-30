@@ -25,6 +25,8 @@ import { inspectMcp } from "./mcp-tools.js";
 import { createProgramSchema } from "./contracts.js";
 import { refineProgram } from "./program-refiner.js";
 import { createAccountingContext } from "./usage-store.js";
+import { SetupJobs } from "./setup-jobs.js";
+import { withProjectSettingsSnapshot } from "./settings-publication.js";
 import { Triggers } from "./triggers.js";
 import type { GithubTriggerSource } from "./github-trigger-source.js";
 
@@ -71,6 +73,7 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
   const auth = services.auth ?? new BrowserAuth();
   const attachments = new Attachments(engine.project);
   const tasks = new Tasks(engine, catalog, services.taskPlanner);
+  const setupJobs = new SetupJobs(engine.project, { catalog, design: services.design }, (kind, message) => engine.coordinatorActivity(kind, message));
   const triggers = await Triggers.open(engine, services.triggerSource).catch(error => { auth.close(); throw error; });
   const designChats = new DesignChats(engine.project, catalog, services.design, proposals, async (resource, id) => {
     if (resource === "tasks") return tasks.list();
@@ -83,10 +86,11 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
   try {
     await tasks.initialize();
     await designChats.initialize();
+    await setupJobs.initialize();
   } catch (error) {
     auth.close();
     planning.abort(error);
-    await Promise.allSettled([tasks.close(), designChats.close(), triggers.close()]);
+    await Promise.allSettled([tasks.close(), designChats.close(), setupJobs.close(), triggers.close()]);
     throw error;
   }
   const emit = (kind: string, message: string) => { engine.coordinatorActivity(kind, message); };
@@ -110,6 +114,9 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
     tasks,
     triggers,
     designChats,
+    setupJobs,
+    startSetup: (value: unknown) => { if (engine.mode !== "live") throw new Error("AI project setup needs live mode; demo never generates configuration with AI."); return setupJobs.start(value); },
+    resumeSetup: (id: string, value: unknown) => { if (engine.mode !== "live") throw new Error("AI project setup needs live mode; demo never resumes model generation."); return setupJobs.resume(id, value); },
     attachments,
     auth,
     get project() { return engine.project; },
@@ -135,13 +142,14 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
     updateOrchestration: (value: unknown) => planningJob(async () => saveOrchestration(engine.project, value, (await catalog(planning.signal)).models)),
     executionSettings: () => executionSettings(engine.project),
     updateExecutionSettings: (value: unknown) => planningJob(() => updateExecutionSettings(engine.project, value)),
-    setup: async () => ({ ...(await projectModelSettings(engine.project)), providers: await providers(planning.signal) }),
+    setup: async () => ({ ...(await projectModelSettings(engine.project)), providers: await providers(planning.signal), completedSetup: await setupJobs.completed() }),
     usage: () => engine.usage.report(),
     taskUsage: (id: string) => { tasks.get(id); return engine.usage.report({ taskId: id }); },
     runUsage: (id: string) => { engine.get(id); return engine.usage.report({ runId: id }); },
     updateProjectModel: (value: unknown) => planningJob(async () => ({
       ...(await updateProjectModel(engine.project, value, (await catalog(planning.signal)).models)),
       providers: await providers(planning.signal),
+      completedSetup: await setupJobs.completed(),
     })),
     inspectMcp: async (value: unknown, signal?: AbortSignal) => ({ tools: await inspectMcp(
       mcpServerSchema.parse(value), engine.project, AbortSignal.any([signalFor(signal), AbortSignal.timeout(20_000)]),
@@ -185,14 +193,14 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
         return await proposals.create(library, input.kind, changes, models);
       });
     },
-    createProgram: (value: unknown, cancellation?: AbortSignal) => operation(async () => {
+    createProgram: (value: unknown, cancellation?: AbortSignal) => operation(() => withProjectSettingsSnapshot(engine.project, async () => {
       const { title, task, ...program } = createProgramSchema.parse(value);
       return engine.createProgram(title, task, program, await loadLibrary(engine.project), signalFor(cancellation));
-    }),
+    })),
     createRun: (value: unknown, cancellation?: AbortSignal) => {
       const proposal = proposalSchema.parse(value);
       const signal = signalFor(cancellation);
-      return planningJob(async () => {
+      return planningJob(() => withProjectSettingsSnapshot(engine.project, async () => {
         signal.throwIfAborted();
         const library = await loadLibrary(engine.project);
         if (proposal.maxCostUsd !== undefined) {
@@ -228,13 +236,13 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
         }
 
         return proposal.autoApprove ? await engine.approve(run.id) : run;
-      });
+      }));
     },
     refine: (id: string, value: unknown, revision?: number, cancellation?: AbortSignal) => {
       const input = z.object({ instructions: z.string().min(1).max(8000) }).strict().parse(value);
       if (engine.mode !== "live") throw new Error("AI workflow refinement needs live mode");
       const signal = signalFor(cancellation);
-      return planningJob(async () => {
+      return planningJob(() => withProjectSettingsSnapshot(engine.project, async () => {
         const run = engine.get(id);
         if (run.status !== "draft") { throw new Error("Only draft workflows can be refined"); }
         if (revision !== undefined && run.revision !== revision) { throw new Error("Draft changed since you loaded it. Review the latest draft and try again."); }
@@ -254,13 +262,13 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
         signal.throwIfAborted();
         if (plan.task !== run.plan.task) { throw new Error("AI refinement must preserve the task"); }
         return await engine.update(run.id, plan, run.revision);
-      });
+      }));
     },
     close: () => closing ??= (async () => {
       auth.close();
       planning.abort(new Error("Application closing"));
       try {
-        await Promise.allSettled([...jobs, tasks.close(), designChats.close(), triggers.close()]);
+        await Promise.allSettled([...jobs, tasks.close(), designChats.close(), setupJobs.close(), triggers.close()]);
       } finally { await engine.shutdown(); }
     })(),
   };

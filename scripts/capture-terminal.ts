@@ -22,7 +22,7 @@ const { values } = parseArgs({ options: {
 } });
 const cols = Number(values.cols), rows = Number(values.rows);
 if (!Number.isInteger(cols) || cols < 40 || cols > 240 || !Number.isInteger(rows) || rows < 20 || rows > 100) throw new Error("Use 40–240 columns and 20–100 rows.");
-if (!["chat", "graph", "session"].includes(values.screen)) throw new Error("Use --screen chat, graph, or session.");
+if (!["chat", "graph", "session", "setup"].includes(values.screen)) throw new Error("Use --screen chat, graph, session, or setup.");
 const temporary = await mkdtemp(path.join(os.tmpdir(), "workflow-capture-"));
 const ui = await createTestRenderer({ width: cols, height: rows, kittyKeyboard: true, backgroundColor: colors.base });
 const controller = new TerminalController(new WorkflowClient({ baseUrl: values.server }));
@@ -36,7 +36,7 @@ try {
   await Promise.all([parser.preloadParser("markdown"), parser.preloadParser("markdown_inline")]);
   await controller.initialize();
   if (values.session) await controller.openSessionById(values.session);
-  if (values.screen !== "chat") await controller.submit(values.screen === "graph" ? "/graph" : "/web");
+  if (values.screen !== "chat") await controller.submit(values.screen === "graph" ? "/graph" : values.screen === "setup" ? "/setup" : "/web");
   // Let the subscribed client and native Markdown renderer finish their frame.
   for (let i = 0; i < 4; i++) { await Bun.sleep(100); view.render(); await ui.renderOnce(); }
   const frame = ui.captureSpans();

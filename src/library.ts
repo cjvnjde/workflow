@@ -24,8 +24,13 @@ import { codeBundle } from "./code-migration.js";
 import { formatBlock } from "./source-format.js";
 import { scriptLibrary } from "./script-migration.js";
 import { readLibrarySource } from "./library-files.js";
+import { readSettingsPart } from "./settings-publication.js";
 
 export async function loadLibrary(project: string): Promise<Library> {
+  return readSettingsPart(project, "library", () => loadLibraryFiles(project));
+}
+
+async function loadLibraryFiles(project: string): Promise<Library> {
   const directory = path.join(project, ".workflow");
   const raw = configSchema.extend({ agent: agentOverrideSchema.optional() }).parse(
     JSON.parse(await readFile(path.join(directory, "config.json"), "utf8")),
@@ -304,7 +309,7 @@ export async function initializeProject(project: string, instructions = "", form
       { flag: "wx" },
     );
   }
-  await writeFile(path.join(directory, ".gitignore"), "runs/\ntasks/\nusage/\nattachments/\ndesign-chats/\ntemporal/\nversions/\nlibrary-proposals/\nlibraries/\nserver-lease/\nlibrary-write-lease/\nserver.json\nhost.log\nhost-manager-lease/\nlock\n", {
+  await writeFile(path.join(directory, ".gitignore"), "runs/\ntasks/\nsetup-jobs/\nusage/\nattachments/\ndesign-chats/\ntemporal/\nversions/\nlibrary-proposals/\nlibraries/\nserver-lease/\nlibrary-write-lease/\nserver.json\nhost.log\nhost-manager-lease/\nsettings-publications/\nsettings-publication.json\nsettings-write-lease/\nlock\n", {
     flag: "wx",
   });
 

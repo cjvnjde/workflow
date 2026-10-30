@@ -1,4 +1,4 @@
-import type { FlowStructure, RunEvent, TaskRequest, WorkflowRun } from "../contracts.js";
+import type { FlowStructure, RunEvent, Setup, SetupJob, TaskRequest, UsageReport, WorkflowRun } from "../contracts.js";
 
 export const colors = {
   base: "#11131d", panel: "#191c29", raised: "#222637", border: "#343b50",
@@ -12,6 +12,31 @@ export function plain(value: string) {
 export function short(value: string, length = 100) {
   const text = plain(value).replace(/\s+/g, " ");
   return [...text].length > length ? [...text].slice(0, length - 1).join("") + "…" : text;
+}
+export function setupSummary(setup?: Setup, job?: SetupJob, usage?: UsageReport) {
+  const completed = setup?.completedSetup;
+  const agent = { ...setup?.userAgent, ...setup?.projectAgent };
+  const lines = ["Profiles, task instructions and reusable blocks share one saved setup job.",
+    agent.provider && agent.model ? `Default: ${agent.provider}/${agent.model} · thinking ${agent.thinking ?? "default"}` : "Choose a project model with /models.",
+    completed ? `Last published: ${completed.completedAt} · ${completed.model.provider}/${completed.model.model}` : "No completed setup has been published yet."];
+  if (job) {
+    lines.push("", `Job ${job.id}`, `${job.status.toUpperCase()} · ${job.model.provider}/${job.model.model} · thinking ${job.model.thinking}`, "");
+    const names = { profiles: "Model profiles", cases: "Task instructions", blocks: "Reusable blocks", validation: "Validation", applying: "Publish settings" };
+    for (const stage of job.stages) {
+      const mark = stage.status === "completed" ? "✓" : stage.status === "running" ? "●" : stage.status === "pending" ? "○" : "!";
+      lines.push(`${mark} ${names[stage.id]} · ${stage.status}${stage.attempt ? ` · attempt ${stage.attempt}` : ""}`);
+      if (stage.summary || stage.error) lines.push(`  ${short(stage.error ?? stage.summary!, 240)}`);
+    }
+    if (usage) lines.push("", `Reported cost: $${usage.total.costUsd.toFixed(4)}${usage.incomplete ? " · partial / incomplete" : ""}${job.maxSetupCostUsd === undefined ? "" : ` · limit $${job.maxSetupCostUsd}`}`, `${usage.total.requests} model request${usage.total.requests === 1 ? "" : "s"} across all attempts`);
+    if (job.activity) lines.push("", short(job.activity, 500));
+    if (job.error) lines.push("", `Needs attention: ${job.error}`);
+    if (job.conflict) lines.push(job.conflict.requiresRegeneration ? "Settings changed. Review your edits and use /setup regenerate." : "Resolve the listed file conflict, then resume setup.");
+    if (job.actions.canResume) lines.push("", "/setup resume continues from the unfinished stage.");
+    if (job.actions.canCancel) lines.push("/setup cancel stops this job.");
+    if (job.status === "running" && job.stage === "applying") lines.push("Publication is finishing; cancellation is no longer available.");
+  } else lines.push("", "Choose a model with /models, then use /setup start.");
+  lines.push("", "Setup runs in the core host. Closing this terminal only detaches.", "Esc returns to your task. /setup regenerate designs a new setup.");
+  return plain(lines.join("\n"));
 }
 export type Card = { id: string; title: string; body: string; tone: keyof typeof colors; markdown?: boolean; live?: boolean };
 const names: Record<string, string> = {
@@ -134,6 +159,7 @@ export const commands = [
   ["/pause", "Pause after active steps"], ["/resume", "Resume or retry interrupted work"], ["/cancel", "Stop planning or execution"],
   ["/retry", "Retry failed task planning"], ["/recover", "Retry managed-file recovery"],
   ["/settings", "Project settings and connections"], ["/models", "Choose the project model"], ["/thinking", "Choose model thinking level"],
+  ["/setup", "Project setup: status, start, resume, cancel, regenerate"],
   ["/login", "Connect a provider"], ["/logout", "Disconnect a provider"], ["/source", "Read workflow source"],
   ["/step", "Inspect a step and its results"], ["/help", "Commands and keyboard shortcuts"], ["/quit", "Close the terminal workspace"],
 ] as const;

@@ -9,7 +9,10 @@ Run project commands from the target project's directory. Configuration is in th
 | Command | Behavior |
 | --- | --- |
 | `workflow init [--instructions "..."]` | Create configuration and starter TypeScript blocks without model calls. `--no-ai` remains a compatibility flag. |
-| `workflow setup [--model provider/id] [--thinking level] [--instructions "..."] [--regenerate] [--max-setup-cost USD]` | Use the selected default to inspect the project and generate reusable blocks, task instructions, and model profiles. |
+| `workflow setup [--model provider/id] [--thinking level] [--instructions "..."] [--regenerate] [--max-setup-cost USD] [--wait]` | Start or attach to a saved background setup job. `--wait` follows progress; disconnecting leaves generation running. |
+| `workflow setup-status [job-id] [--json]` | Inspect the latest or selected setup job and reported usage. |
+| `workflow setup-resume <job-id> [--wait] [--max-setup-cost USD]` | Explicitly continue unfinished setup, retaining accepted stages and earlier spending. Optionally raise its total allowance. |
+| `workflow setup-cancel <job-id>` | Cancel generation before final publication begins. |
 | `workflow profiles [--instructions "..."]` | Regenerate model profiles using AI. |
 | `workflow` or `workflow start [--json]` | Start or reuse a detached background host for this project; return after readiness. |
 | `workflow status [--json]` | Report this project's host identity, mode, URL, and lifecycle state without secrets. |
@@ -156,7 +159,11 @@ Events are `issue.opened` or `pull_request.opened`; result destinations are `loc
 
 | Routes | Purpose |
 | --- | --- |
-| `GET /api/setup` | Provider connection metadata and model defaults. |
+| `GET /api/setup` | Provider connection metadata, model defaults and last completed setup. |
+| `POST /api/setup-jobs` | Start or attach to a saved setup job; returns `202` and the job immediately after admission. |
+| `GET /api/setup-jobs/latest`, `GET /api/setup-jobs/:id` | Read saved stages, status, revision and available actions. |
+| `POST /api/setup-jobs/:id/resume`, `/cancel` | Explicit action with `{ revision }`; resume also accepts `maxSetupCostUsd` to raise the retained total allowance. Clients do not own job cancellation. |
+| `GET /api/setup-jobs/:id/usage` | Setup usage across all stages and explicit resumes. |
 | `GET /api/models`, `POST /api/models/refresh` | Connected model catalog. |
 | `PUT /api/project/model` | `{ configRevision, agent }`; use `null` to clear project overrides. |
 | `GET/PUT /api/settings/orchestration` | `{ revision, settings }` for profiles, cases, capabilities, and approval. |

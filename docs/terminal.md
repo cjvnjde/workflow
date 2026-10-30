@@ -80,4 +80,10 @@ Open `/login`, select a provider and connection method, then follow the authoriz
 
 After connecting, use `/models` and `/thinking`. These update the engine project's defaults; existing model profiles keep their own assignments. Settings also exposes the project's execution limits, profiles, task instructions, and capabilities for inspection. Full library/profile/capability editing remains available in the browser workspace.
 
+Use `/setup` to inspect project setup without making model requests, then `/setup start` to generate profiles, task instructions and reusable blocks with the saved default. The panel shows every saved stage, attempts, reported usage and the job ID. `/setup resume` continues a failed or interrupted job from its unfinished stage; `/setup cancel` stops generation. These actions also accept a job ID, and `/setup <job-id>` reopens a specific job. `/setup regenerate` explicitly designs a fresh setup.
+
+Setup runs in the core host and stays active when you close the terminal. The browser shows the same job. After a host restart, opening setup is read-only until you explicitly resume. Completed stages retain their proposals and spending, so a retry does not pay to recreate them. Publication briefly disables cancellation while the complete configuration is saved.
+
+If a setup limit is exhausted, `/setup resume --max-setup-cost 2` explicitly raises that job's total allowance to $2. Previous spending remains included; the limit is never raised automatically.
+
 Credentials are stored by the engine in its private Workflow store. With `--server`, provider login configures that server's account; it is not authentication to the Workflow API. The API remains single-user and loopback-oriented. See [server access](clients.md#a-server-on-another-machine) for SSH tunnelling and the deployment boundary.

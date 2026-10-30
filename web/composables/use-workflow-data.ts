@@ -53,6 +53,7 @@ export function useWorkflowData() {
   const run = shallowRef<WorkflowRun>();
   const events = shallowRef<RunEvent[]>([]);
   const usageRevision = shallowRef(0);
+  const setupRevision = shallowRef(0);
   const liveText = shallowRef("");
   const liveTextByNode = shallowRef<Record<string, string>>({});
   const coordinatorText = shallowRef("");
@@ -200,6 +201,7 @@ export function useWorkflowData() {
     void refreshRuns().catch(report);
     source = client.subscribe((event) => {
       if (controller.signal.aborted) return;
+      if (event.kind === "setup_state") { setupRevision.value++; usageRevision.value++; return; }
       if (["usage", "model_session_end", "task_state", "run_end"].includes(event.kind)) usageRevision.value++;
       if (event.kind === "run_deleted") {
         notices.value = notices.value.filter(
@@ -336,6 +338,7 @@ export function useWorkflowData() {
     refreshProject,
     events,
     usageRevision,
+    setupRevision,
     liveText,
     liveTextByNode,
     coordinatorText,

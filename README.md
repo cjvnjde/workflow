@@ -71,6 +71,8 @@ workflow
 
 `init` only creates configuration and starter TypeScript blocks. `setup` uses your chosen default model to inspect the repository and generate model profiles, reusable blocks, and task instructions for review, bug fixes, features, and documentation. It refreshes the connected catalog and asks for suitable current models with different costs and capabilities. To choose a project default during setup, use `workflow setup --model openai/gpt-6.1-sol --thinking medium`. Only models available through your connection can be selected.
 
+Setup runs as a saved background job shared by the browser and terminal. `workflow setup-status` or `/setup` in the TUI shows its stages and usage. If generation fails or the host restarts, `workflow setup-resume <job-id>` continues from the unfinished stage, retaining completed proposals and their costs. Add `--wait` to `workflow setup` to follow it in the CLI; closing that client leaves the job running.
+
 Open **http://127.0.0.1:4310** (or use `workflow tui`):
 
 1. The setup checklist shows your connection, default model, and library status.

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { agentOverrideSchema, configSchema } from "./domain.js";
+import { completedSetupSchema } from "./setup-job-schema.js";
 
 export const executionSettingsSchema = configSchema.pick({ instructions: true, commands: true, maxSteps: true, budget: true }).extend({ configRevision: z.string() });
 
@@ -13,6 +14,7 @@ export const setupSchema = z.object({
   userAgent: agentOverrideSchema,
   projectAgent: agentOverrideSchema,
   configRevision: z.string().regex(/^[a-f0-9]{64}$/),
+  completedSetup: completedSetupSchema.nullable().optional(),
 });
 export const projectModelUpdateSchema = z.object({
   configRevision: setupSchema.shape.configRevision,

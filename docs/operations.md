@@ -61,6 +61,14 @@ workflow recover <run-id>
 
 See [the command reference](reference.md) for ports and options.
 
+## Resuming project setup
+
+Project setup runs in the shared core host. Closing a browser or terminal detaches that client; it does not cancel generation. Open setup in either interface to see the same job and its progress through model profiles, task instructions, reusable blocks, validation, and publication.
+
+Accepted stages are saved immediately. After a provider failure or host restart, explicitly resume the job to continue from its unfinished stage. Earlier accepted proposals and their usage remain attached to the same job. Resuming can make another model request for an unfinished stage, but does not regenerate completed stages. Starting the host alone never resumes paid setup work.
+
+The current library stays usable during generation. Setup publishes the complete validated configuration together. Concurrent settings or source edits cause a conflict instead of being silently overwritten. A failed regeneration leaves the previous successful setup available. Cancellation is available during generation; the short publication step must finish or be recovered.
+
 ## File recovery
 
 Managed writes through `ctx.writeFile` and AI file tools journal the original content before publishing a change. With recovery enabled, failed, retried, cancelled, or interrupted attempts restore their own managed writes and remove files they created. Passing attempts retain their changes. A recovery status of `committed` means the journal accepted those writes; it does not mean a Git commit was created.
@@ -90,6 +98,10 @@ The journal does not undo Bash edits, Git operations, check-command effects, ext
 ├── libraries/                # prior library snapshots
 ├── library-proposals/        # saved library proposals
 ├── design-chats/             # settings conversations
+├── setup-jobs/               # saved setup stages and accepted proposals
+├── setup.json                # last successfully published setup
+├── settings-publications/    # resumable setup publication journals
+├── settings-publication.json # current publication generation and commit state
 ├── tasks/                    # requests and planning history
 ├── usage/                    # durable model-session costs and task/setup scopes
 ├── attachments/              # uploaded request data

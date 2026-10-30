@@ -53,6 +53,7 @@ import { loadOrchestration } from "./orchestration-settings.js";
 import { instantiateTrigger, triggerTemplate } from "./trigger-template.js";
 import type { GithubEvent } from "./trigger-schema.js";
 import { createAccountingContext, UsageStore } from "./usage-store.js";
+import { withProjectSettingsSnapshot } from "./settings-publication.js";
 
 const activeStatuses = new Set<WorkflowRun["status"]>(["running", "pausing", "paused", "interrupted"]);
 
@@ -512,6 +513,7 @@ export class WorkflowEngine {
   }
 
   private async prepareProgram(value: unknown, library: Library) {
+    return withProjectSettingsSnapshot(this.project, async () => {
     const valueSource = programSourceSchema.parse(value);
     const { settings } = await loadOrchestration(this.project);
     const models = Object.fromEntries(settings.profiles.filter(profile => profile.enabled).map(profile => [profile.id, profile.agent]));
@@ -525,6 +527,7 @@ export class WorkflowEngine {
     await this.priceSnapshot({ nodes: priceNodes }, library);
     const { source, structure, version } = await compileProgram(this.project, valueSource, this.versions, library.blocks);
     return { version, program: { ...source, structure, catalog: structuredClone(library.blocks), models } };
+    });
   }
 
   async updateProgram(id: string, value: unknown, expectedRevision?: number, signal?: AbortSignal) {
