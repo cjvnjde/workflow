@@ -38,6 +38,8 @@ Shared `defineTool()` operations can be invoked by code through `ctx.call()` or 
 
 ## Application and presentation boundaries
 
+The public entry points are `src/core/index.ts`, `src/web/index.ts`, and `src/terminal/index.ts`. They expose separate responsibilities while preserving existing source imports and the `/engine` and `/http` package aliases. Core owns all task/run state; switching clients does not create another execution engine.
+
 `createApplication` owns initialization, the project lease, tasks, design sessions, provider interactions, planning concurrency/cancellation, and shutdown. `WorkflowEngine` retains execution, approval, and recovery. Neither starts HTTP or loads GUI assets.
 
 `createHttpServer` borrows that application and translates HTTP requests, headers, disconnects, and SSE. Closing this adapter closes its connections but leaves the application running. The host closes the application explicitly. `registerWebGui` optionally adds static browser assets. The legacy `createServer` wrapper keeps its combined ownership for existing callers.
@@ -45,6 +47,10 @@ Shared `defineTool()` operations can be invoked by code through `ctx.call()` or 
 The Vue code imports only the public `contracts` and `client` entry points from the backend tree. The shared client handles validation, revision headers, errors, endpoint selection, and event streaming. Presentation state, graph layout, editors, and rendering remain in `web/`. [Engine and clients](clients.md) documents the integration and lifecycle contract.
 
 The terminal controller also uses only that client and public contracts. `src/tui/view.ts` renders its state with OpenTUI; `presentation.ts` formats activity and composition trees. `src/tui.ts` owns attachment or local application startup, signals, parser resources, and terminal cleanup. The CLI loads `dist/tui.js` only when requested, keeping native rendering out of server and scripting commands.
+
+CLI and TUI hosts announce a loopback endpoint in `.workflow/server.json`. Discovery validates both the receipt and the endpoint's project before connecting. A task/run ID selects saved state through the common client. An attached presentation never closes the host; a TUI that created its own host closes it on exit. Use a separate `workflow serve` process for execution that outlives terminal clients.
+
+Project setup is separate from execution: `init` writes deterministic defaults, then `setup` uses the chosen default model for read-only repository inspection and validated proposals for profiles, task instructions, and blocks. Normal startup performs no AI bootstrap.
 
 ## Why Pi is embedded
 

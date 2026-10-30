@@ -10,7 +10,9 @@ export async function acquireProjectLock(project: string, onCompromised: (error:
   const token = randomUUID();
   let release: () => Promise<void>;
   try {
-    release = await lockfile.lock(path.join(directory, "config.json"), {
+    // proper-lockfile keys its in-process registry by target, not lockfilePath.
+    // Library mutations lock config.json; the server must have its own target.
+    release = await lockfile.lock(directory, {
       lockfilePath: path.join(directory, "server-lease"),
       stale: 5000,
       update: 1000,

@@ -126,6 +126,9 @@ export function transcript(task?: TaskRequest, run?: WorkflowRun, events: RunEve
   return cards;
 }
 export const commands = [
+  ["/open", "Open a task or run by its full session ID"],
+  ["/web", "Show the browser link for this session"],
+  ["/id", "Show the current session ID"],
   ["/new", "Start a new session"], ["/sessions", "Open task and run history"], ["/graph", "Inspect the workflow graph"],
   ["/approve", "Approve the displayed draft"], ["/reject", "Reject the draft"], ["/auto", "Auto-approve new tasks: on / off"],
   ["/pause", "Pause after active steps"], ["/resume", "Resume or retry interrupted work"], ["/cancel", "Stop planning or execution"],

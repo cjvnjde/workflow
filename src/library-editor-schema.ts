@@ -26,6 +26,10 @@ export const libraryProposalSchema = z.object({
 export type LibraryProposal = z.infer<typeof libraryProposalSchema>;
 export const approvedLibrarySchema = z.object({
   version: z.literal(1), blocks: z.record(identifierSchema, bundleSchema),
+  // The inline source is an atomic publication/recovery snapshot. Once listed
+  // here, the editable block.ts file is authoritative for subsequent loads.
+  sourceFiles: z.array(identifierSchema).optional(),
+  sourceBaselines: z.record(identifierSchema, z.string().regex(/^[a-f0-9]{64}$/).nullable()).optional(),
 }).strict();
 export const modelAssignmentsSchema = z.object({
   summary: z.string().min(1).max(8000),

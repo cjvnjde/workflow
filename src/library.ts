@@ -23,6 +23,7 @@ import { pushScript } from "./script-examples.js";
 import { codeBundle } from "./code-migration.js";
 import { formatBlock } from "./source-format.js";
 import { scriptLibrary } from "./script-migration.js";
+import { readLibrarySource } from "./library-files.js";
 
 export async function loadLibrary(project: string): Promise<Library> {
   const directory = path.join(project, ".workflow");
@@ -32,12 +33,20 @@ export async function loadLibrary(project: string): Promise<Library> {
   const defaults = (await loadUserSettings()).agent;
   const config = configSchema.parse({ ...raw, agent: resolveAgentSettings(defaults, raw.agent) });
   config.capabilities = mergeCapabilities((await discoverProjectCapabilities(project)).capabilities, config.capabilities ?? { skills: [], mcpServers: [] });
-  try {
-    const saved = approvedLibrarySchema.parse(JSON.parse(await readFile(path.join(directory, "library.json"), "utf8")));
+  let savedText: string | undefined;
+  try { savedText = await readFile(path.join(directory, "library.json"), "utf8"); }
+  catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+  }
+  if (savedText !== undefined) {
+    const saved = approvedLibrarySchema.parse(JSON.parse(savedText));
+    for (const id of saved.sourceFiles ?? []) {
+      const executor = saved.blocks[id]?.definition.executor;
+      if (executor?.kind !== "code") throw new Error(`Invalid editable source reference for block ${id}.`);
+      executor.source = await readLibrarySource(project, id);
+    }
     validateLibraryResources(saved.blocks, config.commands);
     return scriptLibrary({ config, blocks: saved.blocks });
-  } catch (error) {
-    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) { throw error; }
   }
   const blocks: Record<string, BlockBundle> = {};
   for (const entry of await readdir(path.join(directory, "blocks"), {
@@ -48,15 +57,15 @@ export async function loadLibrary(project: string): Promise<Library> {
     }
     const blockDirectory = path.join(directory, "blocks", entry.name);
     const root = await realpath(blockDirectory);
-    const readResource = async (resource: string) => {
+    const readResource = async (resource: string, maxBytes = 128_000) => {
       const filename = await realpath(path.resolve(root, resource));
       const info = await lstat(filename);
       if (
         !filename.startsWith(root + path.sep) ||
-        !info.isFile() || info.size > 128_000
+        !info.isFile() || info.size > maxBytes
       ) {
         throw new Error(
-          `Block resource must stay inside its directory, be a regular file, and remain below 128 KB: ${resource}`,
+          `Block resource must stay inside its directory, be a regular file, and remain below ${maxBytes / 1000} KB: ${resource}`,
         );
       }
 
@@ -65,7 +74,7 @@ export async function loadLibrary(project: string): Promise<Library> {
     const rawDefinition = JSON.parse(await readFile(path.join(blockDirectory, "block.json"), "utf8"));
     if (rawDefinition.executor?.kind === "code" && typeof rawDefinition.executor.file === "string") {
       const { file, ...executor } = rawDefinition.executor;
-      rawDefinition.executor = { ...executor, source: await readResource(file) };
+      rawDefinition.executor = { ...executor, source: await readResource(file, 512_000) };
     }
     const definition = blockSchema.parse(rawDefinition);
     if (definition.id !== entry.name || blocks[definition.id]) {
@@ -130,13 +139,15 @@ export async function initializeProject(project: string, instructions = "", form
   const directory = path.join(project, ".workflow");
   await mkdir(directory, { recursive: true });
   let scripts: Record<string, string> = {};
+  let packageManager = "";
   try {
     const manifest = z
-      .object({ scripts: z.record(z.string(), z.string()).default({}) })
+      .object({ scripts: z.record(z.string(), z.string()).default({}), packageManager: z.string().optional() })
       .parse(
         JSON.parse(await readFile(path.join(project, "package.json"), "utf8")),
       );
     scripts = manifest.scripts;
+    packageManager = manifest.packageManager?.split("@")[0] ?? "";
   } catch (error) {
     if (
       !(error instanceof Error && "code" in error && error.code === "ENOENT")
@@ -146,10 +157,17 @@ export async function initializeProject(project: string, instructions = "", form
   }
   const hasTests =
     !!scripts.test && !scripts.test.includes("no test specified");
+  if (!["bun", "npm", "pnpm", "yarn"].includes(packageManager)) {
+    const entries = new Set(await readdir(project));
+    packageManager = entries.has("bun.lock") || entries.has("bun.lockb") ? "bun"
+      : entries.has("pnpm-lock.yaml") ? "pnpm"
+      : entries.has("yarn.lock") ? "yarn"
+      : entries.has("package-lock.json") ? "npm" : "bun";
+  }
   const config = configSchema.parse({
     version: 1,
     instructions,
-    commands: hasTests ? { test: { argv: ["bun", "run", "test"] } } : {},
+    commands: hasTests ? { test: { argv: [packageManager, "run", "test"] } } : {},
   });
   // Exclusive creation prevents init from silently replacing a reviewed policy.
   await writeFile(
@@ -225,7 +243,10 @@ export async function initializeProject(project: string, instructions = "", form
       name: "Run acceptance checks",
       description: "Run existing acceptance checks without edits. Passing test authoring is not passing acceptance; classify failures for the correct repair owner.",
       outputs: ["feedback"],
-      checks: successChecks,
+      // Known checks need no AI session. Legacy initialization stays compatible
+      // with historical graph fixtures; newly authored blocks are ordinary code.
+      executor: format === "code" && hasTests ? { kind: "command", command: "test", expect: "success" } : undefined,
+      checks: format === "code" && hasTests ? [] : successChecks,
       prompt: "Run the applicable existing tests, test-code typechecking or compilation and other required acceptance checks. Do not edit any files. Report exact commands and outcomes. Return pass only when required checks pass. Return retry for production defects or invalid test code, distinguishing their evidence and repair owner; return fail for unavailable infrastructure or missing evidence. Never accept a test-authoring pass as acceptance evidence.",
     },
     {
@@ -283,7 +304,7 @@ export async function initializeProject(project: string, instructions = "", form
       { flag: "wx" },
     );
   }
-  await writeFile(path.join(directory, ".gitignore"), "runs/\ntasks/\nattachments/\ndesign-chats/\ntemporal/\nversions/\nlibrary-proposals/\nlibraries/\nserver-lease/\nlock\n", {
+  await writeFile(path.join(directory, ".gitignore"), "runs/\ntasks/\nattachments/\ndesign-chats/\ntemporal/\nversions/\nlibrary-proposals/\nlibraries/\nserver-lease/\nlibrary-write-lease/\nserver.json\nlock\n", {
     flag: "wx",
   });
 

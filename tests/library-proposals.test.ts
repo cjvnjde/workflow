@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { fixture } from "./helpers.js";
 import { loadLibrary } from "../src/library.js";
@@ -85,9 +85,9 @@ test("deleting a block cannot resolve its removed dependency from stale physical
     { bundle: bundle("composed", 'import {block} from "workflow"; import base from "../base/block.ts"; export default block({run(ctx){return base.options.run(ctx);}});'), rationale: "Reuse the base block" },
   ] }, []);
   await store.apply(proposal.id, []);
-  // Applying JSON library edits retains the directory-backed version on disk.
+  // The editable source exists after applying, and later disk edits are active.
   const baseDirectory = path.join(project, ".workflow", "blocks", "base");
-  await mkdir(baseDirectory);
+  await mkdir(baseDirectory, { recursive: true });
   const stale = 'import {block} from "workflow"; export default block({run(){return "stale behavior";}});';
   await writeFile(path.join(baseDirectory, "block.ts"), stale);
   const current = await loadLibrary(project);
@@ -104,6 +104,66 @@ test("deleting a block cannot resolve its removed dependency from stale physical
   await store.removeBlock("composed", libraryHash(current));
   assert.ok((await loadLibrary(project)).blocks.base);
   assert.equal(await readFile(path.join(baseDirectory, "block.ts"), "utf8"), stale);
+});
+
+test("editable TypeScript source invalidates old proposals and missing files never silently fall back", async t => {
+  const { project, library } = await fixture(t);
+  const store = new LibraryProposals(project);
+  const changes = { summary: "Add code", blocks: [{ rationale: "Ordinary reusable TypeScript", bundle: {
+    definition: { id: "small", name: "Small", description: "Simple code", executor: {
+      kind: "code", source: 'import {block} from "workflow";export default block({run(){return "original";}});',
+    } }, skills: [],
+  } }] };
+  const proposal = await store.create(library, "manual", changes, []);
+  await store.apply(proposal.id, []);
+  const current = await loadLibrary(project);
+  const stale = await store.create(current, "manual", changes, []);
+  const filename = path.join(project, ".workflow/blocks/small/block.ts");
+  const source = (await readFile(filename, "utf8")).replace("original", "manual edit");
+  await writeFile(filename, source);
+  const executor = (await loadLibrary(project)).blocks.small!.definition.executor;
+  assert.equal(executor?.kind === "code" ? executor.source : "", source);
+  await assert.rejects(store.apply(stale.id, []), /changed/);
+  await unlink(filename);
+  await assert.rejects(loadLibrary(project), /ENOENT/);
+});
+
+test("editable source uses the same character limit as the code schema for non-ASCII comments", async t => {
+  const { project, library } = await fixture(t);
+  const store = new LibraryProposals(project);
+  const source = `// ${"界".repeat(45_000)}\nimport {block} from "workflow";export default block({run(){return "valid";}});`;
+  assert.ok(Buffer.byteLength(source) > 128_000);
+  const proposal = await store.create(library, "manual", { summary: "Unicode source", blocks: [{ rationale: "Comments may be non-ASCII", bundle: {
+    definition: { id: "unicode", name: "Unicode", description: "Valid multibyte source", executor: { kind: "code", source } }, skills: [],
+  } }] }, []);
+  await store.apply(proposal.id, []);
+  const executor = (await loadLibrary(project)).blocks.unicode!.definition.executor;
+  assert.equal(executor?.kind, "code");
+  assert.ok(executor?.kind === "code" && executor.source.includes("界".repeat(45_000)));
+});
+
+test("reapplying interrupted source publication repairs missing files but preserves later manual edits", async t => {
+  const { project, library } = await fixture(t);
+  const store = new LibraryProposals(project);
+  const proposal = await store.create(library, "manual", { summary: "Add code", blocks: [{ rationale: "Recoverable code", bundle: {
+    definition: { id: "small", name: "Small", description: "Simple code", executor: {
+      kind: "code", source: 'import {block} from "workflow";export default block({run(){return "original";}});',
+    } }, skills: [],
+  } }] }, []);
+  await store.apply(proposal.id, []);
+  const manifestFile = path.join(project, ".workflow/library.json");
+  const sourceFile = path.join(project, ".workflow/blocks/small/block.ts");
+  const manifest = JSON.parse(await readFile(manifestFile, "utf8"));
+  delete manifest.sourceFiles;
+  manifest.sourceBaselines = { small: null };
+  await writeFile(manifestFile, JSON.stringify(manifest));
+  await unlink(sourceFile);
+  await store.apply(proposal.id, []);
+  assert.match(await readFile(sourceFile, "utf8"), /original/);
+  await writeFile(manifestFile, JSON.stringify(manifest));
+  await writeFile(sourceFile, "// manual work after interruption\n");
+  await assert.rejects(store.apply(proposal.id, []), /manually edited/);
+  assert.equal(await readFile(sourceFile, "utf8"), "// manual work after interruption\n");
 });
 
 test("model-only updates require every block and preserve instructions and limits", async (t) => {

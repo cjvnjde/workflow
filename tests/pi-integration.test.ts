@@ -422,5 +422,25 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
   const end=JSON.parse(sessionEvents.find(e=>e.kind==="model_session_end")!.message);
   assert.ok(end.durationMs>=0);assert.ok(end.usage.requests>0);
 
+  valueSubmission = "A focused answer";
+  const isolatedCall = requests.length;
+  await runPiBlock({
+    project,
+    config: { ...library.config, instructions: "INHERITED_PROJECT_SENTINEL", attachments: [attachment],
+      commands: { private: { argv: ["INHERITED_COMMAND_SENTINEL"], timeoutMs: 1000 } },
+      capabilities: { skills: [{ id: "ambient", name: "Ambient", description: "INHERITED_SKILL_SENTINEL", content: "Inherited skill", enabled: true }], mcpServers: [] } },
+    bundle: { ...customAudit, prompt: "EXPLICIT_CALL_INSTRUCTIONS", skills: [{ path: "ambient.md", content: "INHERITED_BLOCK_SKILL_SENTINEL" }] },
+    node, task: "INHERITED_TASK_SENTINEL", workflow: createTemplate("INHERITED_GRAPH_SENTINEL", "bug", library),
+    inputs: { unrelated: "INHERITED_INPUT_SENTINEL", "call-prompt": "EXPLICIT_FOCUSED_PROMPT" },
+    context: "none", visit: 1, settings, signal: AbortSignal.timeout(10000), emit: () => {}, resultMode: "value",
+  });
+  const focused = requests[isolatedCall]!;
+  assert.match(JSON.stringify(focused), /EXPLICIT_CALL_INSTRUCTIONS/);
+  const focusedContent = focused.messages.find(message => message.role === "user")!.content;
+  assert.equal(typeof focusedContent === "string" ? focusedContent : z.array(z.object({ text: z.string() })).parse(focusedContent).map(part => part.text).join(""), "EXPLICIT_FOCUSED_PROMPT");
+  assert.doesNotMatch(JSON.stringify(focused), /INHERITED_.*_SENTINEL|Retained original-project attachment/);
+  assert.ok(focused.tools.some(tool => tool.function.name === "read_file"), "Context isolation does not remove project tools");
+  assert.ok(!focused.tools.some(tool => tool.function.name === "load_skill"), "Ambient skills are excluded unless selected explicitly");
+
 
 });

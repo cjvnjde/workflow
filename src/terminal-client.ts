@@ -3,6 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 import { WorkflowClient, waitForRun } from "./client.js";
 import type { CreateProgram, RunAction, WorkflowRun } from "./contracts.js";
+import { discoverProjectServer } from "./host-discovery.js";
 
 export const clientCommands = ["run", "runs", "show", "events", "watch", "approve", "reject", "pause", "resume", "cancel", "recover", "tasks", "task", "task-show", "answer"];
 export async function readProgram(project: string, filename: string | undefined, inputJson: string): Promise<CreateProgram> {
@@ -22,9 +23,9 @@ export function executionExitCode(run: WorkflowRun) {
 }
 
 export async function runClientCommand(command: string, args: string[], options: {
-  project: string; port: string; server?: string; input: string; approve: boolean; wait: boolean; json: boolean;
+  project: string; port?: string; server?: string; input: string; approve: boolean; wait: boolean; json: boolean;
 }) {
-  const port = Number(options.port);
+  const port = Number(options.port ?? "4310");
   if (!options.server && (!Number.isInteger(port) || port < 1 || port > 65535)) throw new Error("Port must be between 1 and 65535");
   if (options.server) {
     const url = new URL(options.server);
@@ -32,10 +33,13 @@ export async function runClientCommand(command: string, args: string[], options:
       throw new Error("--server must be an HTTP(S) URL without credentials, query, or fragment");
     }
   }
-  const client = new WorkflowClient({ baseUrl: options.server ?? `http://127.0.0.1:${port}` });
+  const discovered = !options.server && options.port === undefined ? await discoverProjectServer(options.project) : undefined;
+  let baseUrl = options.server ?? discovered ?? `http://127.0.0.1:${port}`;
+  if (discovered && !await fetch(`${discovered}/api/health`, { signal: AbortSignal.timeout(1500) }).then(response => response.ok).catch(() => false)) baseUrl = `http://127.0.0.1:${port}`;
+  const client = new WorkflowClient({ baseUrl });
   const served = await client.project(AbortSignal.timeout(5000));
   // An explicit endpoint selects that server's project, including over an SSH tunnel.
-  if (!options.server && await realpath(served.project) !== options.project) throw new Error("The local server belongs to another project");
+  if (!options.server && await realpath(served.project) !== await realpath(options.project)) throw new Error("The local server belongs to another project");
   const expectedArgs = ["runs", "tasks"].includes(command) ? 0 : command === "answer" ? 2 : 1;
   if (args.length !== expectedArgs) throw new Error(`workflow ${command} expects ${expectedArgs} argument(s)`);
   if (command === "runs") {

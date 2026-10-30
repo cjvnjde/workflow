@@ -136,3 +136,54 @@ svg { vertical-align: middle; }
 .workflow-node .graph-label > span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; }
 .workflow-node .graph-label small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
 .workflow-node .graph-label b { margin-top: auto; flex-shrink: 0; }
+
+/* The browser and terminal share durable sessions, including their selected IDs. */
+.session-open-button { width: 100%; justify-content: flex-start; gap: 10px; color: var(--ctp-subtext1); background: transparent; border-color: transparent; margin: -5px 0 12px; font-size: 12px; }
+.session-dialog { width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); padding: 28px; border: 1px solid var(--ui-control-edge); border-radius: 18px; background: var(--ctp-base); color: var(--ctp-text); box-shadow: 0 24px 80px #0008; }
+.session-dialog::backdrop { background: #11111baa; backdrop-filter: blur(3px); }
+.session-dialog-heading { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+.session-dialog-icon { display: grid; place-items: center; width: 44px; height: 44px; color: var(--accent); border-radius: 12px; background: var(--ui-selected); }
+.session-dialog h2 { font-size: 21px; letter-spacing: -.5px; margin: 0 0 12px; }
+.session-dialog p { color: var(--ctp-subtext0); font-size: 13px; line-height: 1.7; }
+.session-dialog label { display: block; margin: 24px 0 8px; font-size: 12px; font-weight: 500; }
+.session-dialog input { width: 100%; font-size: 13px; }
+.session-dialog .session-dialog-hint { font-size: 11px; margin: 10px 0 0; }
+.session-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+.session-access { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin-top: 16px; }
+.session-id { display: inline-flex; align-items: center; gap: 8px; min-width: 0; color: var(--ctp-subtext0); font-size: 10px; }
+.session-id code { color: var(--ctp-subtext1); font-size: 10px; overflow-wrap: anywhere; user-select: all; background: transparent; padding: 0; }
+.session-access-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.session-access-actions button { min-height: 28px; font-size: 10px; padding: 5px 7px; color: var(--ctp-subtext0); }
+.session-copy-notice { color: var(--ctp-green); font-size: 11px; flex-basis: 100%; }
+.project-setup { text-align: left; padding: 18px; margin: 0 0 24px; background: var(--ui-raised); border: 1px solid var(--ui-edge); border-radius: 14px; }
+.project-setup-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 12px; margin-bottom: 16px; }
+.project-setup-heading strong { font-size: 12px; }
+.project-setup-heading > span { color: var(--ctp-subtext0); font-size: 11px; }
+.setup-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.setup-steps button { align-items: flex-start; justify-content: flex-start; text-align: left; padding: 10px 7px; gap: 8px; background: transparent; border-color: transparent; min-width: 0; }
+.setup-step-number { flex-shrink: 0; width: 22px; height: 22px; border: 1px solid var(--ui-control-edge); border-radius: 50%; display: grid; place-items: center; color: var(--ctp-subtext0); font-size: 10px; }
+.setup-steps .complete .setup-step-number { color: var(--ctp-green); background: color-mix(in srgb, var(--ctp-green) 8%, transparent); border-color: transparent; }
+.setup-steps button > span:last-child { min-width: 0; }
+.setup-steps strong { display: block; font-size: 11px; font-weight: 500; }
+.setup-steps small { display: block; margin-top: 4px; font-size: 10px; color: var(--ctp-subtext0); line-height: 1.5; overflow: hidden; text-overflow: ellipsis; }
+.project-setup.ready { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; padding: 10px 14px; background: transparent; }
+.setup-ready-model { display: flex; align-items: center; gap: 8px; color: var(--accent); }
+.setup-ready-model span { color: var(--ctp-subtext0); font-size: 10px; }
+.setup-ready-model strong { color: var(--ctp-text); margin-left: 4px; font-size: 11px; font-weight: 500; }
+.setup-library-count { color: var(--ctp-subtext0); font-size: 10px; }
+.project-setup.ready > button { margin-left: auto; padding: 4px 6px; min-height: 26px; font-size: 10px; }
+.project-bootstrap { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 20px 24px; margin: 24px 0 0; border: 1px solid var(--ui-edge); border-radius: 14px; background: var(--ui-selected); }
+.project-bootstrap > svg { flex-shrink: 0; color: var(--accent); }
+.project-bootstrap > div { flex: 1; min-width: 180px; }
+.project-bootstrap strong { font-size: 13px; }
+.project-bootstrap p { color: var(--ctp-subtext0); font-size: 12px; line-height: 1.6; margin: 6px 0 0; }
+@media (max-width: 600px) {
+  .setup-steps { grid-template-columns: 1fr; gap: 4px; }
+  .project-setup-heading { margin-bottom: 8px; }
+  .setup-steps button { padding: 7px; }
+  .setup-steps small { margin-top: 2px; }
+  .session-id { flex-wrap: wrap; }
+  .session-id code { flex-basis: 100%; }
+  .session-dialog { padding: 22px; }
+  .project-bootstrap { padding: 20px; }
+}

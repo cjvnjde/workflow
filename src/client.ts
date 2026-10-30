@@ -17,6 +17,7 @@ export interface ClientOptions {
   fetch?: typeof globalThis.fetch;
   headers?: HeadersInit;
 }
+export type SessionReference = { kind: "task" | "run"; id: string };
 export class WorkflowApiError extends Error {
   constructor(message: string, readonly status: number) { super(message); this.name = "WorkflowApiError"; }
 }
@@ -30,6 +31,20 @@ export class WorkflowClient {
   url(route: string) {
     if (!route.startsWith("/api/")) throw new Error("Expected a Workflow API route");
     return `${this.base}${route}`;
+  }
+  /** A shareable browser URL for the same persisted task/run used by all clients. */
+  sessionUrl(session?: SessionReference) {
+    return `${this.base}/${session ? `#${session.kind}=${encodeURIComponent(session.id)}` : ""}`;
+  }
+  async resolveSession(reference: string, signal?: AbortSignal): Promise<SessionReference> {
+    const match = /^(?:(task|run):)?([\da-f-]+)$/i.exec(reference.trim());
+    if (!match || !z.string().uuid().safeParse(match[2]).success) throw new Error("Use a full task or run ID, optionally prefixed with task: or run:.");
+    const id = match[2]!.toLowerCase();
+    const kind = match[1]?.toLowerCase();
+    const [tasks, runs] = await Promise.all([kind === "run" ? [] : this.tasks(signal), kind === "task" ? [] : this.runs(signal)]);
+    if (tasks.some(task => task.id === id && !task.deletedAt)) return { kind: "task", id };
+    if (runs.some(run => run.id === id && !run.deletedAt)) return { kind: "run", id };
+    throw new Error(`Session ${id} was not found in this project. Use /sessions to see available sessions.`);
   }
   private headers(options: RequestOptions = {}) {
     const headers = new Headers(this.options.headers);

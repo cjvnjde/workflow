@@ -8,7 +8,10 @@ import {
   watch,
 } from "vue";
 import { z } from "zod";
-import { resolveAgentSettings, type AgentSettings } from "../../src/contracts.js";
+import {
+  resolveAgentSettings,
+  type AgentSettings,
+} from "../../src/contracts.js";
 import {
   modelCatalogSchema,
   modelKey,
@@ -172,7 +175,7 @@ function choose(value: string) {
     <h1 id="setup-title">Providers & models</h1>
     <p>
       Start with ChatGPT, or connect another provider using an API key. Choose a
-      default model for new workflows below.
+      default model to plan new requests and generate your project library.
     </p>
     <div v-if="error" class="error-banner" role="alert">{{ error }}</div>
     <div v-if="notice" class="setup-notice" role="status">{{ notice }}</div>
@@ -212,7 +215,8 @@ function choose(value: string) {
         </ul>
         <p v-else class="muted">No providers are configured yet.</p>
         <small
-          >Credentials stay in Workflow's private local store. Status reflects
+          >Credentials stay in Workflow's private store in your home directory
+          and are shared across projects and interfaces. Status reflects
           configured credentials; model access is checked when a request
           runs.</small
         >

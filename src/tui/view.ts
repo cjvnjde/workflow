@@ -294,7 +294,7 @@ export class TerminalWorkspace {
       if (state.screen === "source") this.setDetail("Workflow source · read only", plain(state.run.program?.source ?? JSON.stringify(state.run.plan, null, 2)));
     }
     if (state.screen === "picker") { this.setDetail(state.panelTitle, plain(state.panelDescription)); this.updateChoices(); }
-    if (state.screen === "step") this.setDetail(state.panelTitle, plain(state.detail));
+    if (state.screen === "step" || state.screen === "session") this.setDetail(state.panelTitle, plain(state.detail));
     if (state.screen === "help") this.setDetail("Make yourself at home", `${commandHelp}\n\nEnter         Send message or run command\nShift+Enter   New line (Ctrl+J also works)\nTab           Complete a slash command\n↑ / ↓         Choose commands or picker items\nCtrl+N        New session\nCtrl+P        Session history\nCtrl+G        Toggle graph\nPgUp / PgDn   Scroll activity\nEsc           Return to conversation\nCtrl+C        Close workspace\n\nClick a tool card to expand its output.\nWhile a draft is open, a message asks the planner to refine it.\nAfter completion, a message creates another task.\nAutomatic approval applies to new tasks only.`);
     if (state.screen === "auth") {
       const auth = state.auth;
@@ -322,7 +322,7 @@ export class TerminalWorkspace {
     this.footer.content = new StyledText([
       fg(state.approval === "automatic" ? colors.yellow : colors.mint)(state.approval === "automatic" ? "AUTO APPROVAL" : "REVIEW FIRST"),
       fg(colors.muted)(`  ·  ${short(agent.model ?? "No model · /login to connect", Math.max(15, width - 50))}`),
-      fg(colors.faint)(`\n${width >= 75 ? "Enter send  ·  Shift+Enter newline  ·  Ctrl+G graph  ·  " : ""}/ commands  ·  Ctrl+C quit`),
+      fg(colors.faint)(`\n${width >= 75 ? "Enter send  ·  Shift+Enter newline  ·  Ctrl+G graph  ·  " : ""}/web browser  ·  / commands  ·  Ctrl+C quit`),
     ]);
     this.renderActions(state); this.updatePalette();
   }

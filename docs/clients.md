@@ -79,10 +79,18 @@ There is no public multi-user authentication or CORS configuration in this refac
 
 ## Embed the application
 
-The installed package exports `predictable-workflow/engine`, `/http`, `/client`, and `/contracts`, in addition to the authoring SDK at `/workflow`.
+The installed package exports `predictable-workflow/core`, `/web`, and `/terminal`, plus the shared `/client`, `/contracts`, and authoring SDK `/workflow`. The original `/engine` and `/http` exports remain compatible.
+
+| Module | Responsibility |
+| --- | --- |
+| `core` | Application services, model planning, execution, storage, approval, recovery. No HTTP listener or GUI. |
+| `web` | HTTP/SSE adapter and optional static browser GUI. Borrows an application. |
+| `terminal` | Terminal presentation and host attachment. Shares the same HTTP client as the browser. |
+
+They are explicit module entry points within one distributable package, not independently versioned packages. Implementation files remain compatible with existing source imports.
 
 ```ts
-import { createApplication } from "predictable-workflow/engine";
+import { createApplication } from "predictable-workflow/core";
 import { waitForRun } from "predictable-workflow/client";
 
 const app = await createApplication({ project: process.cwd() });
@@ -106,7 +114,7 @@ Run events reach subscribers after their event-log write succeeds. Streamed `tex
 An embedded host may attach HTTP separately:
 
 ```ts
-import { createHttpServer } from "predictable-workflow/http";
+import { createHttpServer } from "predictable-workflow/web";
 
 const http = await createHttpServer(app, 4310);
 await http.listen({ port: 4310, host: "127.0.0.1" });

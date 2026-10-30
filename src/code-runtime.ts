@@ -88,6 +88,7 @@ export async function executeCode(options: {
     visit: run.visits[node.id]!,
     ai: (async (args: {
       prompt: string;
+      context?: "workflow" | "none";
       tools?: "none" | readonly WorkflowTool[];
       role?: "test-author" | "repair" | "verification" | "review";
       capabilities?: { skills?: string[]; mcp?: Record<string, string[]>; optionalMcp?: string[] };
@@ -105,6 +106,7 @@ export async function executeCode(options: {
       const result = await effect<BlockResult>(() =>
         options.operation({
           kind: "ai",
+          context: args.context,
           tools: typeof args.tools === "string" ? args.tools : args.tools?.map(toolReference),
           role: args.role,
           capabilities: args.capabilities,

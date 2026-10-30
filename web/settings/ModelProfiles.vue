@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { agentSchema } from "../../src/contracts.js";
 import type { OrchestrationSettings } from "../../src/contracts.js";
-import {
-  modelKey,
-  type AvailableModel,
-} from "../../src/contracts.js";
+import { modelKey, type AvailableModel } from "../../src/contracts.js";
 import { inputValue, inputChecked } from "../form-events.js";
 import Field from "../components/Field.vue";
 import Icon from "../components/Icon.vue";
@@ -76,7 +73,7 @@ function choose(profile: Profile, key: string) {
 function generate() {
   emit(
     "generate",
-    `${settings.value.profiles.length ? "Regenerate" : "Generate"} model profiles for this project. Inspect the project and connected catalog, create a concise set of useful roles with descriptions, and select a planning model.`,
+    `${settings.value.profiles.length ? "Regenerate" : "Generate"} model profiles for this project. Inspect the project and connected catalog. Create a concise set of useful roles for coding, careful review, and routine work with cost-aware model choices. Preserve the project default as the planning model unless I explicitly ask to change it.`,
   );
 }
 </script>
@@ -109,11 +106,11 @@ function generate() {
             : "Let AI set up your models"
         }}</strong>
         <p>
-          Use the connected catalog and this project to create useful roles and
-          select a planning model.
+          Use this project and the connected catalog to assign routine work to
+          efficient models and demanding work to stronger ones.
         </p>
       </div>
-      <button :disabled="!models.length" @click="generate">
+      <button :disabled="busy || !models.length" @click="generate">
         {{
           settings.profiles.length ? "Regenerate with AI" : "Generate with AI"
         }}
@@ -123,9 +120,9 @@ function generate() {
       <Field
         v-slot="{ id }"
         label="Planning model"
-        help="This model classifies requests and builds the workflow. It chooses execution models from your enabled profiles."
+        help="Use the project default to plan requests, or explicitly choose a profile here. The planner chooses execution models from your enabled profiles."
         ><select :id="id" v-model="settings.coordinatorProfile">
-          <option value="">Automatic · Sol 6.1 when available</option>
+          <option value="">Project default model</option>
           <option
             v-for="profile in settings.profiles.filter((item) => item.enabled)"
             :key="profile.id"

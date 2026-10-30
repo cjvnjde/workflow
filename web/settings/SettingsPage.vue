@@ -297,6 +297,33 @@ function reload() {
         @busy="busy = $event"
         @dirty="modelDirty = $event"
       />
+      <section
+        v-if="tab === 'providers'"
+        class="project-bootstrap"
+        aria-label="Generate project library"
+      >
+        <Icon name="workflow" :size="25" />
+        <div>
+          <strong>Turn your defaults into a reusable library</strong>
+          <p>
+            After saving a default model, run <code>workflow setup</code> in
+            this project to generate model roles, task instructions, and
+            TypeScript blocks together. Or design and review one section at a
+            time here.
+          </p>
+        </div>
+        <button
+          :disabled="busy || !models.length || hasEdits"
+          @click="
+            design(
+              'profiles',
+              'Inspect this project and its connected model catalog. Propose cost-aware profiles for implementation, careful review, and routine tasks. Keep the selected project default as the planner. After these profiles are applied, help me design task instructions and reusable TypeScript blocks section by section.',
+            )
+          "
+        >
+          <Icon name="spark" :size="16" />Design with AI
+        </button>
+      </section>
       <ModelProfiles
         v-if="tab === 'profiles'"
         v-model="state.settings"

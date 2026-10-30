@@ -44,7 +44,7 @@ async function commandFixture(t: TestContext) {
     PATH: bin,
   };
   const run = async (args: string[]) =>
-    await execute("workflow", args[0] === "init" ? [...args, "--no-ai"] : args, { cwd: project, env, timeout: 15_000 });
+    await execute("workflow", args, { cwd: project, env, timeout: 15_000 });
 
   return { project, env, run };
 }
@@ -53,6 +53,8 @@ test("the executable on PATH documents current-directory usage without a project
   const { run, project } = await commandFixture(t);
   const result = await run(["--help"]);
   assert.match(result.stdout, /workflow init/);
+  assert.match(result.stdout, /workflow setup/);
+  assert.match(result.stdout, /workflow attach/);
   assert.match(result.stdout, /current directory/);
   assert.ok(!result.stdout.includes("--project"));
   await assert.rejects(access(path.join(project, ".workflow")), {
@@ -73,6 +75,8 @@ test("workflow init creates policy in the caller's project without installing an
     "Preserve the project's public API.",
   ]);
   assert.match(result.stdout, /with 8 blocks/);
+  assert.match(result.stdout, /workflow setup/);
+  assert.ok(!result.stdout.includes("Preparing model profiles"));
   const library = await loadLibrary(project);
   assert.deepEqual(Object.keys(library.blocks).sort(), ["checks", "fix", "implement", "push", "reproduce", "requirements", "review", "verify"]);
   assert.equal(
@@ -147,6 +151,10 @@ test("the package ships a Bun executable and UI, not project state or a developm
   assert.ok(files.includes("dist/tool-sdk.d.ts"));
   assert.ok(files.includes("dist/workflow-sdk.d.ts"));
   assert.ok(files.includes("dist/composition-sdk.d.ts"));
+  for (const name of ["core", "web", "terminal"]) {
+    assert.ok(files.includes(`dist/${name}.js`));
+    assert.ok(files.includes(`dist/${name}.d.ts`));
+  }
   assert.ok(files.includes("examples/implement-reviewed.ts"));
   assert.ok(files.includes("dist/web/index.html"));
   assert.ok(files.some((file) => file.startsWith("dist/web/assets/")));

@@ -423,7 +423,7 @@ function selectStep(id: string) {
         Keep current files
       </button>
       <span class="workflow-counts"
-        >{{ run.plan.nodes.length }} blocks · {{ run.attempts.length }}/{{
+        >{{ run.plan.nodes.length }} {{ run.plan.nodes.length === 1 ? "block" : "blocks" }} · {{ run.attempts.length }}/{{
           run.config.maxSteps
         }}
         step visits<span v-if="activeStepCount > 1">
@@ -568,7 +568,7 @@ function selectStep(id: string) {
               ? "Live"
               : run.program && !run.plan.nodes.length
                 ? "Steps appear during execution"
-                : `${completed}/${run.plan.nodes.length - skipped} blocks passed${skipped ? ` · ${skipped} skipped` : ""}`
+                : `${completed}/${run.plan.nodes.length - skipped} ${run.plan.nodes.length - skipped === 1 ? "block" : "blocks"} passed${skipped ? ` · ${skipped} skipped` : ""}`
           }}</span>
           <button
             ref="expandButton"

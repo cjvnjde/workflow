@@ -101,7 +101,7 @@ export function authInteraction(ui: WorkflowTerminal, dialog: LoginDialogCompone
   };
 }
 
-async function chooseModel(ui: WorkflowTerminal, runtime: ModelRuntime, provider?: string) {
+export async function chooseModel(ui: WorkflowTerminal, runtime: ModelRuntime, provider?: string) {
   const settings = await loadUserSettings();
   const current = settings.agent.provider && settings.agent.model
     ? runtime.getModel(settings.agent.provider, settings.agent.model)
@@ -118,6 +118,10 @@ async function chooseModel(ui: WorkflowTerminal, runtime: ModelRuntime, provider
   }
   settings.agent.provider = model.provider;
   settings.agent.model = model.id;
+  const supported = getSupportedThinkingLevels(model);
+  const previous = settings.agent.thinking ?? "medium";
+  settings.agent.thinking = supported.includes(previous) ? previous
+    : supported.includes("medium") ? "medium" : supported[0] ?? "off";
   await saveUserSettings(settings);
 
   return model;

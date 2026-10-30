@@ -72,6 +72,8 @@ export type ExecResult = {
   result?: StepResult;
 };
 export type AIOptions<S extends z.ZodType = z.ZodType> = {
+  /** Omit inherited task, graph, inputs, attachments and project instructions. Tools remain available. */
+  context?: "workflow" | "none";
   /** Text-only transformation: only the structured-result tool is available. */
   tools?: "none" | readonly WorkflowTool[];
   role?: "test-author" | "repair" | "verification" | "review";

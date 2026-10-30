@@ -9,7 +9,7 @@ This guide takes you from a checkout of Workflow to an approved task in your own
 - Bun **1.4.2 or newer** and Bash.
 - Git for workflows that inspect, commit, or push repository changes.
 - The tools your project uses: for example, its test runner or compiler. A block invoking `node`, Python, or another runtime needs that executable installed.
-- A browser. ChatGPT sign-in or another provider's API key is needed for AI planning and execution; code-only imported workflows can run without a model.
+- A terminal or browser. ChatGPT sign-in or another provider's API key is needed for AI planning and execution; code-only imported workflows can run without a model.
 
 Workflow includes its UI and manages a local Temporal development server. The first server start downloads a pinned Temporal executable; later starts use the cache. No separate Docker, Node.js, or Temporal installation is required for Workflow itself. Managed Temporal supports Linux/macOS x64/arm64; integration testing is performed on Linux.
 
@@ -33,7 +33,7 @@ After building, call the CLI by its absolute path from the target project:
 
 ```sh
 cd /path/to/your/project
-bun /path/to/workflow/dist/cli.js init --no-ai
+bun /path/to/workflow/dist/cli.js init
 bun /path/to/workflow/dist/cli.js
 ```
 
@@ -42,8 +42,11 @@ To work on the Workflow repository itself, run `bun run start` from its checkout
 ## Initialize your project
 
 ```sh
+workflow login openai
+workflow model
 cd /path/to/your/project
 workflow init --instructions "Preserve public APIs. Use the existing test framework."
+workflow setup
 workflow
 ```
 
@@ -51,7 +54,11 @@ Open **http://127.0.0.1:4310**. The current directory is the project; there is n
 
 Initialization creates `.workflow/`, starter blocks, task instructions, and defaults. If `package.json` has a `test` script, the starter checks use `bun run test`. Otherwise, configure an appropriate check in Settings before relying on test-based completion.
 
-If a provider is already connected, initialization can generate model profiles using it. Pass `--no-ai` to create the configuration without a model request. Initialization refuses to overwrite an existing project configuration.
+Initialization never calls a model and refuses to overwrite existing configuration. `--no-ai` is still accepted for older scripts but is no longer needed.
+
+`workflow setup` is the explicit AI bootstrap. Your saved default inspects the repository and proposes model profiles, task instructions, and reusable TypeScript blocks. All three proposals are validated before publishing; generated block source is typechecked. Task instructions describe review, bug-fix, feature, and documentation work without forcing every request through a fixed graph. The default planner composes the actual graph later.
+
+Choose a project-specific default with `workflow setup --model openai/gpt-6.1-sol --thinking medium`, or select it in Settings before running setup. Omit those flags to use the existing project/shared default. Setup uses the connected model catalog; a model name in a guide is not a guarantee of account access. Repeating completed setup keeps the saved library; use `--regenerate` to redesign it. Check the generated commands and blocks in Settings before using them on consequential work.
 
 ## Connect a model
 
@@ -59,11 +66,13 @@ If a provider is already connected, initialization can generate model profiles u
 2. Choose **Continue with ChatGPT**, follow the sign-in link, and complete authorization. Return to Workflow after the callback says authentication succeeded.
 3. Alternatively, expand **Use an API key**, select a provider, and save its key.
 4. Select an available project model and thinking level, then save.
-5. Open **Model profiles**. Use **Generate with AI** or create profiles manually, with descriptions of the work each should handle.
+5. Run `workflow setup` for the full bootstrap, or use **Model profiles → Generate with AI** and the other Settings sections to design one section at a time.
 
 Workflow offers account sign-in for ChatGPT and API keys for other providers. Use the connected catalog to choose models; availability depends on the connection. Refresh connections and models if a new selection is missing. Existing drafts keep their saved model choices, so changing defaults does not repair an already-created draft automatically.
 
 Credentials are stored outside the project. Pi does not need to be installed or logged in separately. See [Configuration](configuration.md) for storage details and model precedence.
+
+![A configured project showing its selected default and generated library](screenshots/web-setup.jpg)
 
 ## Run your first task
 
@@ -109,7 +118,9 @@ workflow run verify.ts --input '{"request":"Verify this project"}'
 workflow run verify.ts --input '{"request":"Verify this project"}' --approve
 ```
 
-The CLI connects to the local server and checks that it serves the same project. Use `--port` if you started the server on another port. It submits the workflow and returns its ID; it does not wait for the final result.
+The CLI discovers this project's running server and checks that it serves the same project. Use `--port` or `--server` to select an endpoint explicitly. It submits the workflow and returns its ID; it does not wait for the final result.
+
+Open any saved task or run with `workflow attach <id>`. In the browser, use **Open session by ID** or a copied session link. Both clients show the same saved state and receive live updates. `workflow resume <run-id>` is a separate command that explicitly restarts paused/interrupted execution.
 
 The compiler resolves `import { workflow, block, step } from "workflow"` to the installed SDK. You do not need to install a package named `workflow` in the target project.
 

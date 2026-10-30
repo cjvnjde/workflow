@@ -39,9 +39,13 @@ A profile has an ID, name, description, provider, model, thinking level, and ena
 
 Several profiles can use the same model with different roles or thinking levels. A planning profile can be selected in Settings; users do not choose a coordinator for every task. Profiles available to execution are captured as `ctx.models[profileId]` when a workflow is created.
 
-Use **Generate with AI** for initial setup or **Regenerate with AI** to start a refinement conversation. `workflow init` can generate profiles when a provider is already connected and preserves existing profiles. `workflow profiles --instructions "..."` explicitly regenerates them. Ordinary application startup does not regenerate profiles or spend model usage on setup.
+Use `workflow setup` for a complete project bootstrap, or **Generate with AI** / **Regenerate with AI** for a reviewable profile design conversation. `workflow profiles --instructions "..."` explicitly regenerates only profiles. `workflow init` and ordinary application startup never make setup model requests.
 
-Without an explicit coordinator, planning prefers `openai/gpt-6.1-sol` with high reasoning when available. Explicit coordinator profiles override this default. Model profile cards are configured roles, not the connected provider’s full catalog; use **Add model profile** to select another available model such as Terra.
+Planning uses your configured project/shared default model and thinking level. An explicit coordinator or coordinator profile overrides it. Changing the default no longer silently selects a different model. If no model has ever been configured, the planner can choose an available fallback; explicit `workflow setup` asks you to select a default first. Model profile cards are configured roles, not the connected provider's full catalog.
+
+Setup refreshes the connected catalog and requests current, task-appropriate profiles: inexpensive models for routine work, suitable coding models for implementation, and stronger reasoning where justified. It does not invent unavailable model IDs. OpenAI's current family includes GPT-6.1 Sol/Terra and GPT-6 Astra/Luna; actual provider/account access and cached catalogs may differ. [Official model catalog](https://developers.openai.com/api/docs/models/all).
+
+`workflow setup --model provider/model-id --thinking medium` saves a project override before generating configuration. `workflow model` changes the shared user default instead. A completed setup is recorded in `.workflow/setup.json`; use `--regenerate` to intentionally redesign the library. Existing runs keep their approved snapshots.
 
 ## Task instructions
 
@@ -118,12 +122,16 @@ Named commands use argument arrays without shell interpolation. Code blocks inte
 | --- | --- |
 | `.workflow/config.json` | Project instructions, model/coordinator defaults, commands, limits, recovery. |
 | `.workflow/orchestration.json` | Profiles, task cases, shared planning instructions, skills/MCP, approval preferences. |
-| `.workflow/blocks/` | Directory-backed block definitions and resources. |
-| `.workflow/library.json` | Active web-managed block library, when present; takes precedence over directories. |
+| `.workflow/blocks/<id>/block.ts` | Editable TypeScript block source; generated setup and UI-applied code are written here. |
+| `.workflow/library.json` | Active block metadata, source-file references, and a recoverable inline snapshot. |
+| `.workflow/setup.json` | Completed bootstrap marker and the model used for setup. |
+| `.workflow/server.json` | Private running-host discovery receipt; not reusable project configuration. |
 | `.workflow/libraries/` | Prior library snapshots. |
 | `.workflow/design-chats/` | Private settings conversations and proposals. |
 
 Reusable project configuration can be version controlled. Generated runs, tasks, attachments, conversations, journals, and Temporal state are private runtime data; initialization adds ignore rules for them. [Operations](operations.md#persistence-and-backups) lists what to back up.
+
+For libraries with `sourceFiles` in the manifest, `block.ts` is authoritative: editing it changes the next loaded library and invalidates stale proposals. Approved runs retain their frozen source. Missing referenced files fail explicitly. Old inline-only manifests remain readable and gain editable source files on the next Apply/setup. During publication, the complete inline snapshot stays active until all source files are written; interrupted publication can be reapplied without silently overwriting later manual edits.
 
 User settings live outside projects in `$XDG_CONFIG_HOME/workflow` when the XDG path is absolute, otherwise `~/.config/workflow`. `WORKFLOW_HOME` overrides this location:
 

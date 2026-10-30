@@ -5,13 +5,18 @@ import { parseArgs } from "node:util";
 import { initializeProject, loadLibrary } from "./library.js";
 import { clientCommands, runClientCommand, readProgram, printRun, executionExitCode } from "./terminal-client.js";
 import { waitForRun } from "./client.js";
+import { announceProjectServer } from "./host-discovery.js";
 
 async function main() {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
     options: {
       instructions: { type: "string", default: "" },
-      port: { type: "string", default: "4310" },
+      port: { type: "string" },
+      session: { type: "string" },
+      model: { type: "string" },
+      thinking: { type: "string" },
+      regenerate: { type: "boolean", default: false },
       demo: { type: "boolean", default: false },
       "no-ai": { type: "boolean", default: false },
       input: { type: "string", default: "{}" },
@@ -28,10 +33,12 @@ async function main() {
   const command = positionals[0] ?? "serve";
   if (values.help || command === "help") {
     console.log(`Usage:
-  workflow init [--instructions "Project constraints"] [--no-ai]
+  workflow init [--instructions "Project constraints"]  Create local configuration; no AI call
+  workflow setup [--model provider/id] [--thinking level] [--instructions "Preferences"] [--regenerate]
   workflow profiles [--instructions "Model preferences"]
   workflow [serve] [--port 4310] [--no-web] [--demo]
-  workflow tui [--server URL] [--demo]  Interactive terminal workspace
+  workflow tui [session-id] [--session ID] [--server URL] [--demo]
+  workflow attach <session-id> [--server URL]  Reopen the same session in the terminal
   workflow exec <file.ts> [--input JSON] [--json]
   workflow run <file.ts> [--input JSON] [--approve] [--wait]
   workflow task "Request"       Create an asynchronous planning task
@@ -56,6 +63,8 @@ async function main() {
 
 Run workflow from your project folder. State lives in .workflow/ in the current directory.
 serve includes the web UI; --no-web starts only the API and worker.
+tui starts or attaches to the project's engine and serves the same browser UI. Use /web for its URL.
+Session IDs open saved work; workflow resume <run-id> explicitly restarts paused execution.
 exec explicitly approves and executes a TypeScript workflow without an HTTP server or GUI.
 run creates a draft on a running server; inspect it with show, then approve it.
 Client commands accept --port, --server URL (explicitly selects that server's project), and --json.
@@ -71,12 +80,14 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
     return;
   }
   const project = await realpath(process.cwd());
-  if (command === "tui") {
-    if (positionals.length > 1) throw new Error("Use workflow tui [--server URL] [--demo]");
+  if (command === "tui" || command === "attach") {
+    if (positionals.length > 2 || positionals[1] && values.session) throw new Error("Use workflow tui [session-id] or --session ID, with optional --server URL.");
+    const session = values.session ?? positionals[1];
+    if (command === "attach" && !session) throw new Error("Use workflow attach <task-or-run-id> [--server URL].");
     // Keep the native renderer in a separately loaded bundle for headless commands.
     const terminalEntry = new URL("./tui.js", import.meta.url).href;
     const { runTerminalWorkspace } = await import(terminalEntry) as typeof import("./tui.js");
-    await runTerminalWorkspace({ project, port: Number(values.port), server: values.server, demo: values.demo,
+    await runTerminalWorkspace({ project, port: values.port === undefined ? undefined : Number(values.port), server: values.server, demo: values.demo, session,
       temporal: { address: values["temporal-address"], namespace: values["temporal-namespace"] } });
     return;
   }
@@ -91,7 +102,7 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
     if (positionals.length !== 2) throw new Error("Expected workflow exec <file.ts> [--input JSON]");
     if (values.server) throw new Error("exec runs locally; use run --server URL --approve --wait for a server");
     const program = await readProgram(project, positionals[1], values.input);
-    const { createApplication } = await import("./application.js");
+    const { createApplication } = await import("./core/index.js");
     const controller = new AbortController();
     const stop = () => controller.abort(new Error("Execution interrupted. Resume the saved run with workflow serve and workflow resume."));
     process.once("SIGINT", stop); process.once("SIGTERM", stop);
@@ -117,7 +128,7 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
     return;
   }
   if (positionals.length > 1) {
-    throw new Error("Expected one command: init, profiles or serve");
+    throw new Error("Expected one command: init, setup, profiles or serve");
   }
   if (command === "init") {
     const library = await initializeProject(project, values.instructions);
@@ -126,19 +137,30 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
     );
     console.log(
       Object.keys(library.config.commands).length
-        ? "Detected a test script. Checks use bun run test. Configure commands and block instructions in Settings."
+        ? `Detected a test script. Checks use ${library.config.commands.test?.argv.join(" ")}. Configure commands and block instructions in Settings.`
         : "No test command detected. Add commands and block checks before relying on test-gated completion.",
     );
-    if (!values["no-ai"]) {
-      const { initializeProfiles } = await import("./initialize-profiles.js");
-      try {
-        console.log("Preparing model profiles from your connected models…");
-        const profiles = await initializeProfiles(project, { instructions: values.instructions });
-        console.log(profiles.status === "unconnected" ? "Connect ChatGPT in Settings, then use Model profiles → Generate with AI to finish setup." : `${profiles.status === "existing" ? "Kept" : "Generated"} ${profiles.count} model profiles. Review them in Settings → Model profiles.`);
-      } catch (error) {
-        console.error(`Project initialized; model profile generation needs attention: ${error instanceof Error ? error.message : String(error)}. Retry with workflow profiles or in Settings.`);
-      }
+    console.log("Next: workflow login (once per user), workflow model (choose a default), then workflow setup to tailor blocks, model profiles, and task workflows to this project.");
+    return;
+  }
+  if (command === "setup" || command === "generate") {
+    const { initializeSetup } = await import("./initialize-setup.js");
+    if (values.thinking && !values.model) throw new Error("Use --thinking together with --model provider/id, or workflow thinking to change your user default.");
+    if (values.model) {
+      const split = values.model.indexOf("/");
+      if (split < 1 || split === values.model.length - 1) throw new Error("Use --model provider/model-id.");
+      const [{ availableModels }, { projectModelSettings, updateProjectModel }] = await Promise.all([import("./available-models.js"), import("./project-model.js")]);
+      const catalog = await availableModels(AbortSignal.timeout(30_000), true);
+      const provider = values.model.slice(0, split), model = values.model.slice(split + 1);
+      const choice = catalog.models.find(item => item.provider === provider && item.id === model);
+      if (!choice) throw new Error(`Model ${values.model} is not available from your connected providers. Run workflow login or workflow model.`);
+      const thinking = values.thinking ?? (choice.thinkingLevels.includes("medium") ? "medium" : choice.thinkingLevels[0] ?? "off");
+      await updateProjectModel(project, { configRevision: (await projectModelSettings(project)).configRevision, agent: { provider, model, thinking } }, catalog.models);
     }
+    console.log("Tailoring reusable blocks, model profiles, and task workflows with your default model…");
+    const setup = await initializeSetup(project, { instructions: values.instructions, regenerate: values.regenerate || command === "generate", emit: (_kind, message) => console.error(message) });
+    if (setup.status === "unconnected") throw new Error("No connected provider. Run workflow login, choose workflow model, then retry workflow setup.");
+    console.log(`${setup.status === "existing" ? "Kept" : "Generated"} ${setup.profiles} model profiles, ${setup.cases} task workflows, and ${setup.blocks} blocks. Run workflow or workflow tui to start working.`);
     return;
   }
   if (command === "profiles") {
@@ -152,7 +174,7 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
   if (command !== "serve") {
     throw new Error(`Unknown command: ${command}`);
   }
-  const port = Number(values.port);
+  const port = Number(values.port ?? "4310");
   if (!Number.isInteger(port) || port < 0 || port > 65535) {
     throw new Error("Port must be an integer between 0 and 65535");
   }
@@ -167,13 +189,14 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
     throw error;
   }
   const [{ createApplication }, { createHttpServer }] = await Promise.all([
-    import("./application.js"), import("./http-server.js"),
+    import("./core/index.js"), import("./web/index.js"),
   ]);
   const controller = new AbortController();
   const stop = () => controller.abort();
   process.once("SIGINT", stop); process.once("SIGTERM", stop);
   let app: Awaited<ReturnType<typeof createApplication>> | undefined;
   let server: Awaited<ReturnType<typeof createHttpServer>> | undefined;
+  let unannounce: (() => Promise<void>) | undefined;
   try {
     app = await createApplication({ project, mode: values.demo ? "demo" : "live",
       temporal: { address: values["temporal-address"], namespace: values["temporal-namespace"] } });
@@ -187,6 +210,7 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
       await registerWebGui(server);
     }
     const address = await server.listen({ port, host: "127.0.0.1" });
+    unannounce = await announceProjectServer(project, address);
     console.log(`Workflow ${app.mode.toUpperCase()} · ${address}${values["no-web"] ? " · API only" : ""}\nProject: ${project}`);
     if (values.demo) console.log("DEMO: agents and checks are simulated. No task files are changed.");
     if (!controller.signal.aborted) await new Promise<void>(resolve => controller.signal.addEventListener("abort", () => resolve(), { once: true }));
@@ -194,7 +218,7 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
     try { await server?.close(); }
     finally {
       try { await app?.close(); }
-      finally { process.removeListener("SIGINT", stop); process.removeListener("SIGTERM", stop); }
+      finally { await unannounce?.(); process.removeListener("SIGINT", stop); process.removeListener("SIGTERM", stop); }
     }
   }
 }

@@ -9,7 +9,7 @@ import {
   watch,
 } from "vue";
 import { runSchema } from "../src/contracts.js";
-import { taskSchema } from "../src/contracts.js";
+import { taskSchema, taskListSchema, runListSchema } from "../src/contracts.js";
 import { orchestrationStateSchema } from "../src/contracts.js";
 import { libraryProposalSchema } from "../src/contracts.js";
 import type { DesignScope } from "../src/contracts.js";
@@ -25,6 +25,9 @@ import type { ProgramSource } from "../src/contracts.js";
 import TaskPlanning from "./components/TaskPlanning.vue";
 import RunWorkspace from "./components/RunWorkspace.vue";
 import Icon from "./components/Icon.vue";
+import SessionSwitcher from "./components/SessionSwitcher.vue";
+import ProjectSetup from "./components/ProjectSetup.vue";
+import { parseSessionLocation, sessionLink } from "./session-location.js";
 const SettingsPage = defineAsyncComponent(
   () => import("./settings/SettingsPage.vue"),
 );
@@ -33,6 +36,10 @@ const DesignDock = defineAsyncComponent(
   () => import("./components/DesignDock.vue"),
 );
 const initialLocation = new URLSearchParams(window.location.hash.slice(1));
+const initialSession = new URLSearchParams(window.location.search).get(
+  "session",
+);
+const copiedSession = ref("");
 const {
   project,
   run,
@@ -124,6 +131,7 @@ async function readSettings() {
       .settings.approval === "automatic";
 }
 onMounted(() => {
+  if (initialSession) void perform(() => openSession(initialSession));
   void readSettings().catch((failure: unknown) => {
     error.value = String(failure);
   });
@@ -149,10 +157,12 @@ function syncLocation() {
         : selectedId.value
           ? `run=${selectedId.value}`
           : "";
+  const query = new URLSearchParams(window.location.search);
+  query.delete("session");
   window.history.replaceState(
     null,
     "",
-    `${window.location.pathname}${window.location.search}${location ? `#${location}` : ""}`,
+    `${window.location.pathname}${query.size ? `?${query}` : ""}${location ? `#${location}` : ""}`,
   );
 }
 function readLocation() {
@@ -322,6 +332,63 @@ watch([tasks, runs], () => {
 const projectName = computed(
   () => project.value?.project.split("/").filter(Boolean).at(-1) ?? "Workspace",
 );
+async function openSession(value: string, signal?: AbortSignal) {
+  signal?.throwIfAborted();
+  const session = parseSessionLocation(value);
+  const [knownTasks, knownRuns] = await Promise.all([
+    request("/api/tasks", taskListSchema, { signal }),
+    request("/api/runs", runListSchema, { signal }),
+  ]);
+  signal?.throwIfAborted();
+  const foundTask =
+    session.kind !== "run" &&
+    knownTasks.find((item) => item.id === session.id && !item.deletedAt);
+  const foundRun =
+    session.kind !== "task" &&
+    knownRuns.find((item) => item.id === session.id && !item.deletedAt);
+  if (!foundTask && !foundRun)
+    throw new Error(
+      "Session not found in this project. Check the full ID and the project server you connected to.",
+    );
+  navigate("task", () => {
+    selectedTask.value = foundTask ? foundTask.id : undefined;
+    selectRun(foundTask ? foundTask.runId : session.id);
+  });
+}
+const sessionId = computed(() => selectedTask.value ?? selectedId.value);
+async function copySession(kind: "link" | "terminal" | "id") {
+  if (!sessionId.value) return;
+  const value =
+    kind === "id"
+      ? sessionId.value
+      : kind === "terminal"
+        ? `workflow attach ${sessionId.value} --server ${new URL(apiUrl("/api/project"), window.location.href).href.replace(/\/api\/project$/, "")}`
+        : sessionLink(window.location.href, {
+            id: sessionId.value,
+            kind: selectedTask.value ? "task" : "run",
+          });
+  try {
+    await navigator.clipboard.writeText(value);
+    copiedSession.value =
+      kind === "link"
+        ? "Session link copied"
+        : kind === "terminal"
+          ? "Terminal command copied"
+          : "Session ID copied";
+  } catch {
+    copiedSession.value =
+      "Clipboard unavailable. Select and copy the session ID below.";
+  }
+}
+watch(sessionId, () => {
+  copiedSession.value = "";
+});
+function generateSetup() {
+  design(
+    "project",
+    "Set up a reusable workflow library for this project using my selected default model. Inspect the repository and connected model catalog. Propose a small set of reusable TypeScript blocks, model profiles for implementation, careful review, and routine work, and task instructions for code review, bug fixes, features, and documentation. Use current available models suited to each role; keep the project default as the planner. Prefer deterministic TypeScript or commands over model calls for checks and Git operations. Pass only explicit bounded inputs and outputs between blocks; do not forward whole conversations. Preserve existing project customizations. Start with one model-profile proposal for review, then guide me through task instructions and blocks section by section.",
+  );
+}
 function selectEntry(item: (typeof entries.value)[number]) {
   navigate("task", () => {
     selectedTask.value = item.id.startsWith("run:") ? undefined : item.id;
@@ -532,6 +599,7 @@ async function designApplied() {
       <button class="new-task-button" aria-label="New task" @click="newTask()">
         <Icon name="plus" :size="19" />New task
       </button>
+      <SessionSwitcher :on-open="openSession" />
       <div class="sidebar-search">
         <Icon name="search" :size="15" /><input
           v-model="filter"
@@ -709,7 +777,18 @@ async function designApplied() {
           <div class="home-symbol"><Icon name="workflow" :size="30" /></div>
           <div class="home-eyebrow">YOUR PROJECT. A CLEAR PLAN.</div>
           <h1>What should we work on?</h1>
-          <p>Share the goal. Add context. Watch a workflow take shape.</p>
+          <p>
+            Share the goal. Choose what flows between steps. Follow the work
+            anywhere.
+          </p>
+          <ProjectSetup
+            v-if="project"
+            :revision="`${settingsRevision}:${JSON.stringify(project.config.agent)}`"
+            :blocks="Object.keys(project.blocks).length"
+            :demo="project.mode === 'demo'"
+            @settings="navigate('settings')"
+            @generate="generateSetup"
+          />
           <TaskComposer
             :key="composerKey"
             :initial-text="initialText"
@@ -750,6 +829,37 @@ async function designApplied() {
               </div>
             </div>
             <p>{{ task?.prompt ?? run?.plan.task ?? "Loading request…" }}</p>
+            <div
+              v-if="sessionId"
+              class="session-access"
+              aria-label="Shared session"
+            >
+              <span class="session-id"
+                ><Icon name="terminal" :size="14" /><span>Session</span
+                ><code>{{ sessionId }}</code></span
+              >
+              <div class="session-access-actions">
+                <button
+                  class="quiet"
+                  @click="copySession('id')"
+                  title="Copy session ID"
+                >
+                  <Icon name="copy" :size="13" />Copy ID
+                </button>
+                <button class="quiet" @click="copySession('link')">
+                  Copy link
+                </button>
+                <button class="quiet" @click="copySession('terminal')">
+                  <Icon name="terminal" :size="13" />Continue in terminal
+                </button>
+              </div>
+              <span
+                v-if="copiedSession"
+                class="session-copy-notice"
+                role="status"
+                >{{ copiedSession }}</span
+              >
+            </div>
             <div v-if="task?.attachments.length" class="request-attachments">
               <a
                 v-for="file in task.attachments"

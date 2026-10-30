@@ -2,12 +2,14 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
+import lockfile from "proper-lockfile";
 import { atomicWrite } from "./atomic-file.js";
 import { resolveAgentSettings, type Library, type WorkflowPlan } from "./domain.js";
 import { loadLibrary, validateLibraryResources } from "./library.js";
 import { validateCodeBlocks } from "./program-compiler.js";
 import { formatBlock } from "./source-format.js";
 import { scriptBundle } from "./script-migration.js";
+import { publishLibraryFiles } from "./library-files.js";
 import {
   approvedLibrarySchema, libraryChangesSchema, libraryProposalSchema, modelKey,
   type AvailableModel, type LibraryProposal,
@@ -84,7 +86,15 @@ export class LibraryProposals {
   private mutations = Promise.resolve();
   constructor(private readonly project: string) {}
   private async mutate<T>(action: () => Promise<T>) {
-    const result = this.mutations.then(action);
+    const result = this.mutations.then(async () => {
+      const release = await lockfile.lock(path.join(this.project, ".workflow", "config.json"), {
+        lockfilePath: path.join(this.project, ".workflow", "library-write-lease"),
+        stale: 10_000, update: 2000,
+        retries: { retries: 50, minTimeout: 100, maxTimeout: 100, randomize: false },
+      });
+      try { return await action(); }
+      finally { await release(); }
+    });
     this.mutations = result.then(() => {}, () => {});
     return await result;
   }
@@ -118,6 +128,12 @@ export class LibraryProposals {
       if (proposal.status === "rejected") { throw new Error("Only draft library changes can be applied"); }
       const current = await loadLibrary(this.project);
       if (proposal.appliedHash && libraryHash(current) === proposal.appliedHash) {
+        // Finish editable source publication if a previous process stopped after
+        // the atomic inline snapshot was saved.
+        const saved = approvedLibrarySchema.parse(JSON.parse(await readFile(path.join(this.project, ".workflow", "library.json"), "utf8")));
+        if (!saved.sourceFiles) await publishLibraryFiles(this.project, current.blocks, async () => {
+          if (libraryHash(await loadLibrary(this.project)) !== proposal.appliedHash) throw new Error("The library changed while recovering editable sources.");
+        }, saved.sourceBaselines);
         proposal.status = "applied"; await this.save(proposal); return proposal;
       }
       if (proposal.status !== "draft") { throw new Error("This proposal was already applied and the library has since changed"); }
@@ -132,7 +148,7 @@ export class LibraryProposals {
       await mkdir(directory, { recursive: true, mode: 0o700 });
       await atomicWrite(path.join(directory, ".gitignore"), "*\n");
       await atomicWrite(path.join(directory, `${proposal.baseHash}.json`), JSON.stringify(approvedLibrarySchema.parse({ version: 1, blocks: current.blocks })) + "\n");
-      await atomicWrite(path.join(this.project, ".workflow", "library.json"), JSON.stringify(approvedLibrarySchema.parse({ version: 1, blocks }), null, 2) + "\n", 0o600, async () => {
+      await publishLibraryFiles(this.project, blocks, async () => {
         if (libraryHash(await loadLibrary(this.project)) !== proposal.baseHash) { throw new Error("The library changed while applying. Generate a new proposal."); }
       });
       proposal.status = "applied";
@@ -161,7 +177,7 @@ export class LibraryProposals {
       const directory = path.join(this.project, ".workflow", "libraries");
       await mkdir(directory, { recursive: true, mode: 0o700 });
       await atomicWrite(path.join(directory, `${revision}.json`), JSON.stringify({ version: 1, blocks: library.blocks }));
-      await atomicWrite(path.join(this.project, ".workflow", "library.json"), JSON.stringify(approvedLibrarySchema.parse({ version: 1, blocks }), null, 2) + "\n", 0o600, async () => {
+      await publishLibraryFiles(this.project, blocks, async () => {
         if (libraryHash(await loadLibrary(this.project)) !== revision) { throw new Error("The library changed while removing a block"); }
       });
       return { removed: true };

@@ -4,6 +4,12 @@
 
 Workflow is an AI development engine with a browser workspace and terminal clients. Describe a task, attach files or screenshots, and the orchestrator composes a TypeScript workflow from your reusable blocks, task instructions, and model profiles. Review the graph, then start it—or enable automatic execution.
 
+![Web workspace: a shared session with a reviewable execution graph](docs/screenshots/web-workspace.jpg)
+
+![Terminal workspace connected to the same session](docs/screenshots/terminal-workspace.png)
+
+Both screenshots show the same disposable demo task. Demo mode simulates AI work; it does not change project files.
+
 ## Why this project exists
 
 Finishing a coding task often takes several kinds of work: understand the request, implement it, write or run tests, review the result, address feedback, and sometimes commit and push. Workflow makes those responsibilities and their connections explicit.
@@ -11,6 +17,7 @@ Finishing a coding task often takes several kinds of work: understand the reques
 - **Make the process visible.** See the proposed graph before execution, the blocks currently running, and the results and logs of each attempt.
 - **Give different work to different models.** Describe model profiles for implementation, careful review, or routine work. Let the orchestrator assign them, or choose models in code.
 - **Use code for predictable operations.** A test, build, or push can run directly without a model call. AI is a capability inside a TypeScript block.
+- **Control what models receive.** Pass selected typed outputs between steps. Each AI call starts fresh; `context: "none"` omits inherited workflow context, independently of tool access.
 - **Turn feedback into a controlled loop.** A test block returns diagnostics; an implementation block fixes the problem. Conditions, explicit outcomes, and visit limits decide what happens next.
 - **Keep progress across interruptions.** Temporal records execution history. Completed work is retained, and interrupted attempts have an explicit recovery and retry path.
 - **React to GitHub events.** Configure new-issue and new-PR triggers against a tested workflow. Persistent polling and a project queue retain work across restarts; results can stay local or be posted as a GitHub comment. [Set up triggers](docs/triggers.md).
@@ -51,23 +58,28 @@ bun run build
 bun link
 ```
 
-Then run it from the project you want to work on:
+Connect once, then initialize and configure each project:
 
 ```sh
+workflow login openai           # account login; API-key login is also available
+workflow model                  # shared default, saved in your home directory
 cd /path/to/your/project
 workflow init --instructions "Preserve public APIs and use the existing test framework."
+workflow setup                  # AI inspects this project and tailors its library
 workflow
 ```
 
-Open **http://127.0.0.1:4310**:
+`init` only creates configuration and starter TypeScript blocks. `setup` uses your chosen default model to inspect the repository and generate model profiles, reusable blocks, and task instructions for review, bug fixes, features, and documentation. It refreshes the connected catalog and asks for suitable current models with different costs and capabilities. To choose a project default during setup, use `workflow setup --model openai/gpt-6.1-sol --thinking medium`. Only models available through your connection can be selected.
 
-1. In **Settings → Providers & models**, connect ChatGPT or a provider API key.
-2. Choose a project model and generate or edit **Model profiles**.
+Open **http://127.0.0.1:4310** (or use `workflow tui`):
+
+1. The setup checklist shows your connection, default model, and library status.
+2. Review or edit the generated configuration in **Settings**. Provider login and model selection are also available there.
 3. Create a **New task**, describe the desired result, and attach useful context.
 4. Inspect the proposed graph and select **Approve & start**.
 5. Follow the active blocks and open **Results** for the outcome, checks, and downloadable artifacts.
 
-The current directory is the project; there is no project-path argument. `workflow init` can generate profiles if a provider is already connected; use `--no-ai` to initialize without a model request. Review is the default approval mode.
+The current directory is the project; there is no project-path argument. Credentials are shared across projects in `~/.config/workflow/` by default. Setup is explicit: ordinary startup does not regenerate configuration or spend AI usage on setup. Use `workflow setup --regenerate` when you want a fresh project-specific library. Review is the default approval mode.
 
 [The getting-started guide](docs/getting-started.md) covers running without a PATH installation, development mode, first-task examples, and setup troubleshooting.
 
@@ -76,14 +88,17 @@ The current directory is the project; there is no project-path argument. `workfl
 ```sh
 workflow                       # engine, API, and web GUI
 workflow tui                   # full terminal workspace: chat, graph, tools, approval
+workflow attach <session-id>   # reopen a task or run from either interface
 workflow serve --no-web         # engine and API only
 workflow exec verify.ts         # execute directly in the terminal, without HTTP
 workflow run verify.ts --approve --wait  # execute through a running server
 ```
 
-In `workflow tui`, describe a task, inspect `/graph`, and `/approve` or `/reject` it. Follow streamed AI responses, tool executions, and step results. Use `/auto on` for automatic approval of new tasks, `/sessions` to reopen work, and `/settings` or `/login` to configure models. [The terminal guide](docs/terminal.md) covers commands, shortcuts, and server attachment.
+In `workflow tui`, describe a task, inspect `/graph`, and `/approve` or `/reject` it. Use `/web` to open the same session in a browser, `/id` to show its ID, and `/open <id>` or `/sessions` to reopen work. The browser's **Open session by ID** accepts an ID or copied session link; **Continue in terminal** copies the matching CLI command. Opening a session does not automatically resume paused execution. [The terminal guide](docs/terminal.md) covers commands, shortcuts, and server attachment.
 
 The engine's application API is independent of presentation. The web GUI, terminal workspace, and CLI commands share a validated HTTP client; embedded hosts can call the application directly. [Engine and clients](docs/clients.md) covers server access, integration APIs, and separate builds. Desktop and mobile GUIs can use the same interfaces; those additional clients are not included yet.
+
+The public modules are `predictable-workflow/core` (planning, execution, persistence), `/web` (HTTP and browser hosting), and `/terminal` (terminal client and UI). They are shipped in one package; older `/engine` and `/http` imports remain supported. Start `workflow serve` separately if execution should continue after closing every terminal client.
 
 ## Workflows are TypeScript
 

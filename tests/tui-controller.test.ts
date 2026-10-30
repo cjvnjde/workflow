@@ -89,6 +89,49 @@ test("planner questions, answers, model settings and thinking selection work thr
   assert.equal(controller.state.run?.status, "draft");
 });
 
+test("session IDs reopen the same task and run across terminal controllers with shareable browser links", async t => {
+  const { controller, address } = await context(t);
+  await controller.submit("Review a shared session");
+  await until(controller, () => controller.state.run?.status === "draft");
+  const taskId = controller.state.task!.id, runId = controller.state.run!.id;
+  const other = new TerminalController(new WorkflowClient({ baseUrl: address }));
+  try {
+    await other.initialize();
+    await other.openSessionById(taskId);
+    assert.equal(other.state.task?.id, taskId);
+    assert.equal(other.state.run?.id, runId);
+    assert.equal(other.browserUrl(), `${address}/#task=${taskId}`);
+    await other.submit("/web");
+    assert.equal(other.state.screen, "session");
+    assert.match(other.state.detail, new RegExp(`workflow attach ${taskId}`));
+    await other.submit(`/open run:${runId}`);
+    assert.equal(other.state.task, undefined);
+    assert.equal(other.state.run?.id, runId);
+    assert.equal(other.browserUrl(), `${address}/#run=${runId}`);
+    await other.submit("/reject");
+    await controller.refresh();
+    assert.equal(controller.state.run?.status, "rejected");
+    await assert.rejects(other.openSessionById(crypto.randomUUID()), /not found in this project/);
+    await assert.rejects(other.openSessionById("partial-id"), /full task or run ID/);
+    assert.equal(other.state.run?.id, runId);
+  } finally { await other.close(); }
+});
+
+test("a terminal-owned engine exposes the browser and is discovered by another terminal on an ephemeral port", async t => {
+  const { project, cleanup } = await fixture(t);
+  const host = await connectTerminal({ project, port: 0, demo: true });
+  cleanup(() => host.close());
+  assert.equal(host.owned, true);
+  const response = await fetch(host.client.sessionUrl());
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), /<html|Workflow API is ready/);
+  const attached = await connectTerminal({ project, demo: true });
+  assert.equal(attached.owned, false);
+  assert.equal(attached.client.sessionUrl(), host.client.sessionUrl());
+  await attached.close();
+  assert.equal((await host.client.project()).mode, "demo");
+});
+
 test("terminal login handles prompts without putting secrets into activity, and cancels sign-in on exit", async t => {
   let received = "";
   const auth = new BrowserAuth(async () => authRuntime(async (_provider, _method, interaction) => {

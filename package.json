@@ -27,6 +27,18 @@
     "./contracts": {
       "types": "./dist/contracts.d.ts",
       "import": "./dist/contracts.js"
+    },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.js"
+    },
+    "./web": {
+      "types": "./dist/web.d.ts",
+      "import": "./dist/web.js"
+    },
+    "./terminal": {
+      "types": "./dist/terminal.d.ts",
+      "import": "./dist/terminal.js"
     }
   },
   "files": [
@@ -52,7 +64,8 @@
     "typecheck": "bun scripts/typecheck.ts",
     "format:web": "bun --bun run prettier --write \"web/**/*.vue\" \"web/composables/*.ts\"",
     "build:engine": "bun scripts/build.ts --engine-only",
-    "build:web": "bun --bun run vite build"
+    "build:web": "bun --bun run vite build",
+    "screenshot:terminal": "bun scripts/capture-terminal.ts"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",

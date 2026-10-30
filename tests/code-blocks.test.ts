@@ -14,10 +14,10 @@ test("one TypeScript block combines typed AI calls, file effects and commands wi
   const { project, library, cleanup } = await fixture(t);
   library.config.agent = { ...library.config.agent, provider: "test", model: "first" };
   library.config.budget = budgetSchema.parse({ maxCostUsd: 2, prices: { "test/first": { input: 1, output: 1 }, "test/second": { input: 1, output: 1 } } });
-  const calls: { model: string | undefined; remaining: number | undefined; inputs: Record<string, string> }[] = [];
+  const calls: { model: string | undefined; remaining: number | undefined; inputs: Record<string, string>; context?: "workflow" | "none" }[] = [];
   const engine = new WorkflowEngine(project, "live", async execution => {
     assert.equal(execution.resultMode, "value");
-    calls.push({ model: execution.settings.model, remaining: execution.maxCostUsd, inputs: execution.inputs });
+    calls.push({ model: execution.settings.model, remaining: execution.maxCostUsd, inputs: execution.inputs, context: execution.context });
     await execution.onUsage?.({ ...emptyUsage(), costUsd: 0.1, requests: 1, inputTokens: 10 });
     await execution.onUsage?.({ ...emptyUsage(), costUsd: 0.2, requests: 2, inputTokens: 20 });
     return { outcome: "pass", summary: "AI result", artifacts: { data: JSON.stringify({ answer: calls.length }) } };
@@ -30,7 +30,7 @@ test("one TypeScript block combines typed AI calls, file effects and commands wi
       const first = await ctx.ai({prompt:ctx.input.request,output:shape,model:{provider:"test",model:"first"}});
       await ctx.writeFile("answer.txt", String(first.answer));
       const command = await ctx.exec("printf 'command-output'");
-      const second = await ctx.ai({prompt:command.stdout,output:shape,model:{provider:"test",model:"second"}});
+      const second = await ctx.ai({context:"none",prompt:command.stdout,output:shape,model:{provider:"test",model:"second"}});
       ctx.artifact("evidence.md",command.stdout);
       await ctx.log("Combining model results");
       ctx.summary("Combined two model calls with file and command results.");
@@ -48,6 +48,9 @@ test("one TypeScript block combines typed AI calls, file effects and commands wi
   assert.equal(run.usage?.costUsd, 0.4);
   assert.deepEqual(calls.map(call => call.model), ["first", "second"]);
   assert.equal(calls[1]?.remaining, 1.8);
+  assert.equal(calls[0]?.inputs.request, "Compute", "Default calls retain their explicit step handoffs");
+  assert.equal(calls[1]?.context, "none");
+  assert.deepEqual(calls[1]?.inputs, { "call-prompt": "command-output" }, "A focused call omits inherited inputs without disabling tools");
   assert.match(run.artifacts.work!.summary!, /Combined two model calls/);
 });
 

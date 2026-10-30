@@ -10,7 +10,7 @@ import { commands, short } from "./presentation.js";
 
 export type Session = { id: string; kind: "task" | "run"; title: string; status: string; time: string; runId?: string };
 export type Choice = { id: string; label: string; detail: string };
-export type Screen = "chat" | "graph" | "source" | "step" | "picker" | "help" | "auth";
+export type Screen = "chat" | "graph" | "source" | "step" | "picker" | "help" | "auth" | "session";
 export interface TuiState {
   project?: z.infer<typeof projectSchema>;
   setup?: Setup;
@@ -161,6 +161,10 @@ export class TerminalController extends EventEmitter {
     await this.refreshing;
     await this.refresh();
   }
+  async openSessionById(reference: string) {
+    await this.openSession(await this.client.resolveSession(reference, this.signal()));
+  }
+  browserUrl() { return this.client.sessionUrl(this.selected); }
   private picker(title: string, description: string, choices: (Choice & { action: () => Promise<void> | void })[]) {
     this.state.screen = "picker"; this.state.panelTitle = title; this.state.panelDescription = description;
     this.state.choices = choices.map(({ action: _action, ...choice }) => choice);
@@ -222,6 +226,16 @@ export class TerminalController extends EventEmitter {
     if (command === "/quit" || command === "/exit") { this.emit("quit"); return; }
     if (command === "/new") { this.newSession(); return; }
     if (command === "/help") { this.state.screen = "help"; return; }
+    if (command === "/open" || command === "/attach") {
+      if (!argument) throw new Error("Use /open <task-or-run-id> to reopen a session.");
+      await this.openSessionById(argument); return;
+    }
+    if (command === "/web" || command === "/id") {
+      this.state.screen = "session";
+      this.state.panelTitle = this.selected ? "Continue this session anywhere" : "Open the browser workspace";
+      this.state.detail = `${this.selected ? `Session ID\n${this.selected.kind}:${this.selected.id}\n\n` : ""}Browser\n${this.browserUrl()}${this.selected ? `\n\nAnother terminal in this project\nworkflow attach ${this.selected.id}` : ""}\n\nBoth interfaces share the same task, graph, approvals, and results.\nPress Esc to return.`;
+      return;
+    }
     if (command === "/sessions") {
       await this.refresh();
       this.picker("Sessions", "Choose a task to reopen its conversation, graph, and results.", this.state.sessions.map(session => ({

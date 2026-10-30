@@ -8,10 +8,12 @@ Run project commands from the target project's directory. Configuration is in th
 
 | Command | Behavior |
 | --- | --- |
-| `workflow init [--instructions "..."] [--no-ai]` | Initialize the project. Without `--no-ai`, connected providers can generate initial profiles. |
+| `workflow init [--instructions "..."]` | Create configuration and starter TypeScript blocks without model calls. `--no-ai` remains a compatibility flag. |
+| `workflow setup [--model provider/id] [--thinking level] [--instructions "..."] [--regenerate]` | Use the selected default to inspect the project and generate reusable blocks, task instructions, and model profiles. |
 | `workflow profiles [--instructions "..."]` | Regenerate model profiles using AI. |
 | `workflow` or `workflow serve` | Serve this project and start its worker. |
-| `workflow tui [--server URL] [--demo]` | Open the full-screen terminal workspace; attach to an existing server or start a private local engine. |
+| `workflow tui [session-id] [--session ID] [--server URL] [--demo]` | Open the terminal workspace; attach to this project's server or start an engine with the web GUI. |
+| `workflow attach <task-or-run-id> [--server URL]` | Reopen persisted work in the terminal without approving or retrying it. |
 | `workflow exec <file.ts> [--input '<JSON object>'] [--json]` | Execute locally without HTTP or GUI; wait and return an execution exit code. |
 | `workflow run <file.ts> [--input '<JSON object>'] [--approve] [--wait]` | Submit source to the running project server. Default is a draft; `--approve` starts it. |
 | `workflow show <run-id>` | Full draft or result, including revision. |
@@ -41,7 +43,7 @@ Terminal setup commands can run outside a project. Interactive setup requires a 
 | `--json` | Client commands and `exec`: machine-readable output. |
 | `--wait` | Wait for a submitted/controlled run to finish or need attention. |
 | `--port 4310` | HTTP port; 4310 is the default. Use the same option on CLI control commands. |
-| `--port 0` | Server: choose a free port and print it. TUI: skip discovery and start a private engine. Control commands need a concrete server port. |
+| `--port 0` | Server/TUI: choose a free port and announce it in `.workflow/server.json`. Subsequent clients discover it unless an endpoint is explicitly selected. |
 | `--demo` | Explicit simulation of agents/checks using real Temporal history. Normal startup and development use live AI. |
 | `--temporal-address host:port` | Connect to an existing trusted Temporal endpoint instead of the managed service. |
 | `--temporal-namespace name` | Namespace for that connection; default `default`. |

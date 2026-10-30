@@ -16,4 +16,6 @@ test-results/
 .workflow/attachments/
 .workflow/temporal/
 .workflow/server-lease/
+.workflow/library-write-lease/
+.workflow/server.json
 .workflow/triggers/

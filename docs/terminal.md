@@ -4,12 +4,16 @@
 
 `workflow tui` opens a full-screen [OpenTUI](https://opentui.com/packages/opentui-core/) workspace with a conversation, live AI responses and tool activity, a workflow graph, and execution controls. It uses the same engine and HTTP client as the browser.
 
+![Terminal workspace showing a shared demo session](screenshots/terminal-workspace.png)
+
 ## Start
 
 Run from the project you want Workflow to work on:
 
 ```sh
 workflow tui
+workflow attach <task-or-run-id>
+workflow tui --session <task-or-run-id>
 
 # Explicit simulation: no model calls.
 workflow tui --demo --port 0
@@ -20,9 +24,11 @@ workflow tui --server http://127.0.0.1:4312
 
 From this repository, `bun run workflow tui` runs the source version; `bun run start tui` runs the built version. Build first so the Temporal bundles are available. The renderer requires an interactive terminal with Bun 1.4.2+; use `workflow exec` or the plain CLI commands in scripts.
 
-By default, the workspace checks port 4310 and attaches if a Workflow server already owns this project. `--port N` changes that check. If no server is found, it starts its own engine with an ephemeral loopback API and no web assets. `--port 0` skips discovery. The project lease still prevents two engines from owning the same project.
+By default, the workspace discovers the running host through `.workflow/server.json`, then falls back to port 4310. It validates that the endpoint serves this project. `--port N` selects a port explicitly. If no server is found, it starts an engine with the API and web GUI on that port. `--port 0` starts a new host on a free port; other clients can discover it from the project folder. The project lease prevents two engines from owning the same project.
 
-Closing a workspace that started its own engine stops that worker and saves its history. Inspect and resume interrupted work on the next launch. Closing a workspace attached to a server leaves execution running there. The welcome notice identifies which mode is active. For a persistent engine, start `workflow serve --no-web` separately before opening the TUI.
+Closing a workspace that started its own engine stops that worker and saves its history. Inspect and resume interrupted work on the next launch. Closing a workspace attached to a server leaves execution running there. The welcome notice identifies which mode is active. For a persistent engine shared by both interfaces, start `workflow serve` separately before opening the TUI. `--no-web` is available for API-only hosting.
+
+`/web` shows a browser link to the selected task/run. The browser's **Continue in terminal** copies the corresponding `workflow attach` command. IDs refer to persisted project tasks/runs, not a terminal process or an inherited model conversation. Opening a saved session never approves a draft or retries an interrupted operation; use `/approve` or `/resume` explicitly.
 
 ## Work through a task
 
@@ -45,6 +51,7 @@ Type `/` to see commands, use **↑/↓** to select, and **Tab** to complete. Se
 | Command | Action |
 | --- | --- |
 | `/new`, `/sessions` | Start another conversation or reopen task/run history. |
+| `/open <id>`, `/id`, `/web` | Open a saved task/run, show its ID, or show its browser link. |
 | `/graph`, `/source`, `/step [id]` | Inspect composition, code, or a step's instructions and results. |
 | `/approve`, `/reject` | Accept the current draft revision or decline it. |
 | `/auto [on\|off]` | Set approval for new tasks in this workspace; omit the argument to toggle. |

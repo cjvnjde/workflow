@@ -313,7 +313,7 @@ test("profile initialization uses project instructions, skips existing profiles,
   assert.deepEqual(await initializeProfiles(project, {}, { catalog: async () => ({ models: [], warnings: [] }), design }), { status: "unconnected", count: 0 });
   assert.equal(calls, 0);
   assert.deepEqual(await initializeProfiles(project, { instructions: "Prefer deliberate review" }, { catalog, design }), { status: "generated", count: 1 });
-  const saved = await loadOrchestration(project); assert.equal(saved.settings.coordinatorProfile, "reviewer");
+  const saved = await loadOrchestration(project); assert.equal(saved.settings.coordinatorProfile, "");
   assert.equal(saved.settings.instructions, initial.settings.instructions);
   assert.equal((await initializeProfiles(project, {}, { catalog, design })).status, "existing"); assert.equal(calls, 1);
   await initializeProfiles(project, { regenerate: true, instructions: "Prefer deliberate review" }, { catalog, design }); assert.equal(calls, 2);

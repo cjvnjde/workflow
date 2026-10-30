@@ -48,14 +48,16 @@ test("Codex MCP supports enabled flags and environment token references without 
  assert.doesNotMatch(JSON.stringify(result),/sensitive-test-value/);
 });
 
-test("planning prefers Sol 6.1 while explicit coordinators and disconnected catalogs remain supported", () => {
+test("planning follows the configured default and only explicit coordinators override it", () => {
  const model=(id:string):AvailableModel=>({provider:'openai',id,name:id,reasoning:true,imageInput:true,thinkingLevels:['low','high'],contextWindow:32000,maxTokens:4000,cost:null});
  const models=[model('gpt-6-luna'),model('gpt-5.6-terra'),model('gpt-6.1-sol')];
  const base=resolveAgentSettings({provider:'openai',model:'gpt-6-luna',thinking:'low'});
- assert.equal(planningAgent(base,undefined,models).model,'gpt-6.1-sol');
- assert.equal(planningAgent(base,undefined,models).thinking,'high');
+ assert.equal(planningAgent(base,undefined,models).model,'gpt-6-luna');
+ assert.equal(planningAgent(base,undefined,models).thinking,'low');
  assert.equal(planningAgent(base,{model:'gpt-5.6-terra',provider:'openai',thinking:'low'},models).model,'gpt-5.6-terra');
  assert.equal(planningAgent(base,undefined,models.slice(0,2)).model,'gpt-6-luna');
+ assert.equal(planningAgent(base,undefined,[]).model,'gpt-6-luna');
+ assert.equal(planningAgent(resolveAgentSettings({}),undefined,models).model,'gpt-6.1-sol');
 });
 
 test("discovered project MCP is callable by execution without being copied to Workflow settings", async t => {

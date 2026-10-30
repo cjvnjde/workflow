@@ -3,6 +3,7 @@ import { userPaths } from "./user-settings.js";
 import { realpath } from "node:fs/promises";
 import { WorkflowClient } from "./client.js";
 import type { TemporalOptions } from "./temporal-runtime.js";
+import { announceProjectServer, discoverProjectServer } from "./host-discovery.js";
 
 export interface TerminalOptions {
   project: string;
@@ -10,6 +11,7 @@ export interface TerminalOptions {
   server?: string;
   demo?: boolean;
   temporal?: TemporalOptions;
+  session?: string;
 }
 
 /** Host ownership stays outside the presentation and its HTTP-only controller. */
@@ -24,11 +26,12 @@ export async function connectTerminal(options: TerminalOptions) {
     if (options.demo && project.mode !== "demo") throw new Error("The selected server is live. Start a demo engine before attaching with --demo.");
     return { client, owned: false, close: async () => {} };
   }
-  if (port) {
-    const baseUrl = `http://127.0.0.1:${port}`;
+  const discovered = options.port === undefined ? await discoverProjectServer(options.project) : undefined;
+  const candidates = [...new Set([...(discovered ? [discovered] : []), ...(port ? [`http://127.0.0.1:${port}`] : [])])];
+  for (const baseUrl of candidates) {
     const response = await fetch(`${baseUrl}/api/health`, { signal: AbortSignal.timeout(1500) }).catch(() => undefined);
     if (response) {
-      if (!response.ok) throw new Error(`The service on port ${port} is not a ready Workflow server.`);
+      if (!response.ok) throw new Error(`The service at ${baseUrl} is not a ready Workflow server.`);
       const client = new WorkflowClient({ baseUrl });
       const project = await client.project(AbortSignal.timeout(5000));
       if (await realpath(project.project) !== await realpath(options.project)) throw new Error("The local server belongs to another project. Use --port 0 for a private engine or --server to select it explicitly.");
@@ -36,17 +39,21 @@ export async function connectTerminal(options: TerminalOptions) {
       return { client, owned: false, close: async () => {} };
     }
   }
-  const [{ createApplication }, { createHttpServer }] = await Promise.all([import("./application.js"), import("./http-server.js")]);
+  const [{ createApplication }, { createHttpServer, registerWebGui }] = await Promise.all([import("./core/index.js"), import("./web/index.js")]);
   const app = await createApplication({ project: options.project, mode: options.demo ? "demo" : "live", temporal: options.temporal });
   let server: Awaited<ReturnType<typeof createHttpServer>> | undefined;
+  let unannounce: (() => Promise<void>) | undefined;
   try {
-    server = await createHttpServer(app, 0);
+    server = await createHttpServer(app, port);
     server.addHook("preClose", () => app.close());
-    const baseUrl = await server.listen({ port: 0, host: "127.0.0.1" });
+    await registerWebGui(server);
+    const baseUrl = await server.listen({ port, host: "127.0.0.1" });
+    unannounce = await announceProjectServer(options.project, baseUrl);
+    const removeAnnouncement = unannounce;
     const http = server;
-    return { client: new WorkflowClient({ baseUrl }), owned: true, close: async () => { try { await http.close(); } finally { await app.close(); } } };
+    return { client: new WorkflowClient({ baseUrl }), owned: true, close: async () => { try { await http.close(); } finally { try { await app.close(); } finally { await removeAnnouncement(); } } } };
   } catch (error) {
-    try { await server?.close(); } finally { await app.close(); }
+    try { await server?.close(); } finally { try { await app.close(); } finally { await unannounce?.(); } }
     throw error;
   }
 }
@@ -77,7 +84,8 @@ export async function runTerminalWorkspace(options: TerminalOptions) {
     parser = new TreeSitterClient({ dataPath: path.join(userPaths().directory, "cache", "terminal") });
     view = new TerminalWorkspace(renderer, controller, parser);
     await controller.initialize();
-    controller.state.notice = host.owned ? "Local engine · closing this workspace stops its worker; history is saved." : "Attached to server · execution continues when this workspace closes.";
+    if (options.session) await controller.openSessionById(options.session);
+    controller.state.notice = `${host.owned ? "Local engine · closing this workspace stops its worker; history is saved." : "Attached to server · execution continues when this workspace closes."}\nBrowser: ${controller.browserUrl()}`;
     controller.changed();
     if (!stopping) await finished;
   } finally {

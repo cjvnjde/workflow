@@ -23,6 +23,22 @@ export async function projectModelSettings(project: string) {
   };
 }
 
+/** Explicit setup returns graph planning to the selected project/user default. */
+export async function clearProjectCoordinator(project: string, configRevision: string) {
+  const text = await readFile(filename(project), "utf8");
+  const checkRevision = (current: string) => {
+    if (fingerprint(current) !== configRevision) throw new Error("Project settings changed during setup. Reload before choosing the default planner.");
+  };
+  checkRevision(text);
+  const raw = z.record(z.string(), z.unknown()).parse(JSON.parse(text));
+  projectConfigSchema.parse(raw);
+  if (!("coordinator" in raw)) return;
+  delete raw.coordinator;
+  await atomicWrite(filename(project), JSON.stringify(raw, null, 2) + "\n", 0o600, async () => {
+    checkRevision(await readFile(filename(project), "utf8"));
+  });
+}
+
 export async function updateProjectModel(project: string, value: unknown, models: AvailableModel[]) {
   const input = projectModelUpdateSchema.parse(value);
   const text = await readFile(filename(project), "utf8");

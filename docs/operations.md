@@ -125,7 +125,7 @@ Approval first persists a pending start receipt. If a crash occurs before Tempor
 | Parallel AI appears sequential | A spending limit serializes model sessions against the remaining budget. Group concurrency and the overall eight-step cap also apply. |
 | Parallel file conflict | Sequence overlapping edits. Commands bypass managed-write claims, so review their effects too. |
 | Another workflow owns the project | Resume or cancel the paused/interrupted execution before approving a competing run. |
-| Saved block file edits do not appear | `.workflow/library.json`, if present, takes precedence over block directories. Edit the active library. |
+| Saved block file edits do not appear | Check the active manifest's `sourceFiles`. Old inline-only libraries become source-backed after the next Apply/setup; current generated blocks load their registered `block.ts` files. Existing runs retain approved snapshots. |
 | Missing Temporal history or archive | Restore the matching project backup. Do not delete more state or start the old work under a new snapshot. |
 | Stale form/draft revision | Load the latest version, reconcile your edits, and save again. |
 | Bun warns about `v8.promiseHooks.createHook` | The pinned SDK cannot collect workflow stack traces on Bun. It is a diagnostic limitation; execution still uses Temporal. |

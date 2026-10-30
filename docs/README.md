@@ -29,6 +29,7 @@ Workflow turns a development request into an inspectable TypeScript graph, then 
 | [Command and API reference](reference.md) | CLI commands, environment variables, HTTP routes, and concurrency headers. |
 | [Engine and clients](clients.md) | Headless execution, terminal control, embedding, shared client, and separate builds. |
 | [Architecture](architecture.md) | The request-to-execution path, responsibilities of Pi and Temporal, persistence, and source map. |
+| [Project review](project-review.md) | Vision alignment, implemented changes, verification, screenshots, and current boundaries. |
 | [Development](development.md) | Local development, build artifacts, tests, packaging, and how to keep these docs accurate. |
 
 ## Examples

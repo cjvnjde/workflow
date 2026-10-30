@@ -96,6 +96,27 @@ Model choice can also be part of a block's declared input schema and passed to `
 
 An AI session has file tools, Bash, Git inspection, configured checks, and enabled skills/MCP tools. It does not inherit another session's conversation. Include the needed feedback in the prompt or inputs. Tool access follows the server user's access; a review instruction does not enforce a read-only OS boundary.
 
+### Control context independently of tools
+
+Step inputs are explicit: `ctx.input` contains only that step's `inputs`, not the entire workflow input or every preceding output. Select fields in the workflow's input callback. Code-only steps do not create model sessions.
+
+By default, `ctx.ai` receives the enclosing task/graph, selected step inputs, project instructions, and attachments. Use `context: "none"` when a model only needs the prompt and instructions you supply:
+
+```ts
+const result = await ctx.exec("bun test");
+const explanation = await ctx.ai({
+  context: "none",
+  tools: "none",
+  model: ctx.models.routine ?? ctx.model,
+  instructions: "Summarize this test result. Do not infer unreported checks.",
+  prompt: JSON.stringify({ exitCode: result.exitCode, output: result.output }),
+});
+```
+
+`context: "none"` omits the enclosing request, graph, inputs, attachments, project instructions/commands, and ambient skills. Explicit call instructions and role/ownership rules remain. Skills can be deliberately selected with `capabilities.skills`. Tool selection is independent: omit `tools: "none"` to retain project tools, or pass a list of shared tools. Tool use can read additional information, so context selection is a prompt/cost boundary, not a filesystem sandbox. `tools: "none"` permits only returning a result and avoids starting MCP servers.
+
+If a block needs project constraints in an isolated call, include those constraints in its explicit instructions. No automatic summarizer silently forwards the prior conversation; the TypeScript author controls the handoff.
+
 Use `ctx.ai({ tools: [myTool], ... })` to expose only selected [shared tools](tools.md) plus the result submission tool. The same `myTool` can be called from code with `ctx.call(myTool, input)`.
 
 ## Commands and host code
@@ -143,7 +164,7 @@ Minimal `block.json`:
 
 The folder and block ID must match. Optional `prompt.md` and explicit skill resources provide additional context. Reuse this block with `step("tests", "verify", { inputs: { command: "bun test" } })`, or import its TypeScript module to infer its output type.
 
-Web library edits are published atomically to `.workflow/library.json`. Once that file exists it takes precedence over the block directories, so editing a directory file alone will not change the active web-managed library. Keep using the web editor or deliberately manage the active library representation. Existing drafts retain their saved source and resources.
+Applied library edits save metadata and an inline recovery snapshot to `.workflow/library.json`, then materialize executable source in `.workflow/blocks/<id>/block.ts`. For IDs listed in the manifest's `sourceFiles`, that TypeScript file is authoritative; you can edit it in your editor or through Settings. Old inline-only manifests remain compatible and are materialized on the next Apply/setup. Existing drafts retain their frozen source and resources. See [library persistence](configuration.md#where-settings-live) for interrupted-write behavior.
 
 [Next: compose blocks into workflows](workflows.md) · [Configure the project](configuration.md)
 

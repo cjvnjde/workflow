@@ -29,6 +29,7 @@ import type { FlowStructure } from "./composition-sdk.js";
 import type { OperationRecorder } from "./operation-schema.js";
 
 export type BlockExecution = {
+  context?: "workflow" | "none";
   tools?: "none" | "selected";
   customTools?: (protect?: ProtectedPaths) => Promise<ToolDefinition[]>;
   operation?: { parentId: string; record: OperationRecorder };
@@ -240,10 +241,11 @@ export const runPiBlock: BlockRunner = async (execution) => {
       },
     }),
   );
-  const attachments = await new Attachments(execution.attachmentProject ?? project).context(
-    config.attachments ?? [],
-  );
-  const selectedSkills = (config.capabilities?.skills ?? []).filter(skill => skill.enabled && (execution.capabilities?.skills === undefined || execution.capabilities.skills.includes(skill.id)));
+  const inheritContext = execution.context !== "none";
+  const attachments = inheritContext
+    ? await new Attachments(execution.attachmentProject ?? project).context(config.attachments ?? [])
+    : { images: [], texts: [] };
+  const selectedSkills = (config.capabilities?.skills ?? []).filter(skill => skill.enabled && (execution.capabilities?.skills === undefined ? inheritContext : execution.capabilities.skills.includes(skill.id)));
   for (const id of execution.capabilities?.skills ?? []) if (!selectedSkills.some(skill => skill.id === id)) throw new Error(`Selected skill is unavailable: ${id}`);
   if (selectedSkills.length) tools.push(defineTool({
     name: "load_skill", label: "Load project skill", description: "Load a skill from the project catalog before following its instructions. Relative resource and script paths use the source directory documented in the skill.",
@@ -316,17 +318,17 @@ export const runPiBlock: BlockRunner = async (execution) => {
         "A TypeScript block can make several AI calls with different roles. The current call's Block instructions constrain this session even when its surrounding step is implementation. A read-only inventory or diagnosis call must only inspect and return its requested data; evidence describing defects is not permission to fix them. Never implement work reserved for a later call. Related or deferred findings in handoff reports are not assigned work; preserve the selected request scope instead of converting every observation into a new regression or repair.",
         finishInstruction,
         "For Git publication, inspect status/diff, effective identity and the configured remote/upstream with bash. Stage the intended files explicitly, respect .gitignore, and exclude unrelated private/runtime data. For feature/PR publication, explicitly push the current branch to the same branch name on the intended remote using a non-force refspec; a differently named fetch upstream such as origin/main is a base, not authorization to publish there. Use another destination only when the user explicitly requests it. Ask/report a concrete missing identity or destination only after checking it; do not claim Git is unavailable or invent configuration. Shell and remote side effects are not undone by file-tool recovery.",
-        `Project instructions:\n${config.instructions}`,
+        inheritContext ? `Project instructions:\n${config.instructions}` : "This call has no inherited workflow context. Act only on the explicit call prompt and Block instructions.",
         `Block instructions:\n${bundle.prompt}`,
-        `Configured project commands:\n${JSON.stringify(config.commands)}`,
-        ...bundle.skills.map(
+        inheritContext ? `Configured project commands:\n${JSON.stringify(config.commands)}` : "",
+        ...(inheritContext ? bundle.skills : []).map(
           (skill) => `Explicit block skill (${skill.path}):\n${skill.content}`,
         ),
         ...(execution.tools !== undefined ? selectedSkills.map(skill => `Selected project skill (${skill.name}):\n${skill.content}`) : [
           `Project skill catalog (call load_skill when relevant): ${JSON.stringify(selectedSkills.map(({ id, name, description }) => ({ id, name, description })))}`,
         ]),
       ].join("\n\n"),
-      prompt: JSON.stringify(
+      prompt: !inheritContext ? execution.inputs["call-prompt"] ?? execution.node.goal : JSON.stringify(
         {
           overallTask: execution.task,
           currentStep: {

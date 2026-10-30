@@ -43,6 +43,7 @@ Main outputs:
 
 | Output | Purpose |
 | --- | --- |
+| `dist/core.js`, `dist/web.js`, `dist/terminal.js` and matching declarations | Public execution, web-host, and terminal module entries. |
 | `dist/application.js` and declarations | Embeddable application and lifecycle. |
 | `dist/http-server.js` and declarations | Optional HTTP adapter. |
 | `dist/client.js`, `dist/contracts.js` and declarations | Portable client and public data contracts. |
@@ -87,6 +88,18 @@ WORKFLOW_CHROMIUM_PATH=/usr/bin/chromium bun --bun run playwright test tests/e2e
 Browser tests run headlessly against an isolated fixture server on port 4311. Keep that port free. They cover graph previews, editing, active states, parallel streams, results, settings, and responsive controls.
 
 The pinned Temporal SDK may print `v8.promiseHooks.createHook is not available` on Bun. Workflow stack-trace collection is unavailable there; the execution and replay tests still exercise real Temporal behavior.
+
+## UI screenshots
+
+The README screenshots use a disposable project and an explicitly simulated task. Capture web screenshots from the running browser workspace. To capture the terminal renderer connected to the same task/run:
+
+```sh
+WORKFLOW_CHROMIUM_PATH=/usr/bin/chromium bun run screenshot:terminal \
+  --server http://127.0.0.1:4310 --session <task-or-run-id> \
+  --output docs/screenshots/terminal-workspace.png
+```
+
+The script loads real state through `WorkflowClient`, renders the native OpenTUI cells, and rasterizes their captured colors and text. It does not invent a terminal layout. Real PTY attach/input/cleanup behavior is covered separately by the terminal integration tests. Omit `WORKFLOW_CHROMIUM_PATH` when Playwright's bundled Chromium is installed.
 
 ## Real-model smoke tests
 
