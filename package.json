@@ -63,6 +63,7 @@
     "test:mutation": "stryker run",
     "test:mutation:dry": "stryker run --dryRunOnly",
     "test:mutation:smoke": "stryker run stryker.smoke.config.mjs",
+    "test:mutation:full": "stryker run stryker.full.config.mjs",
     "test:e2e": "bun run build && bun --bun run playwright test",
     "test:live": "bun run build && bun scripts/live-smoke.ts",
     "typecheck": "bun scripts/typecheck.ts",

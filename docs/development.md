@@ -99,18 +99,21 @@ The pinned Temporal SDK may print `v8.promiseHooks.createHook is not available` 
 Stryker requires Node.js 22+ for its coordinator; tests still run on Bun through its built-in command runner. See the [Stryker configuration reference](https://stryker-mutator.io/docs/stryker-js/configuration/).
 
 ```sh
-bun run test:mutation:smoke  # approval guards and usage display; no build or Temporal
-bun run test:mutation:dry    # instrument and build all targets, run tests once; no active mutants
-bun run test:mutation        # opt-in full mutation run; can take a long time
+bun run test:mutation        # focused budget, approval and usage mutations; fast tests only
+bun run test:mutation:dry    # run the focused baseline once; no active mutants
+bun run test:mutation:smoke  # smaller approval/usage scope with a 100% score gate
+bun run test:mutation:full   # explicit whole-repository sweep; potentially days
 ```
 
-The main configuration mutates TypeScript in `src/` and `web/`, excluding declarations and frozen legacy sources. Vue single-file components and browser journeys are outside this scope. It builds the instrumented distribution once inside Stryker's sandbox so CLI and worker tests exercise the same mutations as source imports. Local `.workflow/` state and existing build output are excluded from that sandbox.
+The default configuration mutates budget calculation, snapshot/activity approval guards and usage display functions. It runs only their source-level tests, with no build or local services. Two independent runners execute mutants in parallel. Bun receives `--bail` so the first failing assertion kills the mutant without waiting for unrelated tests. This is a focused mutation score for the listed source ranges.
 
-The command runner cannot select tests by coverage, so `coverageAnalysis` is off and every mutant in the full configuration runs the backend/integration suite. Concurrency is limited to one to keep local Temporal service usage bounded. The initial run has a 20-minute limit to accommodate instrumentation and local service startup. All mutation testing is opt-in and separate from `check` and CI. No minimum score is enforced for the full sweep until a baseline is established; the focused smoke check has a 100% threshold.
+The command runner cannot select tests by coverage, so `coverageAnalysis` is off and every mutant runs the entire configured test command. It reports that command as one aggregate test: `Ran 1 tests` is not the number of Bun test cases, and `3/N Mutants tested` means three mutated versions completed. Select matching source and tests together when adding mutation targets. All mutation testing remains opt-in and separate from `check` and CI. The default run reports its score without a minimum gate; the smaller smoke check requires 100%.
 
-HTML and JSON reports go to `reports/mutation/`, with smoke reports in `reports/mutation-smoke/`. Both reports and `.stryker-tmp/` are ignored by Git, ESLint, and Prettier. The smoke configuration inherits the main configuration and narrows mutation to usage arithmetic/formatting and the engine's snapshot/activity approval guards. Keep its source line ranges aligned when those functions move. Its tests cover forged approvals, changed frozen policies/programs, wrong or missing Temporal identities, transport serialization, valid execution, and pricing display boundaries.
+`test:mutation:full` uses `stryker.full.config.mjs` to mutate TypeScript across `src/` and `web/`, excluding declarations and frozen legacy sources. It builds the instrumented distribution once inside Stryker's sandbox, then runs the backend/integration suite for each mutant with one runner. With tens of thousands of mutants and a roughly nine-minute baseline, this can take days even with early exit on failures. Its baseline limit is 20 minutes. Vue components and browser journeys are outside this scope. Local `.workflow/` state and existing build output are excluded from every sandbox.
 
-To focus the main configuration on a source file while retaining the normal build and test suite:
+HTML and JSON reports go to `reports/mutation/`, full-sweep reports to `reports/mutation/full/`, and smoke reports to `reports/mutation-smoke/`. Reports and `.stryker-tmp/` are ignored by Git, ESLint, and Prettier. The smoke configuration inherits the default configuration and narrows mutation to usage arithmetic/formatting and the engine's snapshot/activity approval guards. Keep source line ranges aligned when those functions move.
+
+To narrow the default run to budget calculation while retaining its quick test command:
 
 ```sh
 bun run test:mutation --mutate src/core/execution/budget.ts

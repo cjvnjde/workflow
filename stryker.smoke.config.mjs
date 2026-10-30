@@ -3,11 +3,9 @@ import config from "./stryker.config.mjs";
 /** @type {import('@stryker-mutator/api/core').PartialStrykerOptions} */
 export default {
   ...config,
-  // These source-only tests need no distribution build or Temporal service.
-  buildCommand: undefined,
   commandRunner: {
     command:
-      "bun test --timeout 30000 tests/usage-presentation.test.ts tests/engine-approval.test.ts",
+      "bun test --bail --timeout 5000 ./tests/usage-presentation.test.ts ./tests/engine-approval.test.ts",
   },
   mutate: [
     "web/features/usage/usage-presentation.ts:13-30",

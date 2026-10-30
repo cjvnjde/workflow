@@ -2,17 +2,23 @@
 export default {
   testRunner: "command",
   commandRunner: {
-    command: "bun test --timeout 30000 tests/*.test.ts",
+    // The command runner cannot select tests or bail for us. Keep this focused
+    // and stop Bun as soon as an assertion kills the active mutant.
+    command:
+      "bun test --bail --timeout 5000 ./tests/budget.test.ts ./tests/engine-approval.test.ts ./tests/usage-presentation.test.ts",
   },
-  // Build the instrumented sources once so CLI, worker and package tests use them too.
-  buildCommand: "bun run build",
   coverageAnalysis: "off",
-  mutate: ["src/**/*.ts", "web/**/*.ts", "!src/**/*.d.ts", "!src/legacy/**"],
-  // Each runner executes integration tests with real local Temporal services.
-  concurrency: 1,
-  timeoutMS: 10000,
-  // A full instrumented integration run can exceed ten minutes on a loaded runner.
-  dryRunTimeoutMinutes: 20,
+  // Match the source scope to the focused tests above. These tests need no build,
+  // browser or Temporal service; the optional full sweep has its own config.
+  mutate: [
+    "src/core/execution/budget.ts",
+    "src/core/engine.ts:544-569",
+    "src/core/engine.ts:643-655",
+    "web/features/usage/usage-presentation.ts:13-30",
+  ],
+  concurrency: 2,
+  timeoutMS: 3000,
+  dryRunTimeoutMinutes: 1,
   ignorePatterns: [
     ".workflow",
     ".agents",
@@ -27,6 +33,6 @@ export default {
   reporters: ["clear-text", "progress", "html", "json"],
   htmlReporter: { fileName: "reports/mutation/index.html" },
   jsonReporter: { fileName: "reports/mutation/mutation.json" },
-  // Establish a baseline before introducing a score gate.
+  // This reports only the focused source scope, not whole-repository coverage.
   thresholds: { high: 80, low: 60, break: 0 },
 };
