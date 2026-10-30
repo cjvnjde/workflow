@@ -119,7 +119,8 @@ const settingsContext = ref<{
     | "blocks"
     | "capabilities"
     | "execution"
-    | "triggers";
+    | "triggers"
+    | "memory";
   blockId?: string;
 }>({ section: "providers" });
 const settingsRevision = ref(0);

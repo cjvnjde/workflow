@@ -19,6 +19,7 @@ Finishing a coding task often takes several kinds of work: understand the reques
 - **Use code for predictable operations.** A test, build, or push can run directly without a model call. AI is a capability inside a TypeScript block.
 - **Control what models receive.** Pass selected typed outputs between steps. Each AI call starts fresh; `context: "none"` omits inherited workflow context, independently of tool access.
 - **Inspect each handoff.** Compare inputs before and after schema processing, follow parallel producer visits, and inspect full stored outputs, prompts and tool feedback in the [data inspector](docs/inspecting-data.md).
+- **Keep optional project memory.** Save preferences and compact observations from normal runs. Memory starts disabled, uses descriptions before details, and launches no extra AI jobs. [Control project memory](docs/memory.md).
 - **Turn feedback into a controlled loop.** A test block returns diagnostics; an implementation block fixes the problem. Conditions, explicit outcomes, and visit limits decide what happens next.
 - **Keep progress across interruptions.** Temporal records execution history. Completed work is retained, and interrupted attempts have an explicit recovery and retry path.
 - **React to GitHub events.** Configure new-issue and new-PR triggers against a tested workflow. Persistent polling and a project queue retain work across restarts; results can stay local or be posted as a GitHub comment. [Set up triggers](docs/triggers.md).

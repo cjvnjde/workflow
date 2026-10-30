@@ -8,6 +8,7 @@ import {
 } from "../contracts.js";
 import { commands, short } from "./presentation.js";
 import { exportAttemptEvidence, formatEvidenceExport } from "../evidence-export.js";
+import { formatMemoryEntry } from "../memory-client.js";
 
 export type Session = { id: string; kind: "task" | "run"; title: string; status: string; time: string; runId?: string };
 export type Choice = { id: string; label: string; detail: string };
@@ -361,6 +362,7 @@ export class TerminalController extends EventEmitter {
       return;
     }
     if (command === "/setup") { await this.projectSetup(argument); return; }
+    if (command === "/memory") { await this.projectMemory(argument); return; }
     if (command === "/models" || command === "/model") { await this.models(argument); return; }
     if (command === "/thinking") { await this.thinking(); return; }
     if (command === "/login") { await this.login(argument); return; }
@@ -384,6 +386,7 @@ export class TerminalController extends EventEmitter {
       { id: "model", label: "Project model", detail: "Choose from connected providers", action: () => this.models() },
       { id: "thinking", label: "Thinking level", detail: agent.thinking ?? "default", action: () => this.thinking() },
       { id: "setup", label: "Project setup", detail: "Generate or resume profiles, task instructions and blocks", action: () => this.projectSetup("") },
+      { id: "memory", label: "Project memory", detail: "Opt-in notes, preferences and observed outcomes", action: () => this.projectMemory("") },
       { id: "approval", label: "Approval for new tasks", detail: this.state.approval === "automatic" ? "Automatic — tasks start immediately" : "Review graph before execution", action: async () => { await this.command("/auto"); await this.settings(); } },
       { id: "login", label: "Connect a provider", detail: "ChatGPT sign-in or an API key", action: () => this.login() },
       { id: "logout", label: "Disconnect a provider", detail: `${setup.providers.length} connections`, action: () => this.command("/logout") },
@@ -391,6 +394,26 @@ export class TerminalController extends EventEmitter {
         this.state.screen = "step"; this.state.panelTitle = "Project configuration";
         this.state.detail = JSON.stringify({ orchestration: orchestration.settings, execution }, null, 2);
       } },
+    ]);
+  }
+  private async projectMemory(argument: string) {
+    const value = argument.trim();
+    let state = await this.client.memory(this.signal());
+    if (value === "on" || value === "off") {
+      state = await this.client.setMemoryEnabled(value === "on", state.revision, this.signal());
+      this.state.notice = `Project memory ${state.enabled ? "enabled" : "disabled"}.`;
+    } else if (value) {
+      const entry = await this.client.memoryEntry(z.string().uuid().parse(value), this.signal());
+      this.state.screen = "step"; this.state.panelTitle = `Memory · ${entry.title}`;
+      this.state.detail = `${formatMemoryEntry(entry)}\n\nEdit or delete in browser Settings → Memory, or use workflow memory update/remove ${entry.id}.\n/memory returns to the list.`;
+      return;
+    }
+    this.picker("Project memory", `${state.enabled ? "Enabled" : "Disabled"} · ${state.entries.length}/${state.limit} entries\nNo extra AI jobs. Turning memory off retains entries and stops future planner reads and collection.\nCreate or edit notes in browser Settings → Memory, or workflow memory add/update.`, [
+      { id: "toggle", label: state.enabled ? "Disable memory" : "Enable memory", detail: state.enabled ? "Keep saved entries; stop future use and collection" : "Let planning load selected notes and collect ordinary run facts", action: async () => {
+        await this.client.setMemoryEnabled(!state.enabled, state.revision, this.signal());
+        await this.projectMemory("");
+      } },
+      ...state.entries.map(entry => ({ id: entry.id, label: entry.title, detail: `${entry.kind} · ${entry.description}`, action: () => this.projectMemory(entry.id) })),
     ]);
   }
   private async models(search = "") {

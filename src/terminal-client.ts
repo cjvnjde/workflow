@@ -5,8 +5,9 @@ import { WorkflowClient, waitForRun } from "./client.js";
 import type { CreateProgram, RunAction, WorkflowRun } from "./contracts.js";
 import { discoverProjectServer } from "./host-discovery.js";
 import { exportAttemptEvidence, formatEvidenceExport } from "./evidence-export.js";
+import { runMemoryCommand } from "./memory-client.js";
 
-export const clientCommands = ["run", "runs", "show", "events", "watch", "approve", "reject", "pause", "resume", "cancel", "recover", "tasks", "task", "task-show", "answer", "usage", "data"];
+export const clientCommands = ["run", "runs", "show", "events", "watch", "approve", "reject", "pause", "resume", "cancel", "recover", "tasks", "task", "task-show", "answer", "usage", "data", "memory"];
 export async function readProgram(project: string, filename: string | undefined, inputJson: string): Promise<CreateProgram> {
   if (!filename?.endsWith(".ts")) throw new Error("Expected a project-relative TypeScript file (*.ts)");
   const relative = path.relative(project, path.resolve(project, filename));
@@ -42,6 +43,7 @@ export async function runClientCommand(command: string, args: string[], options:
   const served = await client.project(AbortSignal.timeout(5000));
   // An explicit endpoint selects that server's project, including over an SSH tunnel.
   if (!options.server && await realpath(served.project) !== await realpath(options.project)) throw new Error("The local server belongs to another project");
+  if (command === "memory") { await runMemoryCommand(client, args, options); return; }
   if (command === "data") {
     if (args.length < 2 || args.length > 3) throw new Error("Use workflow data <run-id> <step-id> [visit] [--json].");
     const signal = AbortSignal.timeout(60_000);

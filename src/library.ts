@@ -309,7 +309,7 @@ export async function initializeProject(project: string, instructions = "", form
       { flag: "wx" },
     );
   }
-  await writeFile(path.join(directory, ".gitignore"), "runs/\ntasks/\nsetup-jobs/\nusage/\nattachments/\ndesign-chats/\ntemporal/\nversions/\nlibrary-proposals/\nlibraries/\nserver-lease/\nlibrary-write-lease/\nserver.json\nhost.log\nhost-manager-lease/\nsettings-publications/\nsettings-publication.json\nsettings-write-lease/\nlock\n", {
+  await writeFile(path.join(directory, ".gitignore"), "runs/\ntasks/\nsetup-jobs/\nusage/\nmemory/\nattachments/\ndesign-chats/\ntemporal/\nversions/\nlibrary-proposals/\nlibraries/\nserver-lease/\nlibrary-write-lease/\nserver.json\nhost.log\nhost-manager-lease/\nsettings-publications/\nsettings-publication.json\nsettings-write-lease/\nlock\n", {
     flag: "wx",
   });
 

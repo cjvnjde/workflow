@@ -10,6 +10,8 @@ Workflow turns a development request into an inspectable TypeScript graph, then 
 
 **Understanding execution:** [Inspecting workflow data](inspecting-data.md) covers exact step inputs and outputs, parallel handoffs, historical visits and AI context.
 
+**Optional learning:** [Project memory](memory.md) covers explicit preferences and compact observations from ordinary runs, with description-first access and no extra AI jobs.
+
 **Unattended GitHub work:** [Triggers](triggers.md) → [Running and recovering workflows](operations.md). Test a saved workflow, then enable issue or PR triggers.
 
 **Working on the application:** [Architecture](architecture.md) → [Development](development.md) → [CLI and local API](reference.md).

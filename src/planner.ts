@@ -15,6 +15,7 @@ import { validatePlanModels } from "./library-proposals.js";
 import type { AvailableModel } from "./library-editor-schema.js";
 import { createAccountingContext } from "./usage-store.js";
 import type { AccountingContext } from "./usage-schema.js";
+import { planningMemory } from "./planning-memory.js";
 
 export async function createAiPlan(options: {
   accounting?: AccountingContext;
@@ -48,12 +49,13 @@ export async function createAiPlan(options: {
     },
   });
   const settings = planningAgent(library.config.agent, library.config.coordinator, models);
+  const memory = await planningMemory(options.project, options.signal);
   await session({
     price: library.config.budget?.prices[`${settings.provider}/${settings.model}`],
     accounting: options.accounting ?? await createAccountingContext(options.project, options.previousPlan ? "refinement" : "planning", { maxCostUsd: library.config.budget?.maxTaskCostUsd }),
     project: options.project,
     settings,
-    tools: [submit],
+    tools: [...memory.tools, submit],
     completion: { isComplete: () => !!plan, prompt: () => "Submit a valid graph with submit_plan. Correct any validation errors; investigation belongs in execution blocks." },
     signal: AbortSignal.any([
       options.signal,
@@ -66,6 +68,7 @@ export async function createAiPlan(options: {
       "Use exact provider/id pairs from the available model catalog. Respect each block's chosen model unless the requested step needs a different tradeoff. Stronger reasoning models suit complex review/implementation; cheaper capable models suit routine work. Price is not a quality ranking. If overriding a model, set provider, model and a supported thinking level explicitly. All effective node model settings are validated against the available catalog.",
       `Available models:\n${JSON.stringify(models)}`,
       `Project instructions:\n${library.config.instructions}`,
+      ...(memory.prompt ? [memory.prompt] : []),
       `Configured host check commands (AI blocks may also use bash):\n${JSON.stringify(library.config.commands, null, 2)}`,
       `Block catalog:\n${JSON.stringify(
         blocksForAgent(library.blocks),

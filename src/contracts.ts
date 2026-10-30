@@ -13,6 +13,7 @@ export * from "./trigger-schema.js";
 export * from "./usage-schema.js";
 export * from "./setup-job-schema.js";
 export * from "./evidence-schema.js";
+export * from "./memory-schema.js";
 export type { FlowStructure } from "./composition-sdk.js";
 
 import { z } from "zod";

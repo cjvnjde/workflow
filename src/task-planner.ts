@@ -20,6 +20,7 @@ import { compositionPlan } from "./composition-plan.js";
 import { formatBlock } from "./source-format.js";
 import { createAccountingContext } from "./usage-store.js";
 import type { AccountingContext } from "./usage-schema.js";
+import { planningMemory } from "./planning-memory.js";
 
 export type TaskPlanResult = {
   kind: "plan"; plan: WorkflowPlan; library: Library; caseId?: string; caseName?: string; rationale: string;
@@ -57,7 +58,9 @@ export async function planTask(options: TaskPlannerOptions, session: typeof runA
   let lastSubmissionError: string | undefined;
   const suggestedBlocks: { id: string; rationale: string }[] = [];
   const context = await new Attachments(options.project).context(task.attachments);
+  const memory = await planningMemory(options.project, signal);
   const tools: ToolDefinition[] = [
+    ...memory.tools,
     defineTool({
       name: "choose_task_case", label: "Classify request", description: "Choose the most relevant task case and load its instructions. Use an empty id if no case fits. Call before submitting a workflow.",
       parameters: Type.Object({ id: Type.String(), reason: Type.String() }),
@@ -178,6 +181,7 @@ export async function planTask(options: TaskPlannerOptions, session: typeof runA
       `Default execution model limits:\n${JSON.stringify(library.config.agent)}`,
       `Available models:\n${JSON.stringify(models)}`,
       `Project instructions:\n${library.config.instructions}\n${settings.instructions}`,
+      ...(memory.prompt ? [memory.prompt] : []),
       `Configured commands:\n${JSON.stringify(library.config.commands)}`,
       `Block catalog:\n${JSON.stringify(blocksForAgent(library.blocks))}`,
       `Available MCP servers for execution: ${JSON.stringify(settings.capabilities.mcpServers.filter(server => server.enabled).map(({ id, name }) => ({ id, name })))}`,

@@ -27,3 +27,4 @@ test-results/
 .workflow/settings-write-lease/
 
 .workflow/setup-jobs/
+.workflow/memory/

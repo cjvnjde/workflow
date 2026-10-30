@@ -108,6 +108,9 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
   });
   const signalFor = (signal?: AbortSignal) => signal
     ? AbortSignal.any([planning.signal, signal]) : planning.signal;
+  const memoryMutation = <T>(action: () => Promise<T>) => operation(async () => {
+    const result = await action(); emit("memory_state", "Project memory changed."); return result;
+  });
   if (services.startTriggers !== false) triggers.start();
   return {
     engine,
@@ -121,6 +124,12 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
     auth,
     get project() { return engine.project; },
     get mode() { return engine.mode; },
+    memory: () => engine.memory.state(),
+    memoryEntry: (id: string) => engine.memory.get(id),
+    setMemoryEnabled: (value: unknown) => memoryMutation(() => engine.memory.setEnabled(value)),
+    createMemoryEntry: (value: unknown) => memoryMutation(() => engine.memory.create(value)),
+    updateMemoryEntry: (id: string, value: unknown) => memoryMutation(() => engine.memory.update(id, value)),
+    deleteMemoryEntry: (id: string, value: unknown) => memoryMutation(() => engine.memory.remove(id, value)),
     subscribe: engine.subscribe.bind(engine),
     listRuns: (includeDeleted = true) => engine.list(includeDeleted),
     getRun: (id: string) => engine.get(id),

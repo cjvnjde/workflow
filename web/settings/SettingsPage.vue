@@ -21,6 +21,7 @@ import BlockSettings from "./BlockSettings.vue";
 import Capabilities from "./Capabilities.vue";
 import ExecutionSettings from "./ExecutionSettings.vue";
 import TriggerSettings from "./TriggerSettings.vue";
+import MemorySettings from "./MemorySettings.vue";
 import UsageSummary from "../components/UsageSummary.vue";
 import SetupProgress from "../components/SetupProgress.vue";
 import type { SetupJobsController } from "../composables/use-setup-jobs.js";
@@ -45,7 +46,8 @@ const emit = defineEmits<{
         | "blocks"
         | "capabilities"
         | "execution"
-        | "triggers";
+        | "triggers"
+        | "memory";
       blockId?: string;
     },
   ];
@@ -58,6 +60,7 @@ const tabs = [
   ["capabilities", "Skills & MCP"],
   ["execution", "Execution"],
   ["triggers", "Triggers"],
+  ["memory", "Memory"],
 ] as const;
 const tab = ref<(typeof tabs)[number][0]>("providers");
 const selectedBlock = ref("");
@@ -83,6 +86,8 @@ const savedExecution = ref("");
 const blockDirty = ref(false);
 const modelDirty = ref(false);
 const triggerDirty = ref(false);
+const memoryDirty = ref(false);
+const memoryEditor = ref<InstanceType<typeof MemorySettings>>();
 const triggerEditor = ref<InstanceType<typeof TriggerSettings>>();
 const blockEditor = ref<InstanceType<typeof BlockSettings>>();
 const modelEditor = ref<InstanceType<typeof ModelSettings>>();
@@ -108,7 +113,8 @@ const hasEdits = computed(
     executionDirty.value ||
     blockDirty.value ||
     modelDirty.value ||
-    triggerDirty.value,
+    triggerDirty.value ||
+    memoryDirty.value,
 );
 function discardSettings() {
   if (busy.value) return;
@@ -122,6 +128,7 @@ function discardAll() {
   blockEditor.value?.discard();
   modelEditor.value?.discard();
   triggerEditor.value?.discard();
+  memoryEditor.value?.discard();
 }
 async function load() {
   const version = ++loadSequence;
@@ -242,7 +249,10 @@ function design(scope: DesignScope, prompt?: string) {
 function changeTab(id: (typeof tabs)[number][0]) {
   if (
     id !== tab.value &&
-    (blockDirty.value || modelDirty.value || triggerDirty.value) &&
+    (blockDirty.value ||
+      modelDirty.value ||
+      triggerDirty.value ||
+      memoryDirty.value) &&
     !window.confirm("Discard unsaved changes in this section?")
   ) {
     return;
@@ -312,7 +322,13 @@ async function reload() {
         Discard all edits
       </button>
     </div>
-    <p v-if="!state" role="status">Loading settings…</p>
+    <MemorySettings
+      v-if="tab === 'memory'"
+      ref="memoryEditor"
+      @dirty="memoryDirty = $event"
+      @busy="busy = $event"
+    />
+    <p v-else-if="!state" role="status">Loading settings…</p>
     <fieldset
       v-else
       class="settings-fields"

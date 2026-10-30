@@ -4,6 +4,7 @@ import {
   usageReportSchema,
   setupJobSchema, setupJobsLatestSchema, type StartSetup,
   attemptEvidenceSchema,
+  memoryStateSchema, memoryEntrySchema, memoryMutationSchema, type CreateMemoryEntry, type UpdateMemoryEntry,
   triggerStateSchema, triggerSchema, triggerJobSchema, type TriggerConfig,
   type CreateProgram, type RunAction, type RunEvent, type WorkflowRun,
 } from "./contracts.js";
@@ -74,6 +75,12 @@ export class WorkflowClient {
   }
   project(signal?: AbortSignal) { return this.request("/api/project", projectSchema, { signal }); }
   usage(signal?: AbortSignal) { return this.request("/api/usage", usageReportSchema, { signal }); }
+  memory(signal?: AbortSignal) { return this.request("/api/memory", memoryStateSchema, { signal }); }
+  setMemoryEnabled(enabled: boolean, revision: string, signal?: AbortSignal) { return this.request("/api/memory", memoryStateSchema, { method: "PUT", body: { enabled, revision }, signal }); }
+  memoryEntry(id: string, signal?: AbortSignal) { return this.request(`/api/memory/entries/${encodeURIComponent(id)}`, memoryEntrySchema, { signal }); }
+  createMemoryEntry(body: CreateMemoryEntry, signal?: AbortSignal) { return this.request("/api/memory/entries", memoryMutationSchema, { method: "POST", body, signal }); }
+  updateMemoryEntry(id: string, body: UpdateMemoryEntry, signal?: AbortSignal) { return this.request(`/api/memory/entries/${encodeURIComponent(id)}`, memoryMutationSchema, { method: "PATCH", body, signal }); }
+  deleteMemoryEntry(id: string, revision: string, signal?: AbortSignal) { return this.request(`/api/memory/entries/${encodeURIComponent(id)}`, memoryStateSchema, { method: "DELETE", body: { revision }, signal }); }
   taskUsage(id: string, signal?: AbortSignal) { return this.request(`/api/tasks/${encodeURIComponent(id)}/usage`, usageReportSchema, { signal }); }
   runUsage(id: string, signal?: AbortSignal) { return this.request(`/api/runs/${encodeURIComponent(id)}/usage`, usageReportSchema, { signal }); }
   setupState(signal?: AbortSignal) { return this.request("/api/setup", setupSchema, { signal }); }

@@ -8,7 +8,7 @@ import { prepareAIHandoff } from "./ai-handoff.js";
 import { ProtectedPaths, ProtectedPathsChangedError } from "./protected-paths.js";
 import { createHash, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { realpath } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -55,6 +55,8 @@ import type { GithubEvent } from "./trigger-schema.js";
 import { createAccountingContext, UsageStore } from "./usage-store.js";
 import { withProjectSettingsSnapshot } from "./settings-publication.js";
 import { EvidenceStore } from "./evidence-store.js";
+import { MemoryStore, type MemoryTaskContext } from "./memory-store.js";
+import { taskSchema } from "./task-schema.js";
 import { evidenceIdentitySchema, serializeEvidenceValue, serializeStepEvidence, type StepEvidenceTransport } from "./evidence-schema.js";
 
 const activeStatuses = new Set<WorkflowRun["status"]>(["running", "pausing", "paused", "interrupted"]);
@@ -62,6 +64,7 @@ const activeStatuses = new Set<WorkflowRun["status"]>(["running", "pausing", "pa
 export class WorkflowEngine {
   readonly usage: UsageStore;
   readonly evidence: EvidenceStore;
+  readonly memory: MemoryStore;
   private readonly capturedOutputs = new Set<string>();
   private readonly executionWorkspaces = new Map<string, { token: symbol; access: "read" | "write" | "legacy" }[]>();
   private readonly usageByAttempt = new Map<string, UsageTotals>();
@@ -91,6 +94,7 @@ export class WorkflowEngine {
   ) {
     this.usage = new UsageStore(project);
     this.evidence = new EvidenceStore(project);
+    this.memory = new MemoryStore(project);
     this.versions = new WorkflowVersions(path.join(project, ".workflow", "versions"));
     this.store = new RunStore(path.join(project, ".workflow", "runs"));
     this.taskQueue = `workflow-${createHash("sha256").update(project).digest("hex").slice(0, 32)}`;
@@ -137,6 +141,9 @@ export class WorkflowEngine {
           }
         }
       }
+      try {
+        if ((await this.memory.state()).enabled) for (const run of this.runs.values()) await this.observeMemory(run);
+      } catch (error) { this.coordinatorActivity("memory_warning", `Memory reconciliation could not finish: ${String(error)}`); }
     } catch (error) {
       await this.shutdown();
       throw error;
@@ -392,6 +399,30 @@ export class WorkflowEngine {
     return this.evidence.content(await this.evidence.readAttempt(this.requireRun(runId), identity), contentId);
   }
 
+  private async observeMemory(run: WorkflowRun) {
+    try {
+      // This gate is read-only and avoids usage/task lookups entirely while off.
+      if (!await this.memory.needsObservation(run)) return;
+      const sessions = await this.usage.sessions();
+      const scope = await this.usage.scopeForRun(run.id);
+      const taskId = scope?.runTasks[run.id];
+      let task: MemoryTaskContext | undefined;
+      if (taskId) {
+        try {
+          const saved = taskSchema.parse(JSON.parse(await readFile(path.join(this.project, ".workflow", "tasks", `${taskId}.json`), "utf8")));
+          if (saved.id === taskId) task = { id: saved.id, caseId: saved.caseId, caseName: saved.caseName };
+        } catch (error) { if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error; }
+      }
+      const observed = await this.memory.observe(run, sessions, task);
+      if (observed.changed) this.coordinatorActivity("memory_state", "Updated compact observations from ordinary execution.");
+      if (observed.skipped) this.coordinatorActivity("memory_warning", `${observed.skipped} new memory groups could not fit. Notes, preferences and edited observations were preserved.`);
+      if (observed.evicted) this.coordinatorActivity("memory_state", `Replaced ${observed.evicted} oldest unedited observations to keep project memory bounded.`);
+    } catch (error) {
+      // Optional memory must never turn completed project work into a failure.
+      this.coordinatorActivity("memory_warning", `Could not record this run's memory observation; it can be reconciled on restart: ${String(error)}`);
+    }
+  }
+
   private saveProjection(value: WorkflowRun, event?: { kind: string; message: string; nodeId?: string }) {
     const run = runSchema.parse(value);
     this.assertSnapshot(run);
@@ -417,6 +448,7 @@ export class WorkflowEngine {
       run.temporalStart = "confirmed";
       await this.store.save(run);
       this.runs.set(run.id, run);
+      await this.observeMemory(run);
       if (event) {
         this.emit(run, event.kind, event.message, event.nodeId, `${run.id}:${run.revision}:${event.kind}`);
       }
@@ -714,6 +746,7 @@ export class WorkflowEngine {
       approved.approvedAt = new Date().toISOString();
       approved.updatedAt = approved.approvedAt;
       approved.revision += 1;
+      await this.memory.enroll(approved).catch(error => this.coordinatorActivity("memory_warning", `Could not enroll this run for memory collection: ${String(error)}`));
       await this.store.save(approved);
       this.runs.set(id, approved);
       try {
@@ -783,6 +816,7 @@ export class WorkflowEngine {
         run.updatedAt = new Date().toISOString();
         await this.store.save(run);
         this.runs.set(id, run);
+        await this.observeMemory(run);
         this.emit(run, "run_end", "CANCELLED");
         await this.flushEvents();
       } else {
