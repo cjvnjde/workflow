@@ -144,3 +144,5 @@ Keep the root README focused on purpose, first use, and entry points. Put behavi
 When changing the SDK or runtime, update the examples and describe any difference between declared composition and compatibility formats. Check commands against `src/cli.ts`, API bodies against the server/schemas, and defaults against their schemas. Typecheck complete TypeScript examples against the built SDK, validate local links and code-fence syntax, and check that packaged docs are included when changing the package manifest.
 
 Tests and live runs can produce private project data under `.workflow/`. Keep local settings and generated execution history out of unrelated commits. Preserve old execution bundles and compatibility contracts when changing the engine.
+
+The installed CLI and `bun run start` default to a detached host. Use `bun run start serve` for a foreground built host; `bun run dev` already runs its backend in the foreground. Lifecycle tests exercise detached processes and explicitly stop their hosts during cleanup.

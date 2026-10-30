@@ -7,7 +7,7 @@ Reviewed against the intended install → login → init → configure → gener
 | Area | Finding | Result |
 | --- | --- | --- |
 | Architecture | A headless application existed, but its public module boundaries were hard to see. | Explicit `core`, `web`, and `terminal` entries expose the responsibilities while preserving compatibility imports. |
-| Shared sessions | A TUI-owned host was API-only, and opening a saved task required navigating history. | Both interfaces share the host; ID/link navigation, terminal attach, and project-local host discovery make switching explicit. |
+| Shared sessions | A TUI-owned host was API-only, and opening a saved task required navigating history. | Both interfaces share a detached host; ID/link navigation, terminal attach, project-local discovery, and start/status/stop make its lifecycle explicit. |
 | Initialization | `init` could spend model usage before the user finished configuring defaults. | `init` is deterministic. `setup` is the separate AI bootstrap. |
 | Default model | Planning silently favored a different model; old coordinator settings could survive regeneration. | Saved defaults are honored. Setup clears legacy coordinator overrides, and unsupported thinking levels are normalized during model selection. |
 | Generated library | AI setup only generated profiles. UI-managed source could shadow editable disk files. | Setup generates profiles, task instructions, and validated TypeScript blocks. Applied `block.ts` files are editable and authoritative. |
@@ -23,7 +23,7 @@ workflow model
 cd /path/to/project
 workflow init
 workflow setup
-workflow serve
+workflow start
 
 # Another terminal, same project:
 workflow tui
@@ -50,7 +50,7 @@ The deterministic tests cover model precedence, no-context calls, generated sour
 ## Current boundaries
 
 - The three modules ship together. They are not separately published packages.
-- A TUI that owns its engine stops it on exit. Run `workflow serve` separately when execution must outlive clients. Persisted work can be reopened afterward; resuming execution is an explicit action.
+- The background host outlives every browser and terminal client. Use `workflow status` and `workflow stop` to manage it. `workflow serve` is the explicit foreground alternative. There is no automatic restart after a host crash or machine reboot; persisted work can be reopened and interrupted execution resumed explicitly.
 - A session ID identifies a persisted task/run in one project. It does not restore a model's complete conversation. Interrupted model activities retain the existing retry/recovery boundary.
 - Task instructions are reusable workflow intents. Concrete graphs are composed per request and saved as runs; setup does not produce a fixed graph for every possible task.
 - Context selection controls automatically supplied information. Tools, shell commands, and MCP still run with the host's access; this is not an OS sandbox.

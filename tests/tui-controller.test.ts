@@ -8,6 +8,7 @@ import { createHttpServer } from "../src/http-server.js";
 import { WorkflowClient } from "../src/client.js";
 import { TerminalController } from "../src/tui/controller.js";
 import { connectTerminal } from "../src/tui.js";
+import { stopProjectHost } from "../src/host-lifecycle.js";
 import { BrowserAuth } from "../src/browser-auth.js";
 import { createTemplate } from "../src/templates.js";
 import { loadOrchestration } from "../src/orchestration-settings.js";
@@ -117,11 +118,12 @@ test("session IDs reopen the same task and run across terminal controllers with 
   } finally { await other.close(); }
 });
 
-test("a terminal-owned engine exposes the browser and is discovered by another terminal on an ephemeral port", async t => {
+test("a terminal-started background engine survives both clients and is discovered on an ephemeral port", async t => {
   const { project, cleanup } = await fixture(t);
   const host = await connectTerminal({ project, port: 0, demo: true });
-  cleanup(() => host.close());
-  assert.equal(host.owned, true);
+  cleanup(() => stopProjectHost(project, 0));
+  assert.equal(host.owned, false);
+  assert.equal(host.started, true);
   const response = await fetch(host.client.sessionUrl());
   assert.equal(response.status, 200);
   assert.match(await response.text(), /<html|Workflow API is ready/);
@@ -129,6 +131,7 @@ test("a terminal-owned engine exposes the browser and is discovered by another t
   assert.equal(attached.owned, false);
   assert.equal(attached.client.sessionUrl(), host.client.sessionUrl());
   await attached.close();
+  await host.close();
   assert.equal((await host.client.project()).mode, "demo");
 });
 

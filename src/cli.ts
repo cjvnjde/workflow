@@ -5,7 +5,6 @@ import { parseArgs } from "node:util";
 import { initializeProject, loadLibrary } from "./library.js";
 import { clientCommands, runClientCommand, readProgram, printRun, executionExitCode } from "./terminal-client.js";
 import { waitForRun } from "./client.js";
-import { announceProjectServer } from "./host-discovery.js";
 
 async function main() {
   const { values, positionals } = parseArgs({
@@ -14,6 +13,7 @@ async function main() {
       instructions: { type: "string", default: "" },
       port: { type: "string" },
       session: { type: "string" },
+      "host-id": { type: "string" },
       model: { type: "string" },
       thinking: { type: "string" },
       regenerate: { type: "boolean", default: false },
@@ -27,16 +27,20 @@ async function main() {
       json: { type: "boolean", default: false },
       "temporal-address": { type: "string" },
       "temporal-namespace": { type: "string", default: "default" },
+      "temporal-workflow-bundle": { type: "string" },
       help: { type: "boolean", short: "h" },
     },
   });
-  const command = positionals[0] ?? "serve";
+  const command = positionals[0] ?? "start";
   if (values.help || command === "help") {
     console.log(`Usage:
   workflow init [--instructions "Project constraints"]  Create local configuration; no AI call
   workflow setup [--model provider/id] [--thinking level] [--instructions "Preferences"] [--regenerate]
   workflow profiles [--instructions "Model preferences"]
-  workflow [serve] [--port 4310] [--no-web] [--demo]
+  workflow [start] [--port 4310] [--no-web] [--demo] [--json]  Start or reuse a background host
+  workflow status [--json]      Inspect this project's host
+  workflow stop [--json]        Stop the verified host and drain its worker
+  workflow serve [--port 4310] [--no-web] [--demo]  Foreground host
   workflow tui [session-id] [--session ID] [--server URL] [--demo]
   workflow attach <session-id> [--server URL]  Reopen the same session in the terminal
   workflow exec <file.ts> [--input JSON] [--json]
@@ -63,7 +67,8 @@ async function main() {
 
 Run workflow from your project folder. State lives in .workflow/ in the current directory.
 serve includes the web UI; --no-web starts only the API and worker.
-tui starts or attaches to the project's engine and serves the same browser UI. Use /web for its URL.
+tui starts or attaches to a detached project host; execution continues after every client closes.
+Use /web for the browser URL, and workflow stop to shut down the host.
 Session IDs open saved work; workflow resume <run-id> explicitly restarts paused execution.
 exec explicitly approves and executes a TypeScript workflow without an HTTP server or GUI.
 run creates a draft on a running server; inspect it with show, then approve it.
@@ -80,6 +85,19 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
     return;
   }
   const project = await realpath(process.cwd());
+  if (["start", "status", "stop"].includes(command)) {
+    if (positionals.length > 1 || values.server) throw new Error(`Use workflow ${command} from the project folder, with optional --port and --json.`);
+    const { startProjectHost, projectHostStatus, stopProjectHost } = await import("./host-lifecycle.js");
+    const port = values.port === undefined ? undefined : Number(values.port);
+    const result = command === "start"
+      ? await startProjectHost({ project, port, mode: values.demo ? "demo" : "live", web: values["no-web"] ? false : undefined,
+          temporal: { address: values["temporal-address"], namespace: values["temporal-namespace"], workflowBundlePath: values["temporal-workflow-bundle"] } })
+      : command === "stop" ? await stopProjectHost(project, port) : await projectHostStatus(project, port);
+    if (values.json) console.log(JSON.stringify(result));
+    else if (result.status === "stopped") console.log(`Workflow stopped · ${project}`);
+    else console.log(`Workflow ${result.mode.toUpperCase()} · ${result.status} · ${result.url} · ${result.background ? "background" : "foreground"}\nProject: ${project}\nHost: ${result.hostId} · PID ${result.pid}\nUse workflow stop to shut down the host.`);
+    return;
+  }
   if (command === "tui" || command === "attach") {
     if (positionals.length > 2 || positionals[1] && values.session) throw new Error("Use workflow tui [session-id] or --session ID, with optional --server URL.");
     const session = values.session ?? positionals[1];
@@ -88,7 +106,7 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
     const terminalEntry = new URL("./tui.js", import.meta.url).href;
     const { runTerminalWorkspace } = await import(terminalEntry) as typeof import("./tui.js");
     await runTerminalWorkspace({ project, port: values.port === undefined ? undefined : Number(values.port), server: values.server, demo: values.demo, session,
-      temporal: { address: values["temporal-address"], namespace: values["temporal-namespace"] } });
+      temporal: { address: values["temporal-address"], namespace: values["temporal-namespace"], workflowBundlePath: values["temporal-workflow-bundle"] } });
     return;
   }
   if (clientCommands.includes(command)) {
@@ -109,7 +127,7 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
     let app: Awaited<ReturnType<typeof createApplication>> | undefined;
     try {
       app = await createApplication({ project, mode: values.demo ? "demo" : "live", startTriggers: false,
-        temporal: { address: values["temporal-address"], namespace: values["temporal-namespace"] } });
+        temporal: { address: values["temporal-address"], namespace: values["temporal-namespace"], workflowBundlePath: values["temporal-workflow-bundle"] } });
       controller.signal.throwIfAborted();
       const draft = await app.createProgram(program, controller.signal);
       controller.signal.throwIfAborted();
@@ -171,7 +189,7 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
     console.log(`Saved ${profiles.count} model profiles. Review them in Settings → Model profiles.`);
     return;
   }
-  if (command !== "serve") {
+  if (command !== "serve" && command !== "__host") {
     throw new Error(`Unknown command: ${command}`);
   }
   const port = Number(values.port ?? "4310");
@@ -188,42 +206,15 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
     }
     throw error;
   }
-  const [{ createApplication }, { createHttpServer }] = await Promise.all([
-    import("./core/index.js"), import("./web/index.js"),
-  ]);
-  const controller = new AbortController();
-  const stop = () => controller.abort();
-  process.once("SIGINT", stop); process.once("SIGTERM", stop);
-  let app: Awaited<ReturnType<typeof createApplication>> | undefined;
-  let server: Awaited<ReturnType<typeof createHttpServer>> | undefined;
-  let unannounce: (() => Promise<void>) | undefined;
-  try {
-    app = await createApplication({ project, mode: values.demo ? "demo" : "live",
-      temporal: { address: values["temporal-address"], namespace: values["temporal-namespace"] } });
-    if (controller.signal.aborted) return;
-    server = await createHttpServer(app, port);
-    const application = app;
-    // This host owns both lifetimes: stop HTTP admission before draining the app.
-    server.addHook("preClose", () => application.close());
-    if (!values["no-web"]) {
-      const { registerWebGui } = await import("./web-server.js");
-      await registerWebGui(server);
-    }
-    const address = await server.listen({ port, host: "127.0.0.1" });
-    unannounce = await announceProjectServer(project, address);
-    console.log(`Workflow ${app.mode.toUpperCase()} · ${address}${values["no-web"] ? " · API only" : ""}\nProject: ${project}`);
-    if (values.demo) console.log("DEMO: agents and checks are simulated. No task files are changed.");
-    if (!controller.signal.aborted) await new Promise<void>(resolve => controller.signal.addEventListener("abort", () => resolve(), { once: true }));
-  } finally {
-    try { await server?.close(); }
-    finally {
-      try { await app?.close(); }
-      finally { await unannounce?.(); process.removeListener("SIGINT", stop); process.removeListener("SIGTERM", stop); }
-    }
-  }
+  const { runHost } = await import("./host.js");
+  await runHost({ project, port, mode: values.demo ? "demo" : "live", web: !values["no-web"],
+    background: command === "__host", hostId: values["host-id"],
+    temporal: { address: values["temporal-address"], namespace: values["temporal-namespace"], workflowBundlePath: values["temporal-workflow-bundle"] } });
 }
 
 main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(message);
+  if (process.connected) process.send?.({ type: "error", message }, () => { process.disconnect?.(); });
   process.exitCode = 1;
 });

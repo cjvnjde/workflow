@@ -46,9 +46,11 @@ The public entry points are `src/core/index.ts`, `src/web/index.ts`, and `src/te
 
 The Vue code imports only the public `contracts` and `client` entry points from the backend tree. The shared client handles validation, revision headers, errors, endpoint selection, and event streaming. Presentation state, graph layout, editors, and rendering remain in `web/`. [Engine and clients](clients.md) documents the integration and lifecycle contract.
 
-The terminal controller also uses only that client and public contracts. `src/tui/view.ts` renders its state with OpenTUI; `presentation.ts` formats activity and composition trees. `src/tui.ts` owns attachment or local application startup, signals, parser resources, and terminal cleanup. The CLI loads `dist/tui.js` only when requested, keeping native rendering out of server and scripting commands.
+The terminal controller also uses only that client and public contracts. `src/tui/view.ts` renders its state with OpenTUI; `presentation.ts` formats activity and composition trees. `src/tui.ts` owns attachment, background-host startup requests, signals, parser resources, and terminal cleanup. `src/host.ts` is the process composition root; `src/host-lifecycle.ts` manages detached startup, readiness, status, and authenticated shutdown. The CLI loads `dist/tui.js` only when requested, keeping native rendering out of server and scripting commands.
 
-CLI and TUI hosts announce a loopback endpoint in `.workflow/server.json`. Discovery validates both the receipt and the endpoint's project before connecting. A task/run ID selects saved state through the common client. An attached presentation never closes the host; a TUI that created its own host closes it on exit. Use a separate `workflow serve` process for execution that outlives terminal clients.
+CLI hosts announce a loopback endpoint and private lifecycle receipt in `.workflow/server.json`. Discovery validates the endpoint's project before connecting. Detached startup uses an IPC readiness/acknowledgment handshake before releasing the starter; concurrent start/stop operations use their own short-lived management lease. `workflow stop` authenticates to the exact host and waits for shutdown cleanup rather than trusting a saved PID.
+
+A task/run ID selects saved state through the common client. A presentation never closes the host: initial TUI startup creates a background process, and all clients can detach without stopping work. `workflow serve` remains an explicit foreground host. Neither lifecycle management nor optional HTTP control routes are dependencies of the headless application.
 
 Project setup is separate from execution: `init` writes deterministic defaults, then `setup` uses the chosen default model for read-only repository inspection and validated proposals for profiles, task instructions, and blocks. Normal startup performs no AI bootstrap.
 
@@ -109,6 +111,7 @@ Paths below are relative to the repository checkout. The packaged CLI includes c
 | --- | --- |
 | Application and lifecycle | `src/application.ts` |
 | CLI and local HTTP | `src/cli.ts`, `src/terminal-client.ts`, `src/http-server.ts` |
+| Host lifecycle | `src/host.ts`, `src/host-lifecycle.ts`, `src/host-control.ts`, `src/host-discovery.ts` |
 | Terminal workspace | `src/tui.ts`, `src/tui/controller.ts`, `src/tui/view.ts`, `src/tui/presentation.ts` |
 | Client contract and transport | `src/contracts.ts`, `src/client.ts` |
 | Optional GUI serving / compatibility | `src/web-server.ts`, `src/server.ts` |

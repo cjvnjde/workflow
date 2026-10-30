@@ -47,7 +47,7 @@ workflow model
 cd /path/to/your/project
 workflow init --instructions "Preserve public APIs. Use the existing test framework."
 workflow setup
-workflow
+workflow                       # returns after the background host is ready
 ```
 
 Open **http://127.0.0.1:4310**. The current directory is the project; there is no positional project-path argument and no parent-directory configuration search.
@@ -130,3 +130,5 @@ The compiler resolves `import { workflow, block, step } from "workflow"` to the 
 - [Writing workflows](workflows.md): compose loops, conditions, and parallel work.
 - [Configuration](configuration.md): customize profiles, instructions, blocks, skills, and MCP.
 - [Operations](operations.md): pause, recover, retry, and diagnose failures.
+
+Use `workflow status` to find the host URL and `workflow stop` to stop it. Closing the browser or terminal workspace leaves execution running. For a foreground process, run `workflow serve` (or `bun run start serve` from the source checkout).

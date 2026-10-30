@@ -3,7 +3,7 @@ import { userPaths } from "./user-settings.js";
 import { realpath } from "node:fs/promises";
 import { WorkflowClient } from "./client.js";
 import type { TemporalOptions } from "./temporal-runtime.js";
-import { announceProjectServer, discoverProjectServer } from "./host-discovery.js";
+import { discoverProjectServer } from "./host-discovery.js";
 
 export interface TerminalOptions {
   project: string;
@@ -12,6 +12,7 @@ export interface TerminalOptions {
   demo?: boolean;
   temporal?: TemporalOptions;
   session?: string;
+  signal?: AbortSignal;
 }
 
 /** Host ownership stays outside the presentation and its HTTP-only controller. */
@@ -24,7 +25,7 @@ export async function connectTerminal(options: TerminalOptions) {
     const client = new WorkflowClient({ baseUrl: options.server });
     const project = await client.project(AbortSignal.timeout(5000));
     if (options.demo && project.mode !== "demo") throw new Error("The selected server is live. Start a demo engine before attaching with --demo.");
-    return { client, owned: false, close: async () => {} };
+    return { client, owned: false, started: false, close: async () => {} };
   }
   const discovered = options.port === undefined ? await discoverProjectServer(options.project) : undefined;
   const candidates = [...new Set([...(discovered ? [discovered] : []), ...(port ? [`http://127.0.0.1:${port}`] : [])])];
@@ -35,27 +36,14 @@ export async function connectTerminal(options: TerminalOptions) {
       const client = new WorkflowClient({ baseUrl });
       const project = await client.project(AbortSignal.timeout(5000));
       if (await realpath(project.project) !== await realpath(options.project)) throw new Error("The local server belongs to another project. Use --port 0 for a private engine or --server to select it explicitly.");
-      if (options.demo && project.mode !== "demo") throw new Error("The running server is live. Use --port 0 --demo for a demo engine.");
-      return { client, owned: false, close: async () => {} };
+      if (project.mode !== (options.demo ? "demo" : "live")) throw new Error(`The running host is ${project.mode}. Use the matching --demo mode, or workflow stop before switching modes.`);
+      return { client, owned: false, started: false, close: async () => {} };
     }
   }
-  const [{ createApplication }, { createHttpServer, registerWebGui }] = await Promise.all([import("./core/index.js"), import("./web/index.js")]);
-  const app = await createApplication({ project: options.project, mode: options.demo ? "demo" : "live", temporal: options.temporal });
-  let server: Awaited<ReturnType<typeof createHttpServer>> | undefined;
-  let unannounce: (() => Promise<void>) | undefined;
-  try {
-    server = await createHttpServer(app, port);
-    server.addHook("preClose", () => app.close());
-    await registerWebGui(server);
-    const baseUrl = await server.listen({ port, host: "127.0.0.1" });
-    unannounce = await announceProjectServer(options.project, baseUrl);
-    const removeAnnouncement = unannounce;
-    const http = server;
-    return { client: new WorkflowClient({ baseUrl }), owned: true, close: async () => { try { await http.close(); } finally { try { await app.close(); } finally { await removeAnnouncement(); } } } };
-  } catch (error) {
-    try { await server?.close(); } finally { try { await app.close(); } finally { await unannounce?.(); } }
-    throw error;
-  }
+  const { startProjectHost } = await import("./host-lifecycle.js");
+  const host = await startProjectHost({ project: options.project, port: options.port, mode: options.demo ? "demo" : "live",
+    temporal: options.temporal, signal: options.signal });
+  return { client: new WorkflowClient({ baseUrl: host.url }), owned: false, started: host.started, close: async () => {} };
 }
 
 export async function runTerminalWorkspace(options: TerminalOptions) {
@@ -63,7 +51,8 @@ export async function runTerminalWorkspace(options: TerminalOptions) {
   let stop!: () => void;
   const finished = new Promise<void>(resolve => { stop = resolve; });
   let stopping = false;
-  const onStop = () => { stopping = true; stop(); };
+  const startup = new AbortController();
+  const onStop = () => { stopping = true; startup.abort(new Error("Terminal startup cancelled")); stop(); };
   process.once("SIGINT", onStop); process.once("SIGTERM", onStop);
   let host: Awaited<ReturnType<typeof connectTerminal>> | undefined;
   let renderer: import("@opentui/core").CliRenderer | undefined;
@@ -72,7 +61,7 @@ export async function runTerminalWorkspace(options: TerminalOptions) {
   let view: import("./tui/view.js").TerminalWorkspace | undefined;
   try {
     console.log("Starting Workflow terminal workspace…");
-    host = await connectTerminal(options);
+    host = await connectTerminal({ ...options, signal: startup.signal });
     if (stopping) return;
     const [{ createCliRenderer, TreeSitterClient }, { TerminalController }, { TerminalWorkspace }, { colors }] = await Promise.all([
       import("@opentui/core"), import("./tui/controller.js"), import("./tui/view.js"), import("./tui/presentation.js"),
@@ -85,7 +74,7 @@ export async function runTerminalWorkspace(options: TerminalOptions) {
     view = new TerminalWorkspace(renderer, controller, parser);
     await controller.initialize();
     if (options.session) await controller.openSessionById(options.session);
-    controller.state.notice = `${host.owned ? "Local engine · closing this workspace stops its worker; history is saved." : "Attached to server · execution continues when this workspace closes."}\nBrowser: ${controller.browserUrl()}`;
+    controller.state.notice = `${host.started ? "Background host started" : "Attached to server"} · execution continues after clients close. Use workflow stop to shut down.\nBrowser: ${controller.browserUrl()}`;
     controller.changed();
     if (!stopping) await finished;
   } finally {

@@ -11,8 +11,11 @@ Run project commands from the target project's directory. Configuration is in th
 | `workflow init [--instructions "..."]` | Create configuration and starter TypeScript blocks without model calls. `--no-ai` remains a compatibility flag. |
 | `workflow setup [--model provider/id] [--thinking level] [--instructions "..."] [--regenerate]` | Use the selected default to inspect the project and generate reusable blocks, task instructions, and model profiles. |
 | `workflow profiles [--instructions "..."]` | Regenerate model profiles using AI. |
-| `workflow` or `workflow serve` | Serve this project and start its worker. |
-| `workflow tui [session-id] [--session ID] [--server URL] [--demo]` | Open the terminal workspace; attach to this project's server or start an engine with the web GUI. |
+| `workflow` or `workflow start [--json]` | Start or reuse a detached background host for this project; return after readiness. |
+| `workflow status [--json]` | Report this project's host identity, mode, URL, and lifecycle state without secrets. |
+| `workflow stop [--json]` | Ask the verified host to drain and stop; never signal a PID from a receipt. Already stopped is successful. |
+| `workflow serve` | Run the host in the foreground until Ctrl+C or `workflow stop`. |
+| `workflow tui [session-id] [--session ID] [--server URL] [--demo]` | Open the terminal workspace; attach to this project's server or start a detached host with the web GUI. |
 | `workflow attach <task-or-run-id> [--server URL]` | Reopen persisted work in the terminal without approving or retrying it. |
 | `workflow exec <file.ts> [--input '<JSON object>'] [--json]` | Execute locally without HTTP or GUI; wait and return an execution exit code. |
 | `workflow run <file.ts> [--input '<JSON object>'] [--approve] [--wait]` | Submit source to the running project server. Default is a draft; `--approve` starts it. |
@@ -40,13 +43,17 @@ Terminal setup commands can run outside a project. Interactive setup requires a 
 | --- | --- |
 | `--no-web` | Server only: API and worker without serving GUI assets. |
 | `--server URL` | Client commands: explicitly select a server project, including over a tunnel. |
-| `--json` | Client commands and `exec`: machine-readable output. |
+| `--json` | Client commands, `start`/`status`/`stop`, and `exec`: machine-readable output. |
 | `--wait` | Wait for a submitted/controlled run to finish or need attention. |
 | `--port 4310` | HTTP port; 4310 is the default. Use the same option on CLI control commands. |
-| `--port 0` | Server/TUI: choose a free port and announce it in `.workflow/server.json`. Subsequent clients discover it unless an endpoint is explicitly selected. |
+| `--port 0` | Start/serve/TUI: choose a free port for a new host and announce it in `.workflow/server.json`. Start and TUI reuse an existing project host; status/stop use the saved endpoint without a default-port fallback. |
 | `--demo` | Explicit simulation of agents/checks using real Temporal history. Normal startup and development use live AI. |
 | `--temporal-address host:port` | Connect to an existing trusted Temporal endpoint instead of the managed service. |
 | `--temporal-namespace name` | Namespace for that connection; default `default`. |
+
+`start` is idempotent for the same project and execution mode. It refuses a mode or explicitly requested port/web-mode change while a host is running; stop first to reconfigure. `status`/`stop` operate from the local project folder, not via `--server`. The private receipt contains a per-host shutdown token; JSON status omits it. Stop verifies the host ID, endpoint, project and PID against the live server, then uses authenticated HTTP shutdown. Stale or mismatched records never authorize killing a process. Startup logs are in `.workflow/host.log` with private file permissions.
+
+`workflow status --json` returns `status: "running"`, `"stopping"`, or `"stopped"`; a stopped project is not a command error. A verified running host also reports `canStop`. A host without its matching private receipt requires repairing that receipt or stopping its original foreground process.
 
 An external Temporal service is not stopped when Workflow exits. The CLI currently exposes address/namespace selection, not remote authentication/TLS onboarding.
 
@@ -72,6 +79,15 @@ The Vue UI and CLI use the same loopback API. This is a local application interf
 All mutations and `/api/auth/*` reads require `X-Workflow-Client: 1`. Responses disable caching. Draft reads return a quoted revision `ETag`, such as `"2"`; send it as `If-Match` when editing, refining, or approving. Conflicts return 409. The browser supplies these headers; older clients can omit some draft revision headers, but should not rely on that for concurrent edits.
 
 Settings and library mutations carry their own required revision/hash fields. Read the current state before modifying it. Auth responses contain prompts/status/sign-in instructions rather than credential objects.
+
+### CLI host lifecycle
+
+These routes are registered by CLI-owned background and foreground hosts, not by a borrowed `createHttpServer(app)` adapter:
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| GET | `/api/host` | Public host identity, mode, URL and ready/stopping state; no shutdown token. |
+| POST | `/api/host/stop` | Requires `X-Workflow-Client: 1`, the private `X-Workflow-Host-Token`, and `{hostId}`. Sends 202 before draining the host. Prefer `workflow stop`. |
 
 ### Tasks and attachments
 

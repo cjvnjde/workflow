@@ -167,7 +167,7 @@ test("the package ships a Bun executable and UI, not project state or a developm
 test("workflow serves the bundled UI from the install location while using the caller's project", async (t) => {
   const { run, project, env } = await commandFixture(t);
   await run(["init"]);
-  const child = spawn("workflow", ["--demo", "--port", "0"], {
+  const child = spawn("workflow", ["serve", "--demo", "--port", "0"], {
     cwd: project,
     env,
     stdio: ["ignore", "pipe", "pipe"],
@@ -248,7 +248,7 @@ test("a killed CLI recovers its lease and Temporal server, then resumes without 
   const context = await commandFixture(t);
   await context.run(["init"]);
   const launch = () => {
-    const child = spawn("workflow", ["--demo", "--port", "0"], {
+    const child = spawn("workflow", ["serve", "--demo", "--port", "0"], {
       cwd: context.project,
       env: { ...context.env, WORKFLOW_DEMO_DELAY_MS: "1000" },
       stdio: ["ignore", "pipe", "pipe"],

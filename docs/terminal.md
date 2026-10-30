@@ -24,9 +24,11 @@ workflow tui --server http://127.0.0.1:4312
 
 From this repository, `bun run workflow tui` runs the source version; `bun run start tui` runs the built version. Build first so the Temporal bundles are available. The renderer requires an interactive terminal with Bun 1.4.2+; use `workflow exec` or the plain CLI commands in scripts.
 
-By default, the workspace discovers the running host through `.workflow/server.json`, then falls back to port 4310. It validates that the endpoint serves this project. `--port N` selects a port explicitly. If no server is found, it starts an engine with the API and web GUI on that port. `--port 0` starts a new host on a free port; other clients can discover it from the project folder. The project lease prevents two engines from owning the same project.
+By default, the workspace discovers the running host through `.workflow/server.json`, then falls back to port 4310. It validates that the endpoint serves this project. `--port N` selects a port explicitly. If no server is found, it starts a detached background host with the API and web GUI on that port. `--port 0` chooses a free port for initial startup; a running host for the same project is reused. Other clients discover its port from the project folder. The project lease prevents two engines from owning the same project.
 
-Closing a workspace that started its own engine stops that worker and saves its history. Inspect and resume interrupted work on the next launch. Closing a workspace attached to a server leaves execution running there. The welcome notice identifies which mode is active. For a persistent engine shared by both interfaces, start `workflow serve` separately before opening the TUI. `--no-web` is available for API-only hosting.
+Closing the TUI always detaches its presentation and leaves the host running, including when the TUI started it. Work continues after all browser and terminal clients close. The welcome notice identifies a newly started background host or an existing server.
+
+Use `workflow status` to see the host and URL, and `workflow stop` when you want to stop the worker. Saved history remains; restart in the same mode and explicitly resume interrupted work. `workflow serve` remains an explicit foreground host for development or a process supervisor. `workflow start --no-web` and `workflow serve --no-web` provide API-only hosting.
 
 `/web` shows a browser link to the selected task/run. The browser's **Continue in terminal** copies the corresponding `workflow attach` command. IDs refer to persisted project tasks/runs, not a terminal process or an inherited model conversation. Opening a saved session never approves a draft or retries an interrupted operation; use `/approve` or `/resume` explicitly.
 

@@ -40,9 +40,9 @@ Deleting a settled workflow removes it and its linked task from the visible hist
 
 ## Pause, restart, and resume
 
-Pause lets active steps finish before admitting more work. For a parallel group, all active branches drain. Queued branches wait. Closing the browser does not pause or cancel execution.
+Pause lets active steps finish before admitting more work. For a parallel group, all active branches drain. Queued branches wait. Closing the browser or TUI does not pause or cancel execution. Bare `workflow`, `workflow start`, and an initial TUI launch use a background host that outlives the clients.
 
-Stopping the application stops its worker and managed local Temporal process, while execution history remains on disk. Restart in the same project and mode. Completed recorded operations are replayed from history rather than executed again. An activity that was in progress when its worker disappeared may leave the run interrupted.
+`workflow status` reports the running host. `workflow stop` requests authenticated shutdown, waits for the application and project lease to close, and stops its worker and managed local Temporal process, while execution history remains on disk. `workflow serve` is the explicit foreground alternative and also stops on Ctrl+C. Restart in the same project and mode. Completed recorded operations are replayed from history rather than executed again. An activity that was in progress when its worker disappeared may leave the run interrupted.
 
 An explicit resume of an interrupted run retries the affected step in a fresh attempt. It consumes another visit and total step, and can repeat effects from that attempt. Completed siblings and earlier steps are retained. It does not continue in the middle of an unfinished model request.
 
@@ -51,6 +51,7 @@ Transient provider requests can retry up to twice inside the same AI conversatio
 CLI controls require the server to be running for the same project:
 
 ```sh
+workflow status
 workflow runs
 workflow pause <run-id>
 workflow resume <run-id>
@@ -94,6 +95,8 @@ The journal does not undo Bash edits, Git operations, check-command effects, ext
 ├── runs/                     # approval snapshots, events, attempt journals
 ├── versions/                 # archived workflow bundles, tools.js and manifests
 ├── temporal/                 # managed SQLite execution history and logs
+├── host.log                  # private background-host startup/runtime log
+├── server.json               # private host identity and shutdown token
 ├── triggers/                 # SQLite trigger settings, inbox, checkpoints and outbox
 ├── server-lease/             # live project ownership lease
 └── lock                      # diagnostic owner information
@@ -124,6 +127,7 @@ Approval first persists a pending start receipt. If a crash occurs before Tempor
 | A loop stopped before approval | Check both `maxIterations` and per-step/total visit limits, and the step's outcome actions. |
 | Parallel AI appears sequential | A spending limit serializes model sessions against the remaining budget. Group concurrency and the overall eight-step cap also apply. |
 | Parallel file conflict | Sequence overlapping edits. Commands bypass managed-write claims, so review their effects too. |
+| Host startup fails or the host has stopped unexpectedly | Run `workflow status --json` and inspect `.workflow/host.log`. Use `--port 0` if another project owns the default port. A background host does not restart itself after a crash or reboot. |
 | Another workflow owns the project | Resume or cancel the paused/interrupted execution before approving a competing run. |
 | Saved block file edits do not appear | Check the active manifest's `sourceFiles`. Old inline-only libraries become source-backed after the next Apply/setup; current generated blocks load their registered `block.ts` files. Existing runs retain approved snapshots. |
 | Missing Temporal history or archive | Restore the matching project backup. Do not delete more state or start the old work under a new snapshot. |

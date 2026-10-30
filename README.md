@@ -86,10 +86,12 @@ The current directory is the project; there is no project-path argument. Credent
 ## Choose an interface
 
 ```sh
-workflow                       # engine, API, and web GUI
+workflow                       # start/reuse background engine, API, and web GUI
 workflow tui                   # full terminal workspace: chat, graph, tools, approval
 workflow attach <session-id>   # reopen a task or run from either interface
-workflow serve --no-web         # engine and API only
+workflow status                # show the running host and URL
+workflow stop                  # stop the host; retain saved work
+workflow serve --no-web         # explicit foreground engine and API only
 workflow exec verify.ts         # execute directly in the terminal, without HTTP
 workflow run verify.ts --approve --wait  # execute through a running server
 ```
@@ -98,7 +100,7 @@ In `workflow tui`, describe a task, inspect `/graph`, and `/approve` or `/reject
 
 The engine's application API is independent of presentation. The web GUI, terminal workspace, and CLI commands share a validated HTTP client; embedded hosts can call the application directly. [Engine and clients](docs/clients.md) covers server access, integration APIs, and separate builds. Desktop and mobile GUIs can use the same interfaces; those additional clients are not included yet.
 
-The public modules are `predictable-workflow/core` (planning, execution, persistence), `/web` (HTTP and browser hosting), and `/terminal` (terminal client and UI). They are shipped in one package; older `/engine` and `/http` imports remain supported. Start `workflow serve` separately if execution should continue after closing every terminal client.
+The public modules are `predictable-workflow/core` (planning, execution, persistence), `/web` (HTTP and browser hosting), and `/terminal` (terminal client and UI). They are shipped in one package; older `/engine` and `/http` imports remain supported. The background host outlives all browser and terminal clients. Use `workflow stop` to shut it down; `workflow serve` remains available for an explicit foreground host.
 
 ## Workflows are TypeScript
 

@@ -19,3 +19,5 @@ test-results/
 .workflow/library-write-lease/
 .workflow/server.json
 .workflow/triggers/
+
+.workflow/host-manager-lease/
