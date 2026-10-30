@@ -348,6 +348,9 @@ test("parallel AI sessions share the dollar budget without double-counting faile
   assert.equal(run.status, "completed", run.error);
   assert.deepEqual(amounts, [1, 0.8]);
   assert.equal(run.usage?.costUsd, 0.4);
+  const waits = (await engine.execution(draft.id)).operations.filter(operation => operation.name === "Budget queue");
+  assert.equal(waits.length, 2);
+  assert.ok(waits.every(operation => operation.state === "completed" && operation.startedAt && operation.finishedAt && operation.durationMs !== undefined && operation.parentKey));
 });
 
 test("loop summaries follow the final visit, explicit repeat skips the rest of a body, and sibling output stays private", async () => {

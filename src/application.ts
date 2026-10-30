@@ -1,3 +1,4 @@
+import type { CommandOutputStream } from "./command-output.js";
 import { codeBundle } from "./code-migration.js";
 import { formatCode } from "./source-format.js";
 import { z } from "zod";
@@ -22,7 +23,7 @@ import { Tasks } from "./tasks.js";
 import { planTask } from "./task-planner.js";
 import { mcpServerSchema } from "./capability-schema.js";
 import { inspectMcp } from "./mcp-tools.js";
-import { createProgramSchema } from "./contracts.js";
+import { createProgramSchema, type HistoryQuery } from "./contracts.js";
 import { refineProgram } from "./program-refiner.js";
 import { createAccountingContext } from "./usage-store.js";
 import { SetupJobs } from "./setup-jobs.js";
@@ -156,6 +157,12 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
     listRuns: (includeDeleted = true) => engine.list(includeDeleted),
     getRun: (id: string) => engine.get(id),
     events: (id: string) => engine.events(id),
+    commandOutput: (runId: string, nodeId: string, visit: number, captureId: string, stream: CommandOutputStream, options: { offset?: number; limit?: number } = {}) => engine.commandOutput(runId, nodeId, visit, captureId, stream, options),
+    commandOutputDownload: (runId: string, nodeId: string, visit: number, captureId: string, stream: CommandOutputStream) => engine.commandOutputDownload(runId, nodeId, visit, captureId, stream),
+
+    history: (id: string, query: HistoryQuery = {}) => engine.history(id, query),
+    execution: (id: string) => engine.execution(id),
+    operationEvents: (id: string, key: string) => engine.operationEvents(id, key),
     attemptEvidence: (id: string, nodeId: string, visit: number) => engine.attemptEvidence(id, nodeId, visit),
     evidenceContent: (id: string, nodeId: string, visit: number, contentId: string) => engine.evidenceContent(id, nodeId, visit, contentId),
     approve: (id: string, revision?: number) => operation(() => engine.approve(id, revision)),

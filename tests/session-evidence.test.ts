@@ -45,7 +45,8 @@ test("actual AI dispatches capture application context, prompts, images and comp
   const fullText = "Complete model-facing feedback ".repeat(2000);
   const image = Buffer.from("image-fixture");
   let executed = 0;
-  await runAgentSession({ project: workspace, accounting, contextMode: "none",
+  const operations: import("../src/operation-schema.js").OperationRecord[] = [];
+  await runAgentSession({ project: workspace, accounting, contextMode: "none", operation: { parentId: accounting.operationId, record: async record => { operations.push(record); } },
     settings: agentSchema.parse({ provider: "evidence-fixture", model: "vision", thinking: "off" }),
     systemPrompt: "Inspect the selected input only.", prompt: "Check this image and record the result.", images: [{ type: "image", data: image.toString("base64"), mimeType: "image/png" }],
     tools: [defineTool({ name: "inspect", label: "Inspect", description: "Inspect a typed record.", parameters: Type.Object({ count: Type.Number(), label: Type.String() }),
@@ -55,6 +56,9 @@ test("actual AI dispatches capture application context, prompts, images and comp
   });
   assert.equal(executed, 1);
   assert.equal(requests.length, 4);
+  const finishedRequests = operations.filter(record => record.kind === "request" && record.state === "completed");
+  assert.equal(finishedRequests.length, 4, "every actual provider invocation has a settled trace");
+  assert.ok(finishedRequests.every(record => record.durationMs !== undefined && record.durationMs >= 0 && record.visit === 2 && record.attempt === 3 && record.sessionId));
   const usage = await new UsageStore(project).report({ scopeId: accounting.scopeId });
   assert.equal(usage.sessions.length, 1);
   const run = runSchema.parse({ id: runId, createdAt: "now", updatedAt: "now", mode: "live", status: "completed", plan: createTemplate("Evidence", "bug", library), config: library.config, blocks: library.blocks,

@@ -222,7 +222,9 @@ test("a script can finish publication after the preceding AI step exhausts the m
   const { project, library, cleanup } = await fixture(t);
   const remote = await repository(project);
   const head = await commit(project);
-  library.config.budget = budgetSchema.parse({ maxCostUsd: 0.1 });
+  library.config.agent.provider = "publication-fixture";
+  library.config.agent.model = "priced";
+  library.config.budget = budgetSchema.parse({ maxCostUsd: 0.1, prices: { "publication-fixture/priced": { input: 1, output: 1 } } });
   const calls: string[] = [];
   const engine = new WorkflowEngine(project, "live", async (step) => {
     calls.push(step.node.id);

@@ -22,7 +22,7 @@ import { executionLabel, isSourceWorkflow } from "../execution-label.js";
 import "@vue-flow/core/dist/style.css";
 import "@vue-flow/core/dist/theme-default.css";
 import "@vue-flow/controls/dist/style.css";
-const props = defineProps<{ run: WorkflowRun }>();
+const props = defineProps<{ run: WorkflowRun; selected?: string }>();
 const emit = defineEmits<{ select: [id: string] }>();
 const { fitView, dimensions, getNodes } = useVueFlow();
 const motionDuration = () =>
@@ -113,6 +113,7 @@ const nodes = computed<Node[]>(() => [
     .filter((node) => node.kind !== "step")
     .map((node) => ({
       id: node.id,
+      selected: props.selected === node.id,
       type: node.kind,
       position: node.position,
       draggable: false,
@@ -143,6 +144,7 @@ const nodes = computed<Node[]>(() => [
     const placement = layout.value?.nodes.find((item) => item.id === node.id);
     return {
       id: node.id,
+      selected: props.selected === node.id,
       type: "workflow",
       position: positions.value[node.id] ??
         placement?.position ??

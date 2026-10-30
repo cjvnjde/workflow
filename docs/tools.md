@@ -62,6 +62,7 @@ Tool code has a small context:
 | `ctx.progress(text)` | Persist a progress update. Await it like any other effect. |
 | `ctx.summary(text)` | Optional model-facing summary and display preview, up to 16,000 characters. |
 | `ctx.details(value)` | Optional JSON evidence for clients. |
+| `ctx.present(value)` | Optional inert human-facing card metadata, independent of the model summary and typed return. |
 | `ctx.callId` / `ctx.idempotencyKey` | Stable identity for this invocation, including automatic activity retries. A new explicit step retry has a new identity. |
 | `ctx.request` | Original workflow request. |
 
@@ -100,4 +101,17 @@ const app = await createApplication({
 // The embedding host eventually calls await app.close().
 ```
 
-Custom implementations must honor cancellation and the passed ownership/recovery contract. The current extension point applies to shared tools; existing built-in agent tools and `ctx.exec/readFile/writeFile` keep their local implementations. No container or remote environment is included yet. The same engine can already run on a server and be controlled by the web or terminal clients.
+Custom implementations must honor cancellation and the passed ownership/recovery contract. The factory applies to shared tools, direct TypeScript block file/command effects, built-in agent file/command tools, and their checks. Optional `listFiles`, `editText`, and `inspectGit` methods support built-in capabilities; a missing capability fails explicitly, and edit may use the same environment's read/write methods. MCP remains a separately configured external service. Legacy script/function blocks and the host-local `WORKFLOW_INPUT`/`WORKFLOW_RESULT` exchange require the local environment. Source compilation, ownership snapshots, and evidence storage remain host-local responsibilities. No container or remote provider is included yet. The same engine can already run on a server and be controlled by the web or terminal clients.
+
+## Tool presentation
+
+A shared tool can supply a card through `ctx.present()`:
+
+```ts
+ctx.present({ card: "command", command: "bun test", exitCode: result.exitCode,
+  output: result.output.slice(-32000) });
+```
+
+The supported card kinds are `generic`, `command`, `file-read`, `file-diff`, and `search`. Metadata is validated and persisted with the call. Invalid or oversized presentation falls back to ordinary evidence without changing the tool's typed result. Captured before/after text must describe the actual operation; the browser never rereads today's file to reconstruct a historical diff. Tool source, including presentation generation, stays frozen with the approved version.
+
+[Execution inspection](execution-inspection.md) explains nested call cards, historical paging, output capture, and request timing. Command output references are scoped to their attempt. Explicit selected-tool sessions retain exactly their selected tools plus submission: provide a self-contained summary or an explicit retrieval tool when returning a large result to such a session.

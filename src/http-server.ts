@@ -1,3 +1,4 @@
+import { historyQuerySchema } from "./execution-history.js";
 import Fastify, { type FastifyReply } from "fastify";
 import { z } from "zod";
 import type { WorkflowApplication } from "./application.js";
@@ -135,6 +136,11 @@ export async function createHttpServer(app: WorkflowApplication, port = 4310) {
   server.put<{ Params: { id: string } }>("/api/runs/:id/plan", async request => app.updatePlan(request.params.id, request.body, expectedRevision(request.headers)));
   server.delete<{ Params: { id: string } }>("/api/runs/:id", async request => app.removeRun(request.params.id));
   server.get<{ Params: { id: string } }>("/api/runs/:id/events", async request => app.events(request.params.id));
+  server.get<{ Params: { id: string } }>("/api/runs/:id/history", request => app.history(request.params.id, historyQuerySchema.parse(request.query)));
+  server.get<{ Params: { id: string } }>("/api/runs/:id/execution", request => app.execution(request.params.id));
+  server.get<{ Params: { id: string }; Querystring: { key: string } }>("/api/runs/:id/operation-events", request =>
+    app.operationEvents(request.params.id, z.string().min(1).max(4000).parse(request.query.key)));
+
   server.get<{ Params: { id: string } }>("/api/runs/:id/strategy-preview", (request, reply) => cancellable(reply, signal => app.strategyPreview(request.params.id, signal)));
   server.post<{ Params: { id: string } }>("/api/runs/:id/remember", (request, reply) => cancellable(reply, signal => app.rememberStrategy(request.params.id, request.body, signal)));
   server.get<{ Params: { id: string; nodeId: string; visit: string } }>("/api/runs/:id/attempts/:nodeId/:visit/evidence", request =>
@@ -145,6 +151,22 @@ export async function createHttpServer(app: WorkflowApplication, port = 4310) {
     reply.header("content-security-policy", "default-src 'none'; sandbox");
     if (request.query.download === "1") reply.header("content-disposition", `attachment; filename="evidence-${content.ref.id}.${content.ref.mediaType === "application/json" ? "json" : content.ref.mediaType.startsWith("text/") ? "txt" : "bin"}"`);
     return reply.type(content.ref.mediaType).send(content.data);
+  });
+  server.get<{ Params: { id: string; nodeId: string; visit: string; captureId: string; stream: string } }>("/api/runs/:id/attempts/:nodeId/:visit/outputs/:captureId/:stream", async (request, reply) => {
+    const { id, nodeId } = request.params;
+    const visit = z.coerce.number().int().positive().parse(request.params.visit);
+    const captureId = z.string().uuid().parse(request.params.captureId);
+    const stream = z.enum(["stdout", "stderr", "output"]).parse(request.params.stream);
+    const query = z.object({ offset: z.coerce.number().int().nonnegative().optional(), limit: z.coerce.number().int().min(1).max(256000).optional(), download: z.enum(["0", "1"]).optional() }).strict().parse(request.query);
+    reply.header("x-content-type-options", "nosniff");
+    reply.header("content-security-policy", "default-src 'none'; sandbox");
+    if (query.download === "1") {
+      const output = await app.commandOutputDownload(id, nodeId, visit, captureId, stream);
+      reply.header("content-disposition", `attachment; filename="${captureId}-${stream}.txt"`);
+      reply.header("x-workflow-output-truncated", String(output.reference.truncated));
+      return reply.type("text/plain; charset=utf-8").send(output.stream);
+    }
+    return app.commandOutput(id, nodeId, visit, captureId, stream, query);
   });
   server.post<{ Params: { id: string } }>("/api/runs/:id/refine", async (request, reply) => cancellable(reply, signal => app.refine(request.params.id, request.body, expectedRevision(request.headers), signal)));
   server.post<{ Params: { id: string } }>("/api/runs/:id/approve", async request => app.approve(request.params.id, expectedRevision(request.headers)));

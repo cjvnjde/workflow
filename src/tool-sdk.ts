@@ -1,24 +1,37 @@
 import { z } from "zod";
+import type { ToolPresentation } from "./operation-schema.js";
 import type { ExecResult } from "./workflow-sdk.js";
 
 /** Effects supplied by the execution host. Implementations own cancellation and file recovery. */
 export interface ExecutionEnvironment {
   readonly id: string;
   readText(path: string): Promise<string>;
+  listFiles?(pattern?: string): Promise<string[]>;
+  editText?(path: string, oldText: string, newText: string): Promise<void>;
+  inspectGit?(input: { base?: string; path?: string }): Promise<unknown>;
   writeText(path: string, content: string): Promise<void>;
   exec(
     command: string,
-    options?: { timeoutMs?: number; env?: Record<string, string> },
+    options?: { timeoutMs?: number; env?: Record<string, string>; signal?: AbortSignal; onOutput?: (chunk: string) => void; onCapture?: (ref: import("./operation-schema.js").CommandOutputRef) => void },
   ): Promise<ExecResult>;
 }
+/** Serializable effect surface exposed inside an authored tool worker. */
+export interface ToolEnvironment {
+  readonly id: string;
+  readText(path: string): Promise<string>;
+  writeText(path: string, content: string): Promise<void>;
+  exec(command: string, options?: { timeoutMs?: number; env?: Record<string, string> }): Promise<ExecResult>;
+}
 export interface ToolContext {
-  readonly env: ExecutionEnvironment;
+  readonly env: ToolEnvironment;
   readonly callId: string;
   readonly idempotencyKey: string;
   readonly request: string;
   summary(text: string): void;
   details(value: unknown): void;
   progress(text: string): Promise<void>;
+  /** Human-facing display data; never changes the typed return or model summary. */
+  present(value: ToolPresentation): void;
 }
 export type WorkflowTool<I = any, O = any> = {
   readonly kind: "tool";

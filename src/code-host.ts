@@ -4,7 +4,9 @@ import path from "node:path";
 import { resultSchema, type WorkflowRun } from "./domain.js";
 import type { CodeOperation } from "./code-schema.js";
 import type { ExecResult } from "./workflow-sdk.js";
-import { runProcess } from "./process.js";
+import { localExecutionEnvironment, type ExecutionEnvironmentFactory } from "./execution-environment.js";
+import type { FileJournal } from "./recovery.js";
+import type { CommandOutputRef } from "./operation-schema.js";
 
 /** Host command effect. The TypeScript callback itself stays in durable history. */
 export async function executeCodeCommand(
@@ -13,6 +15,7 @@ export async function executeCodeCommand(
   operation: Extract<CodeOperation, { kind: "exec" }>,
   signal: AbortSignal,
   emit: (kind: string, message: string) => void,
+  options: { environmentFactory?: ExecutionEnvironmentFactory; journal?: FileJournal; outputDirectory?: string; onCapture?: (ref: CommandOutputRef) => void; onEnvironment?: (id: string) => void } = {},
 ): Promise<ExecResult> {
   const directory = await mkdtemp(path.join(os.tmpdir(), "workflow-command-"));
   const input = path.join(directory, "input.json"),
@@ -43,25 +46,26 @@ export async function executeCodeCommand(
       }),
       { mode: 0o600 },
     );
-    const result: ExecResult = await runProcess(
-      project,
-      ["bash", "-e", "-o", "pipefail", "-c", operation.command],
-      signal,
-      operation.timeoutMs,
-      {
-        ...process.env,
+    const factory = options.environmentFactory ?? localExecutionEnvironment;
+    const environment = await factory({ project, signal, journal: options.journal, outputDirectory: options.outputDirectory, onCapture: options.onCapture });
+    options.onEnvironment?.(environment.id);
+    // Legacy JSON-file exchange names host-local temp files. A custom execution
+    // world must opt into its own protocol instead of receiving unusable paths.
+    if (factory !== localExecutionEnvironment && /\bWORKFLOW_(INPUT|RESULT)\b/.test(operation.command)) {
+      throw new Error("WORKFLOW_INPUT/WORKFLOW_RESULT compatibility commands require the local execution environment");
+    }
+    const result: ExecResult = await environment.exec(operation.command, {
+      timeoutMs: operation.timeoutMs,
+      env: {
         ...operation.env,
-        WORKFLOW_INPUT: input,
-        WORKFLOW_RESULT: output,
-        WORKFLOW_PROJECT: project,
+        ...(factory === localExecutionEnvironment ? { WORKFLOW_INPUT: input, WORKFLOW_RESULT: output, WORKFLOW_PROJECT: project } : {}),
       },
-      {
-        onOutput(chunk) {
-          pending = (pending + chunk).slice(-6000);
-          timer ??= setTimeout(flush, 150);
-        },
+      signal,
+      onOutput(chunk) {
+        pending = (pending + chunk).slice(-6000);
+        timer ??= setTimeout(flush, 150);
       },
-    );
+    });
     signal.throwIfAborted();
     const info = await lstat(output).catch((error: unknown) => {
       if (error instanceof Error && "code" in error && error.code === "ENOENT")

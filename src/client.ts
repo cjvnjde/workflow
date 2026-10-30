@@ -1,7 +1,7 @@
 import { z } from "zod";
 import {
   eventSchema, projectSchema, runListSchema, runSchema, taskListSchema, taskSchema,
-  usageReportSchema,
+  usageReportSchema, commandOutputPageSchema, historyPageSchema, executionSnapshotSchema, operationEventsSchema, type HistoryQuery,
   setupJobSchema, setupJobsLatestSchema, type StartSetup,
   attemptEvidenceSchema,
   memoryStateSchema, memoryEntrySchema, memoryMutationSchema, type CreateMemoryEntry, type UpdateMemoryEntry,
@@ -96,6 +96,25 @@ export class WorkflowClient {
   runs(signal?: AbortSignal) { return this.request("/api/runs", runListSchema, { signal }); }
   run(id: string, signal?: AbortSignal) { return this.request(`/api/runs/${encodeURIComponent(id)}`, runSchema, { signal }); }
   events(id: string, signal?: AbortSignal) { return this.request(`/api/runs/${encodeURIComponent(id)}/events`, z.array(eventSchema), { signal }); }
+  history(id: string, query: HistoryQuery = {}, signal?: AbortSignal) {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
+    return this.request(`/api/runs/${encodeURIComponent(id)}/history?${params}`, historyPageSchema, { signal });
+  }
+  execution(id: string, signal?: AbortSignal) {
+    return this.request(`/api/runs/${encodeURIComponent(id)}/execution`, executionSnapshotSchema, { signal });
+  }
+  operationEvents(id: string, key: string, signal?: AbortSignal) {
+    return this.request(`/api/runs/${encodeURIComponent(id)}/operation-events?key=${encodeURIComponent(key)}`, operationEventsSchema, { signal });
+  }
+  commandOutputUrl(runId: string, nodeId: string, visit: number, captureId: string, stream: "stdout" | "stderr" | "output" = "output", download = false) {
+    return this.url(`/api/runs/${encodeURIComponent(runId)}/attempts/${encodeURIComponent(nodeId)}/${visit}/outputs/${encodeURIComponent(captureId)}/${stream}${download ? "?download=1" : ""}`);
+  }
+  commandOutput(runId: string, nodeId: string, visit: number, captureId: string, stream: "stdout" | "stderr" | "output" = "output", query: { offset?: number; limit?: number } = {}, signal?: AbortSignal) {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
+    return this.request(`/api/runs/${encodeURIComponent(runId)}/attempts/${encodeURIComponent(nodeId)}/${visit}/outputs/${encodeURIComponent(captureId)}/${stream}?${params}`, commandOutputPageSchema, { signal });
+  }
   attemptEvidence(runId: string, nodeId: string, visit: number, signal?: AbortSignal) {
     return this.request(`/api/runs/${encodeURIComponent(runId)}/attempts/${encodeURIComponent(nodeId)}/${visit}/evidence`, attemptEvidenceSchema, { signal });
   }

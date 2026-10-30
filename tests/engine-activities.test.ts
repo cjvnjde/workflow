@@ -9,7 +9,56 @@ import type { Worker } from "@temporalio/worker";
 import { WorkflowEngine } from "../src/engine.js";
 import { bundleSchema, runSchema } from "../src/domain.js";
 import type { CodeOperation } from "../src/code-schema.js";
+import { readCommandOutput } from "../src/command-output.js";
+import { attemptDirectory } from "../src/attempt-store.js";
 import { fixture, passingRunner } from "./helpers.js";
+
+test("host verification records check spans with expectations and retrievable command output", async t => {
+  const { project, library, cleanup } = await fixture(t);
+  const engine = new WorkflowEngine(project, "live", passingRunner);
+  cleanup(() => engine.shutdown());
+  const id = randomUUID(), now = new Date().toISOString();
+  const block = bundleSchema.parse({
+    definition: { id: "work", name: "Work", description: "Verification", checks: [
+      { command: "test", expect: "failure" }, { command: "test", expect: "success" },
+    ] },
+    prompt: "Work", skills: [],
+  });
+  const run = runSchema.parse({
+    id, temporalWorkflowId: `workflow-${id}`, approvedAt: now, createdAt: now, updatedAt: now,
+    mode: "live", status: "running", executionProtocol: 2,
+    plan: { title: "Verification", task: "Work", entry: "work", nodes: [{ id: "work", block: "work", label: "Work", goal: "Work", on: { pass: "$complete", retry: "$failed", fail: "$failed" } }] },
+    config: { ...library.config, commands: { test: { argv: ["bash", "-c", "printf 'reproduction evidence\\n'; exit 3"], timeoutMs: 2000 } } },
+    blocks: { work: block }, cursor: "work", visits: { work: 1 }, artifacts: {},
+    attempts: [{ nodeId: "work", visit: 1, startedAt: now }],
+  });
+  engine["runs"].set(id, run);
+  const activity = {
+    info: { workflowExecution: { workflowId: run.temporalWorkflowId }, activityId: "verify", attempt: 1 },
+    cancellationSignal: new AbortController().signal,
+    heartbeat: () => {},
+  } as unknown as Context;
+  const result = await asyncLocalStorage.run(activity, () => engine["executeBlockNow"](run));
+  assert.equal(result.result.outcome, "retry");
+  assert.deepEqual(result.checks.map(check => check.matched), [true, false]);
+  const operations = (await engine.events(id)).flatMap(event => event.operation ? [event.operation] : []);
+  const started = operations.filter(operation => operation.state === "started");
+  const completed = operations.filter(operation => operation.state === "completed");
+  assert.deepEqual(started.map(operation => operation.id), [`${id}/verify/check-1`, `${id}/verify/check-2`]);
+  assert.equal(completed.length, 2);
+  for (const [index, operation] of completed.entries()) {
+    assert.equal(operation.kind, "exec");
+    assert.equal(operation.parentId, `${id}/verify`);
+    assert.equal(operation.environmentId, `local:${project}`);
+    assert.ok(operation.durationMs! >= 0);
+    assert.deepEqual(operation.details, { check: true, expected: index === 0 ? "failure" : "success", matched: index === 0, exitCode: 3 });
+    assert.equal(operation.presentation?.card, "command");
+    assert.equal(operation.presentation?.exitCode, 3);
+    assert.ok(operation.outputRef);
+    assert.deepEqual(operation.outputRef, result.checks[index]!.outputRef);
+    assert.equal((await readCommandOutput(attemptDirectory(project, id, "work", 1), operation.outputRef!.id)).text, "reproduction evidence\n");
+  }
+});
 
 test("code activities cannot execute or simulate a snapshot approved in another mode", async t => {
   const { project, library, cleanup } = await fixture(t);

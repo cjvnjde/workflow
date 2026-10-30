@@ -3,6 +3,9 @@ import { z } from "zod";
 import type { ExecutionEnvironment } from "./tool-sdk.js";
 import {
   boundedEvidence,
+  toolPresentationSchema,
+  type ToolPresentation,
+  type CommandOutputRef,
   toolReferenceSchema,
   type OperationRecorder,
 } from "./operation-schema.js";
@@ -15,11 +18,13 @@ const descriptorSchema = toolReferenceSchema.extend({
 });
 export type ToolDescriptor = z.infer<typeof descriptorSchema>;
 export type ToolResult = {
+  presentation?: ToolPresentation;
   data: z.infer<ReturnType<typeof z.json>>;
   summary?: string;
   details?: z.infer<ReturnType<typeof z.json>>;
 };
 const resultSchema = z.object({
+  presentation: toolPresentationSchema.optional().catch(undefined),
   data: z.json(),
   summary: z.string().max(16_000).optional(),
   details: z.json().optional(),
@@ -71,7 +76,7 @@ async function openTools(codePath: string, signal: AbortSignal) {
         clearTimeout(timer);
         ready.resolve(z.array(descriptorSchema).max(64).parse(message.tools));
       } else if (message.type === "result") {
-        if (Buffer.byteLength(JSON.stringify(message)) > 256_000)
+        if (Buffer.byteLength(JSON.stringify({ data: message.data, summary: message.summary, details: message.details })) > 256_000)
           throw new Error("Tool result exceeds 256 KB");
         result.resolve(resultSchema.parse(message));
       } else if (message.type === "error")
@@ -176,6 +181,8 @@ export async function executeTool(options: {
               ? "write"
               : "exec";
         let started = false;
+        const effectStarted = performance.now();
+        let capturedOutput: CommandOutputRef | undefined;
         try {
           signal.throwIfAborted();
           if (pending)
@@ -219,6 +226,7 @@ export async function executeTool(options: {
           await options.record({
             id,
             parentId: options.callId,
+            environmentId: environment.id,
             name: message.method,
             kind,
             state: "started",
@@ -234,7 +242,7 @@ export async function executeTool(options: {
                   )
                 : await environment.exec(
                     name,
-                    z
+                    { ...z
                       .object({
                         timeoutMs: z
                           .number()
@@ -247,15 +255,26 @@ export async function executeTool(options: {
                       .strict()
                       .optional()
                       .parse(args[1] ?? undefined),
+                      // This callback is host-owned; authored options remain
+                      // strict JSON and cannot replace capture or cancellation.
+                      signal,
+                      onCapture: ref => { capturedOutput = ref; },
+                    },
                   );
+          if (kind === "exec") capturedOutput ??= (value as import("./workflow-sdk.js").ExecResult).outputRef;
           signal.throwIfAborted();
           const evidence = boundedEvidence(value);
           await options.record({
             id,
             parentId: options.callId,
+            environmentId: environment.id,
             name: message.method,
             kind,
             state: "completed",
+            durationMs: performance.now() - effectStarted,
+            ...(kind === "exec" ? { outputRef: (value as import("./workflow-sdk.js").ExecResult).outputRef,
+              presentation: {card: "command" as const, command: name.slice(0,16000), exitCode: (value as import("./workflow-sdk.js").ExecResult).exitCode,
+                output: (value as import("./workflow-sdk.js").ExecResult).output.slice(-32000)} } : {}),
             output: evidence.value,
             truncated: evidence.truncated,
           });
@@ -272,6 +291,9 @@ export async function executeTool(options: {
               name: message.method,
               kind,
               state: signal.aborted ? "interrupted" : "failed",
+              environmentId: environment.id,
+              outputRef: capturedOutput,
+              durationMs: performance.now() - effectStarted,
               summary: String(error).slice(0, 16_000),
             });
           runtime.worker.postMessage({

@@ -17,7 +17,7 @@ import { waitForRun } from "../src/client.js";
 
 const reader = `
 const readSource = defineTool({name:"read_source",description:"Read source",replay:"safe",input:z.object({path:z.string()}),output:z.object({text:z.string()}),
-  async execute(input,ctx){ctx.summary("Source inspected");ctx.details({path:input.path});return {text:prefix+await ctx.env.readText(input.path)};}});
+  async execute(input,ctx){ctx.summary("Source inspected");ctx.details({path:input.path});ctx.present({card:"file-read",path:input.path,title:"Captured source"});return {text:prefix+await ctx.env.readText(input.path)};}});
 `;
 
 test("shared tools retain frozen imports, typed outputs, journaled writes and structured activity", async (t) => {
@@ -63,6 +63,7 @@ test("shared tools retain frozen imports, typed outputs, journaled writes and st
   );
   assert.ok(read?.operation);
   assert.deepEqual(read.operation.output, { text: "reviewed:source" });
+  assert.deepEqual(read.operation.presentation, { card: "file-read", path: "input.txt", title: "Captured source" });
   assert.ok(
     events.some(
       (e) =>
@@ -262,6 +263,8 @@ test("tool host validates schemas, limits effects, and cancels a busy worker and
         if(action==="loop") {await ctx.env.readText("file");while(true){}}
         if(action==="unawaited") {void ctx.env.readText("slow");return "bad";}
         if(action==="invalid") return 42 as any;
+        if(action==="bad-card") {await ctx.env.readText("file");ctx.present({card:"unknown"} as any);}
+        if(action==="large-card") {await ctx.env.readText("file");ctx.present({card:"command",output:"x".repeat(100000)});}
         return "ok";
       }});
     export default workflow({name:"Bounded",flow:step("test",block({run:ctx=>ctx.call(tool,{action:"ok"})}))});`;
@@ -317,6 +320,13 @@ test("tool host validates schemas, limits effects, and cancels a busy worker and
     });
   await assert.rejects(invoke({ action: 42 }), /string/);
   assert.equal(effects, 0);
+  for (const action of ["bad-card", "large-card"]) {
+    const count: number = effects;
+    const result = await invoke({ action });
+    assert.equal(result.data, "ok");
+    assert.equal(result.presentation, undefined);
+    assert.equal(effects, count + 1, "invalid presentation must not repeat a completed effect");
+  }
   await assert.rejects(invoke({ action: "invalid" }), /string/);
   await assert.rejects(invoke({ action: "write" }), /only read/);
   await assert.rejects(invoke({ action: "unawaited" }), /Await every/);
@@ -539,4 +549,30 @@ test("real Pi session uses the selected shared tool and persists its operation t
     !events.some((event) => event.operation?.parentId === rejected.id),
     "rejected arguments must not cause an environment effect",
   );
+});
+
+test("cancelled shared commands retain transcript identity and environment evidence", async t => {
+  const { project, library } = await fixture(t);
+  const versions = new WorkflowVersions(path.join(project, ".workflow", "versions"));
+  const built = await compileProgram(project, {source:`
+    import {workflow,block,defineTool,step,z} from "workflow";
+    const command=defineTool({name:"capture_command",description:"Capture a command",input:z.object({}),output:z.string(),
+      async execute(_,ctx){await ctx.env.exec("printf 'retained before cancellation\\n'; sleep 10");return "finished";}});
+    export default workflow({name:"Capture",flow:step("capture",block({run:ctx=>ctx.call(command,{})}))});
+  `}, versions, library.blocks);
+  const version = await versions.load(built.version.id);
+  const controller = new AbortController();
+  const records: import("../src/operation-schema.js").OperationRecord[] = [];
+  await assert.rejects(executeTool({codePath:version.toolsPath!,tool:{name:"capture_command",version:1,replay:"unsafe"},input:{},callId:"shared-command",request:"Capture cancellation",signal:controller.signal,
+    record:async event=>{records.push(event);},
+    environment:signal=>localExecutionEnvironment({project,signal,outputDirectory:project,onOutput:()=>controller.abort(new Error("Stop retained command"))}),
+  }),/Stop retained command/);
+  const interrupted=records.find(record=>record.kind==="exec"&&record.state==="interrupted");
+  assert.ok(interrupted?.outputRef,"cancelled command output remains addressable");
+  assert.equal(interrupted.environmentId,`local:${project}`);
+  assert.ok(interrupted.durationMs !== undefined && interrupted.durationMs >= 0);
+  assert.equal(interrupted.parentId,"shared-command");
+  const { readCommandOutput } = await import("../src/command-output.js");
+  const captured=await readCommandOutput(project,interrupted.outputRef.id);
+  assert.match(captured.text,/retained before cancellation/);
 });

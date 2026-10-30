@@ -17,6 +17,12 @@ import EvidenceValue from "./EvidenceValue.vue";
 const props = defineProps<{
   run: WorkflowRun;
   selected?: string;
+  focus?: {
+    nodeId: string;
+    visit: number;
+    operationId: string;
+    sessionId?: string;
+  };
   events: RunEvent[];
 }>();
 const emit = defineEmits<{ select: [id: string]; editor: []; activity: [] }>();
@@ -36,7 +42,13 @@ const visits = computed(() =>
     .filter((item) => item.nodeId === node.value?.id)
     .sort((a, b) => b.visit - a.visit),
 );
-const chosenVisit = ref<number>();
+const chosenVisit = ref<number | undefined>(props.focus?.visit);
+watch(
+  () => props.focus,
+  (focus) => {
+    if (focus) chosenVisit.value = focus.visit;
+  },
+);
 let requestedVisit: number | undefined;
 const visit = computed(() => chosenVisit.value ?? visits.value[0]?.visit);
 const attempt = computed(() =>
@@ -67,7 +79,9 @@ const current = computed(
 watch(
   () => `${props.run.id}/${node.value?.id}`,
   () => {
-    chosenVisit.value = requestedVisit;
+    chosenVisit.value =
+      requestedVisit ??
+      (node.value?.id === props.focus?.nodeId ? props.focus?.visit : undefined);
     requestedVisit = undefined;
   },
 );
@@ -435,6 +449,13 @@ onScopeDispose(() => {
           v-for="session in evidence.sessions"
           :key="session.sessionId"
           class="data-session"
+          :open="
+            !!focus &&
+            (focus.sessionId
+              ? focus.sessionId === session.sessionId
+              : focus.operationId === session.operationId ||
+                focus.operationId.startsWith(session.operationId + '/'))
+          "
           :aria-label="`AI session ${session.sessionId}`"
         >
           <summary>
@@ -544,9 +565,19 @@ onScopeDispose(() => {
               :value="image"
               :label="`Prompt ${prompt.index + 1} image ${index + 1}`"
           /></template>
-          <details v-if="session.tools.length" class="data-tools">
+          <details
+            v-if="session.tools.length"
+            class="data-tools"
+            :open="!!focus"
+          >
             <summary>Tool calls · {{ session.tools.length }}</summary>
-            <article v-for="tool in session.tools" :key="tool.callId">
+            <article
+              v-for="tool in session.tools"
+              :key="tool.callId"
+              :class="{
+                'focused-call': focus?.operationId.endsWith('/' + tool.callId),
+              }"
+            >
               <h4>{{ tool.name ?? tool.callId }} · {{ tool.state }}</h4>
               <p v-if="tool.error" class="data-warning">{{ tool.error }}</p>
               <EvidenceValue
@@ -724,6 +755,10 @@ h4 {
 .data-settings,
 .data-tools {
   margin-top: 14px;
+}
+.data-tools article.focused-call {
+  border-left: 3px solid var(--accent);
+  padding-left: 10px;
 }
 .data-tools article {
   border-top: 1px solid var(--ui-edge);

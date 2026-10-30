@@ -669,6 +669,7 @@ button.danger, button.danger-quiet { color: var(--ctp-red); background: color-mi
   .workflow-dialog { inset: 6px; width: calc(100vw - 12px); height: calc(100dvh - 12px); border-radius: 10px; }
   .expanded-heading { padding: 14px 14px 6px; gap: 12px; }
   .expanded-heading h2 { font-size: 15px; }
+  .tabs .expand-workspace { position: sticky; right: 0; z-index: 1; background: var(--ctp-base); box-shadow: -8px 0 8px var(--ctp-base); }
   .tabs .expand-workspace > span { display: none; }
 }
 @media (max-width: 480px) {

@@ -1,3 +1,5 @@
+import { ToolConcurrency } from "./tool-concurrency.js";
+import { SessionTiming } from "./session-timing.js";
 import {
   createAgentSession,
   createExtensionRuntime,
@@ -11,7 +13,7 @@ import type { ImageContent, Usage } from "@earendil-works/pi-ai";
 import type { z } from "zod";
 import { addUsage, emptyUsage, priceUsage } from "./budget.js";
 import { getModelRuntime } from "./model-runtime.js";
-import { boundedEvidence, type OperationRecorder } from "./operation-schema.js";
+import { boundedEvidence, toolPresentationSchema, commandOutputRefSchema, type OperationRecorder } from "./operation-schema.js";
 import { createAccountingContext, UsageStore } from "./usage-store.js";
 import type { AccountingContext } from "./usage-schema.js";
 import { EvidenceStore, type SessionEvidenceIdentity } from "./evidence-store.js";
@@ -106,9 +108,18 @@ export async function runAgentSession(options: {
     // Await all already-started writes, including when an earlier one failed.
     void evidenceWrites.catch(() => {});
   };
+  const queueOperation = (value: Parameters<OperationRecorder>[0]) => {
+    if (!options.operation) return;
+    operationWrites = operationWrites.then(() => options.operation!.record({
+      visit: accounting.visit, attempt: accounting.activityAttempt, parentAttempt: accounting.activityAttempt,
+      sessionId: tracked.id, ...value,
+    }));
+    void operationWrites.catch(error => budget.abort(error));
+  };
+  const timing = new SessionTiming(options.operation?.parentId ?? accounting.operationId, tracked.id, queueOperation);
   const recordedCalls = new Set<string>();
   const requestedInputs = new Map<string, unknown>();
-  const tools = options.tools.map((tool) => ({
+  const recordedTools = options.tools.map((tool) => ({
     ...tool,
     executionMode: "sequential" as const,
     execute: async (...args: Parameters<ToolDefinition["execute"]>) => {
@@ -124,23 +135,35 @@ export async function runAgentSession(options: {
       }
 
       if (!options.operation) return await tool.execute(...args);
-      const record = options.operation.record;
+      const record: OperationRecorder = value => options.operation!.record({ visit: accounting.visit, attempt: accounting.activityAttempt, parentAttempt: accounting.activityAttempt, sessionId: tracked.id, ...value });
       const identity = { id: `${options.operation.parentId}/${args[0]}`, parentId: options.operation.parentId, name: tool.name, kind: "tool" as const };
       const evidence = boundedEvidence(args[1]);
-      const started = Date.now();
+      const started = performance.now();
       recordedCalls.add(args[0]);
       await record({ ...identity, state: "started", input: evidence.value, truncated: evidence.truncated });
       try {
         const result = await tool.execute(...args);
         combinedSignal.throwIfAborted();
         const output = boundedEvidence(result.content), details = boundedEvidence(result.details);
-        await record({ ...identity, state: "completed", output: output.value, details: details.value, truncated: output.truncated || details.truncated, durationMs: Date.now() - started });
+        const metadata = result.details as Record<string, unknown> | undefined;
+        const presentation = toolPresentationSchema.safeParse(metadata?.toolPresentation);
+        const outputRef = commandOutputRefSchema.safeParse(metadata?.outputRef);
+        await record({ ...identity, state: (result as {isError?: boolean}).isError ? "failed" : "completed", environmentId: typeof metadata?.environmentId === "string" ? metadata.environmentId : undefined, presentation: presentation.success ? presentation.data : undefined, outputRef: outputRef.success ? outputRef.data : undefined, output: output.value, details: details.value, truncated: output.truncated || details.truncated, durationMs: performance.now() - started });
         return result;
       } catch (error) {
-        await record({ ...identity, state: combinedSignal.aborted ? "interrupted" : "failed", summary: String(error).slice(0, 16_000), durationMs: Date.now() - started });
+        await record({ ...identity, state: combinedSignal.aborted ? "interrupted" : "failed", summary: String(error).slice(0, 16_000), durationMs: performance.now() - started });
         throw error;
       }
     },
+  }));
+  const parallelLimit = settings.maxParallelTools ?? 1;
+  const concurrency = new ToolConcurrency(parallelLimit);
+  const tools = recordedTools.map((tool, index) => ({
+    ...tool,
+    // Only owning built-ins explicitly declare safe parallel execution. Unknown,
+    // shared and MCP tools remain exclusive; Pi serializes any mixed batch.
+    executionMode: parallelLimit > 1 && options.tools[index]?.executionMode === "parallel" ? "parallel" as const : "sequential" as const,
+    execute: (...args: Parameters<ToolDefinition["execute"]>) => concurrency.run(() => tool.execute(...args), combinedSignal),
   }));
   const { session } = await createAgentSession({
     cwd: project,
@@ -156,6 +179,14 @@ export async function runAgentSession(options: {
       compaction: { enabled: maxCostUsd === undefined },
     }),
   }).catch(async error => { try { await tracked.finish(signal.aborted ? "cancelled" : "failed", String(error)); } finally { tracked.release(); } throw error; });
+  const stream = session.agent.streamFunction;
+  session.agent.streamFunction = async (...args) => {
+    timing.endWait("Provider retry backoff");
+    timing.start(args[0].provider, args[0].id);
+    await operationWrites;
+    try { return timing.observe(await stream(...args)); }
+    catch (error) { timing.finish(combinedSignal.aborted ? "interrupted" : "failed"); throw error; }
+  };
   let abortPromise: Promise<void> | undefined;
   const abort = () => {
     // Retry-start listeners run before Pi installs its backoff controller.
@@ -185,6 +216,14 @@ export async function runAgentSession(options: {
     }
   };
   const unsubscribe = session.subscribe((event) => {
+    if (event.type === "auto_retry_start") timing.wait("Provider retry backoff", { attempt: event.attempt, delayMs: event.delayMs });
+    if (event.type === "auto_retry_end") timing.endWait("Provider retry backoff", event.success ? "completed" : "failed");
+    if (event.type === "compaction_start") timing.wait("Context compaction", { reason: event.reason });
+    if (event.type === "compaction_end") timing.endWait("Context compaction", event.aborted ? "interrupted" : event.errorMessage ? "failed" : "completed", {
+      reason: event.reason, willRetry: event.willRetry,
+      ...(event.result ? { tokensBefore: event.result.tokensBefore } : {}),
+      ...(event.result?.estimatedTokensAfter === undefined ? {} : { estimatedTokensAfter: event.result.estimatedTokensAfter }),
+    });
     // Capture the SDK's requested arguments and final feedback, including calls
     // rejected before our tool wrapper runs. Compact activity logs are separate.
     if (evidenceIdentity && event.type === "tool_execution_start") {
@@ -231,11 +270,11 @@ export async function runAgentSession(options: {
         const input = boundedEvidence(requestedInputs.get(event.toolCallId));
         const output = boundedEvidence(event.result?.content);
         const operation = options.operation;
-        operationWrites = operationWrites.then(() => operation.record({
+        queueOperation({
           id: `${operation.parentId}/${event.toolCallId}`, parentId: operation.parentId,
           name: event.toolName, kind: "tool", state: event.isError ? "failed" : "completed",
           input: input.value, output: output.value, truncated: input.truncated || output.truncated,
-        })).catch(error => { budget.abort(error); });
+        });
       }
       requestedInputs.delete(event.toolCallId);
     } else if (event.type === "tool_execution_start" && !options.operation) {
@@ -275,6 +314,7 @@ export async function runAgentSession(options: {
       "agent_start",
       `${model.provider}/${model.id} · thinking ${session.thinkingLevel}`,
     );
+    queueOperation({ id: options.operation?.parentId ?? accounting.operationId, name: "AI session", kind: "ai", state: "progress", sessionId: tracked.id, details: { provider: model.provider, model: model.id, thinking: session.thinkingLevel } });
     emit("model_session", JSON.stringify({ sessionId: tracked.id, operationId: accounting.operationId, scopeId: accounting.scopeId, nodeId: accounting.nodeId, visit: accounting.visit, provider: model.provider, model: model.id, thinking: session.thinkingLevel, tools: options.tools.map(tool => tool.name) }));
     let promptIndex = 0;
     const prompt = async (message: string, images?: ImageContent[]) => {
@@ -306,6 +346,7 @@ export async function runAgentSession(options: {
   finally {
     combinedSignal.removeEventListener("abort", abort);
     unsubscribe();
+    timing.close();
     try {
       const writes = await Promise.allSettled([abortPromise, usageWrites, operationWrites, evidenceWrites]);
       const failed = writes.find(write => write.status === "rejected");

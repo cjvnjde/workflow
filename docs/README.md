@@ -28,6 +28,7 @@ Workflow turns a development request into an inspectable TypeScript graph, then 
 | [Writing workflows](workflows.md) | The composition primitives, typed data, conditions, outcomes, loops, parallel scheduling, and older workflow formats. |
 | [Block contracts and evidence](block-contracts-and-evidence.md) | Single-block testing, enforced ownership roles, selective skills/MCP, decisions and actual model sessions. |
 | [Writing blocks](blocks.md) | `block()`, context operations, AI outputs, model overrides, command results, artifacts, and reusable library modules. |
+| [Execution inspection](execution-inspection.md) | Timeline, nested calls, historical activity, exact evidence links, request timing, and full command output. |
 | [Shared tools](tools.md) | Typed tools callable by blocks and models, replay rules, frozen implementations, structured activity, and environments. |
 | [Configuration](configuration.md) | Providers, model profiles, task instructions, AI settings chats, skills, MCP, limits, and stored configuration. |
 | [GitHub triggers](triggers.md) | Persistent polling, event filters, frozen workflows, queues, test drafts, result comments, and background operation. |
@@ -53,6 +54,10 @@ Workflow turns a development request into an inspectable TypeScript graph, then 
 The examples use project tools and, where applicable, configured model profiles. Read their commands and adapt them to your project before approving execution.
 
 ## What the docs describe
+
+Design assessments and proposals are separate from the current-behavior guides:
+
+- [DeepSeek Harness ideas for Workflow](deepseek-harness-analysis.md): comparison of tool-call inspection, timelines, history, and extension boundaries, with a proposed adoption order.
 
 These guides describe the current implementation. New authoring uses TypeScript `block()` definitions and declared workflow composition. Older explicit-route graphs and imperative workflows remain supported; their differences are called out in the relevant guides.
 

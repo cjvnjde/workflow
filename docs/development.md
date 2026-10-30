@@ -93,7 +93,15 @@ The pinned Temporal SDK may print `v8.promiseHooks.createHook is not available` 
 
 ## UI screenshots
 
-The README screenshots use a disposable project and an explicitly simulated task. Capture web screenshots from the running browser workspace. To capture the terminal renderer connected to the same task/run:
+The README execution screenshots use deterministic demonstration records rendered by the built browser UI. Regenerate them after building, with port 4311 free:
+
+```sh
+WORKFLOW_CHROMIUM_PATH=/usr/bin/chromium bun scripts/capture-execution.ts
+```
+
+The script starts an isolated fixture server, opens the expanded timeline and grouped calls, and saves `docs/screenshots/execution-timeline.png` and `docs/screenshots/tool-calls.png`. It creates a disposable demo workflow and supplies recorded-history fixtures for repeatable timings and captured file contents; it makes no model requests. It closes the browser and fixture server afterward. Omit `WORKFLOW_CHROMIUM_PATH` when Playwright's bundled Chromium is installed.
+
+To capture the terminal renderer connected to a running task or run:
 
 ```sh
 WORKFLOW_CHROMIUM_PATH=/usr/bin/chromium bun run screenshot:terminal \

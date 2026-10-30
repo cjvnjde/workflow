@@ -1,3 +1,4 @@
+import { readCommandOutput, streamCommandOutput, type CommandOutputStream } from "./command-output.js";
 import { executionWorkspace } from "./execution-workspace.js";
 import { Type } from "@earendil-works/pi-ai";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
@@ -310,6 +311,16 @@ export class WorkflowEngine {
     return await this.store.events(id);
   }
 
+  async history(id: string, options: import("./execution-history.js").HistoryQuery = {}) {
+    this.requireRun(id); await this.flushEvents(); return this.store.history(id, options);
+  }
+  async execution(id: string) {
+    this.requireRun(id); await this.flushEvents(); return this.store.execution(id);
+  }
+  async operationEvents(id: string, key: string) {
+    this.requireRun(id); await this.flushEvents(); return this.store.operationEvents(id, key);
+  }
+
   private emit(run: WorkflowRun, kind: string, message: string, nodeId?: string, id: string = randomUUID()) {
     const event: RunEvent = { id, runId: run.id, time: new Date().toISOString(), kind, message, nodeId };
     // Synchronous model callbacks enqueue work; flushEvents reports write errors.
@@ -350,7 +361,10 @@ export class WorkflowEngine {
   }
 
   private async recordOperation(run: WorkflowRun, nodeId: string, value: OperationRecord) {
-    const operation = operationRecordSchema.parse(value);
+    let activityAttempt: number | undefined;
+    try { activityAttempt = Context.current().info.attempt; } catch { /* Non-activity diagnostics. */ }
+    const operation = operationRecordSchema.parse({ visit: run.visits[nodeId], attempt: activityAttempt,
+      ...(value.parentId && activityAttempt ? { parentAttempt: activityAttempt } : {}), ...value });
     const event: RunEvent = { id: randomUUID(), runId: run.id, nodeId, time: new Date().toISOString(), kind: "operation", operation,
       message: `${operation.name}: ${operation.state}${operation.summary ? `\n${operation.summary}` : ""}` };
     await this.publishEvent(event);
@@ -376,7 +390,7 @@ export class WorkflowEngine {
           environment: signal => this.environmentFactory({ ...options, signal }),
           record: record => this.recordOperation(run, run.cursor, record),
         });
-        return { content: [{ type: "text" as const, text: result.summary ?? JSON.stringify(result.data) }], details: { data: result.data, ...(result.details === undefined ? {} : { presentation: result.details }) } };
+        return { content: [{ type: "text" as const, text: result.summary ?? JSON.stringify(result.data) }], details: { data: result.data, ...(result.details === undefined ? {} : { presentation: result.details }), ...(result.presentation ? { toolPresentation: result.presentation } : {}) } };
       },
     }));
   }
@@ -394,6 +408,21 @@ export class WorkflowEngine {
     this.assertActivity(run);
     if (!run.attempts.some(attempt => attempt.nodeId === key.nodeId && attempt.visit === key.visit)) throw new Error("Unknown execution attempt");
     await this.evidence.captureStep(key, capture);
+  }
+
+  private commandOutputDirectory(runId: string, nodeId: string, visit: number) {
+    const identity = evidenceIdentitySchema.parse({ runId, nodeId, visit });
+    const run = this.requireRun(runId);
+    if (!run.attempts.some(attempt => attempt.nodeId === identity.nodeId && attempt.visit === identity.visit)) throw new Error("Unknown execution attempt");
+    return attemptDirectory(this.project, runId, nodeId, visit);
+  }
+
+  commandOutput(runId: string, nodeId: string, visit: number, captureId: string, stream: CommandOutputStream = "output", options: { offset?: number; limit?: number } = {}) {
+    return readCommandOutput(this.commandOutputDirectory(runId, nodeId, visit), captureId, stream, options);
+  }
+
+  commandOutputDownload(runId: string, nodeId: string, visit: number, captureId: string, stream: CommandOutputStream = "output") {
+    return streamCommandOutput(this.commandOutputDirectory(runId, nodeId, visit), captureId, stream);
   }
 
   async attemptEvidence(runId: string, nodeId: string, visit: number) {
@@ -977,6 +1006,9 @@ export class WorkflowEngine {
     const label = operation.kind === "tool" ? operation.tool.name : operation.kind === "exec" ? operation.command : operation.kind === "ai" ? operation.prompt : operation.path;
     emit("operation_start", `${operation.kind}: ${label.slice(0, 6000)}`);
     const identity = { id: operationId, name: operation.kind === "ai" ? "AI session" : operation.kind, kind: operation.kind, attempt: context.info.attempt };
+    let environmentId: string | undefined;
+    let capturedOutput: import("./operation-schema.js").CommandOutputRef | undefined;
+    const operationStarted = performance.now();
     const heartbeat = setInterval(() => context.heartbeat({ nodeId: node.id, operation: operation.kind }), 1000);
     context.heartbeat({ nodeId: node.id });
     try {
@@ -992,9 +1024,9 @@ export class WorkflowEngine {
           const directory = attemptDirectory(this.project, run.id, node.id, run.visits[node.id] ?? 1);
           const journal = await FileJournal.open(directory, this.fileClaims);
           const output = await executeTool({ codePath: await this.frozenTools(run), tool: operation.tool, input: operation.input,
-            callId: operationId, request: run.plan.task, signal, environment: signal => this.environmentFactory({ project: this.project, signal, journal }), record });
+            callId: operationId, request: run.plan.task, signal, environment: signal => this.environmentFactory({ project: this.project, signal, journal, outputDirectory: directory }), record });
           const data = boundedEvidence(output.data), details = boundedEvidence(output.details);
-          await record({ ...identity, state: "completed", output: data.value, details: details.value, summary: output.summary, truncated: data.truncated || details.truncated, durationMs: Date.now() - started });
+          await record({ ...identity, state: "completed", output: data.value, details: details.value, summary: output.summary, presentation: output.presentation, truncated: data.truncated || details.truncated, durationMs: Date.now() - started });
           result = output.data;
         } catch (error) {
           await record({ ...identity, state: signal.aborted ? "interrupted" : "failed", summary: String(error).slice(0, 16_000), durationMs: Date.now() - started });
@@ -1086,12 +1118,17 @@ export class WorkflowEngine {
         result = operation.kind === "exec" ? { exitCode: 0, stdout: "DEMO", stderr: "", output: "DEMO: no command was executed.", timedOut: false }
           : operation.kind === "read" ? "DEMO: no file was read." : null;
       } else if (operation.kind === "exec") {
-        result = await executeCodeCommand(this.project, run, operation, signal, emit);
+        const directory = attemptDirectory(this.project, run.id, node.id, run.visits[node.id] ?? 1);
+        const journal = await FileJournal.open(directory, this.fileClaims);
+        result = await executeCodeCommand(this.project, run, operation, signal, emit, { environmentFactory: this.environmentFactory, journal, outputDirectory: directory,
+          onEnvironment: id => { environmentId = id; },
+          onCapture: outputRef => { capturedOutput = outputRef; this.emit(run, "command_output", JSON.stringify({ operationId, visit: run.visits[node.id], outputRef }), node.id); } });
       } else {
         const directory = attemptDirectory(this.project, run.id, node.id, run.visits[node.id] ?? 1);
-        const workspace = await Workspace.create(this.project, { signal, journal: await FileJournal.open(directory, this.fileClaims) });
-        if (operation.kind === "read") result = await workspace.read(operation.path);
-        else { await workspace.write(operation.path, operation.content); result = null; }
+        const environment = await this.environmentFactory({ project: this.project, signal, journal: await FileJournal.open(directory, this.fileClaims), outputDirectory: directory });
+        environmentId = environment.id;
+        if (operation.kind === "read") result = await environment.readText(operation.path);
+        else { await environment.writeText(operation.path, operation.content); result = null; }
       }
       signal.throwIfAborted();
       if (Buffer.byteLength(JSON.stringify(result)) > 256_000) throw new Error("Operation result exceeds 256 KB. Read a smaller file or return a concise result.");
@@ -1099,11 +1136,14 @@ export class WorkflowEngine {
         ? `exec: exit ${(result as { exitCode: number | null }).exitCode}` : `${operation.kind}: finished`);
       if (operation.kind !== "tool") {
         const output = boundedEvidence(result);
-        await record({ ...identity, state: "completed", output: output.value, truncated: output.truncated });
+        await record({ ...identity, state: "completed", environmentId, output: output.value, truncated: output.truncated, durationMs: performance.now() - operationStarted,
+          ...(operation.kind === "exec" ? { outputRef: (result as import("./workflow-sdk.js").ExecResult).outputRef,
+            presentation: { card: "command" as const, command: operation.command.slice(0, 16000), cwd: this.project,
+              exitCode: (result as import("./workflow-sdk.js").ExecResult).exitCode, output: (result as import("./workflow-sdk.js").ExecResult).output.slice(-32000) } } : {}) });
       }
       return result;
     } catch (error) {
-      if (operation.kind !== "tool") await record({ ...identity, state: signal.aborted ? "interrupted" : "failed", summary: String(error).slice(0, 16_000) });
+      if (operation.kind !== "tool") await record({ ...identity, state: signal.aborted ? "interrupted" : "failed", summary: String(error).slice(0, 16_000), outputRef: capturedOutput, environmentId, durationMs: performance.now() - operationStarted });
       emit("operation_error", `${operation.kind}: ${String(error)}`); throw error;
     }
     finally { clearInterval(heartbeat); }
@@ -1123,11 +1163,21 @@ export class WorkflowEngine {
     activity.heartbeat({ nodeId: value.cursor, waiting: "budgeted model session" });
     const signal = AbortSignal.any([activity.cancellationSignal, this.leaseCancellation.signal]);
     let onAbort!: () => void;
+    const parentId = shared?.parentId ?? `${value.id}/${activity.info.activityId}`;
+    const wait = { id: `${parentId}/budget-queue`, parentId, name: "Budget queue", kind: "wait" as const };
+    const waitingAt = performance.now();
+    let waiting = true;
     try {
+      await this.recordOperation(value, value.cursor!, { ...wait, state: "started" });
       signal.throwIfAborted();
       await Promise.race([before, new Promise<never>((_, reject) => { onAbort = () => reject(signal.reason); signal.addEventListener("abort", onAbort, {once:true}); })]);
       signal.throwIfAborted();
+      await this.recordOperation(value, value.cursor!, { ...wait, state: "completed", durationMs: performance.now() - waitingAt });
+      waiting = false;
       return await this.executeBlockNow(value, resultMode, protectedPaths, writablePaths, workspace, tools, capabilities, shared, aiContext);
+    } catch (error) {
+      if (waiting) await this.recordOperation(value, value.cursor!, { ...wait, state: signal.aborted ? "interrupted" : "failed", durationMs: performance.now() - waitingAt });
+      throw error;
     } finally {
       clearInterval(heartbeat);
       if (onAbort) signal.removeEventListener("abort", onAbort);
@@ -1185,6 +1235,10 @@ export class WorkflowEngine {
     const heartbeat = setInterval(() => { context.heartbeat({ nodeId: node.id }); }, 1000);
     context.heartbeat({ nodeId: node.id });
     try {
+      if (this.mode === "live" && this.environmentFactory !== localExecutionEnvironment &&
+          ["script", "function"].includes(bundle.definition.executor?.kind ?? "")) {
+        throw new Error("Legacy script/function blocks require the local execution environment; use TypeScript block effects for an injected environment");
+      }
       const runner = this.mode !== "live" || !bundle.definition.executor ? this.runner
         : bundle.definition.executor.kind === "script" ? runScriptBlock
         : bundle.definition.executor.kind === "function" ? runFunctionBlock : runCommandBlock;
@@ -1193,7 +1247,8 @@ export class WorkflowEngine {
         project: workspace, attachmentProject: this.project, absoluteJournalPaths: isolated, config: run.config, bundle, node, protectedPaths, writablePaths, tools, capabilities, task: run.plan.task, workflow: run.plan, composition: run.program?.structure,
         inputs, visit: run.visits[node.id] ?? 1,
         settings, signal, journal, maxCostUsd: remainingCost, resultMode, context: aiContext,
-        customTools: shared ? protect => this.selectedTools(run, shared.tools, shared.parentId, { project: workspace, signal, journal, protect, isolated }) : undefined,
+        environmentFactory: this.environmentFactory, outputDirectory: directory,
+        customTools: shared ? protect => this.selectedTools(run, shared.tools, shared.parentId, { project: workspace, signal, journal, protect, isolated, outputDirectory: directory }) : undefined,
         operation: { parentId: shared?.parentId ?? `${run.id}/${context.info.activityId}`, record: value => this.recordOperation(run, node.id, value) },
         onUsage: async (sessionUsage) => { const usage = addUsage(previousUsage, sessionUsage); await saveUsage(directory, usage); this.usageByAttempt.set(`${run.id}/${node.id}/${run.visits[node.id] ?? 1}`, { ...usage }); this.emit(run, "usage", JSON.stringify(usage), node.id); },
         accounting: await createAccountingContext(this.project, "execution", { scopeId: usageScope.id, runId: run.id, taskId: usageScope.runTasks[run.id],
@@ -1203,13 +1258,42 @@ export class WorkflowEngine {
       signal.throwIfAborted();
       const checks: WorkflowRun["attempts"][number]["checks"] = [];
       if (result.outcome !== "fail") {
-        for (const check of bundle.definition.checks) {
+        for (const [checkIndex, check] of bundle.definition.checks.entries()) {
+          const parentId = shared?.parentId ?? `${run.id}/${context.info.activityId}`;
+          const identity = { id: `${parentId}/check-${checkIndex + 1}`, parentId, name: check.command, kind: "exec" as const };
+          const started = performance.now();
+          let environmentId: string | undefined;
+          let outputRef: import("./operation-schema.js").CommandOutputRef | undefined;
           this.emit(run, "check_start", `${check.command} must ${check.expect === "success" ? "pass" : "fail"}`, node.id);
-          const checked = this.mode === "demo"
-            ? { command: check.command, expected: check.expect, exitCode: check.expect === "success" ? 0 : 1, matched: true, output: "DEMO: simulated check result; no command was executed." }
-            : await runCheck(this.project, run.config, check, signal);
-          checks.push(checked);
-          this.emit(run, "check", `${check.command}: ${checked.matched ? "condition met" : "condition NOT met"}\n${checked.output}`, node.id);
+          await this.recordOperation(run, node.id, { ...identity, state: "started",
+            input: { command: check.command, argv: run.config.commands[check.command]?.argv ?? [], expected: check.expect },
+            details: { check: true, expected: check.expect },
+            presentation: { card: "command", title: `Check ${check.command}`, cwd: workspace },
+          });
+          try {
+            const environment = this.mode === "demo" ? undefined : await this.environmentFactory({ project: workspace, signal, journal, isolated, outputDirectory: directory,
+              onCapture: reference => { outputRef = reference; },
+            });
+            environmentId = environment?.id;
+            const checked = this.mode === "demo"
+              ? { command: check.command, expected: check.expect, exitCode: check.expect === "success" ? 0 : 1, matched: true, output: "DEMO: simulated check result; no command was executed." }
+              : await runCheck(workspace, run.config, check, signal, environment);
+            outputRef ??= "outputRef" in checked ? checked.outputRef : undefined;
+            checks.push(checked);
+            await this.recordOperation(run, node.id, { ...identity, state: "completed", environmentId, outputRef,
+              durationMs: performance.now() - started,
+              details: { check: true, expected: checked.expected, matched: checked.matched, exitCode: checked.exitCode },
+              summary: `${check.command}: ${checked.matched ? "met" : "did not meet"} expected ${checked.expected}`,
+              presentation: { card: "command", title: `${check.command}: ${checked.matched ? "met expectation" : "did not meet expectation"}`, cwd: workspace,
+                exitCode: checked.exitCode, output: checked.output.slice(-32000), truncated: Buffer.byteLength(checked.output) < (outputRef?.outputBytes ?? 0) },
+            });
+            this.emit(run, "check", `${check.command}: ${checked.matched ? "condition met" : "condition NOT met"}\n${checked.output}`, node.id);
+          } catch(error) {
+            await this.recordOperation(run, node.id, { ...identity, state: signal.aborted ? "interrupted" : "failed", environmentId, outputRef,
+              durationMs: performance.now() - started, details: { check: true, expected: check.expect }, summary: String(error).slice(0,16000),
+            });
+            throw error;
+          }
         }
         if (checks.some((check) => !check.matched)) {
           result.outcome = "retry";

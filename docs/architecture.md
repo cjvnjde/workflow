@@ -141,3 +141,9 @@ Paths below are relative to the repository checkout. The packaged CLI includes c
 The frozen legacy workflow bundle is retained under `src/legacy/` for replay compatibility. New features should not silently rewrite historical execution behavior.
 
 [Next: development and testing](development.md)
+
+## Execution inspection read models
+
+`execution-history.ts` provides the browser-safe operation projection shared by browser and terminal. It joins lifecycle events by operation, visit, and activity attempt and preserves parent-attempt identity. `RunStore` serves append-order history pages, compact whole-run operation summaries, and selected-operation details. Snapshot watermarks keep historical pagination stable while new events arrive. These read models do not change Temporal scheduling or turn the activity log into an alternative executor.
+
+`session-timing.ts` observes actual provider stream invocations, token timing, retry backoff, and compaction. `command-output.ts` retains bounded private command transcripts separately from inline results. Clients load exact payloads and transcripts on demand. The [inspection guide](execution-inspection.md) describes available controls and historical limits.

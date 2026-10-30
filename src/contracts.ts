@@ -9,6 +9,7 @@ export * from "./program-schema.js";
 export * from "./setup-schema.js";
 export * from "./task-schema.js";
 export * from "./operation-schema.js";
+export * from "./execution-history.js";
 export * from "./trigger-schema.js";
 export * from "./usage-schema.js";
 export * from "./setup-job-schema.js";
@@ -33,3 +34,11 @@ export const createProgramSchema = programSourceSchema.extend({
 });
 export type CreateProgram = z.input<typeof createProgramSchema>;
 export type RunAction = "approve" | "reject" | "pause" | "resume" | "cancel" | "recover" | "keep-recovery-files";
+
+/** A bounded byte-range page from a saved command transcript. */
+export const commandOutputPageSchema = z.object({
+  id: z.string().uuid(), stream: z.enum(["stdout", "stderr", "output"]), text: z.string(),
+  offset: z.number().int().nonnegative(), nextOffset: z.number().int().nonnegative(),
+  bytes: z.number().int().nonnegative(), hasMore: z.boolean(), truncated: z.boolean(),
+});
+export type CommandOutputPage = z.infer<typeof commandOutputPageSchema>;

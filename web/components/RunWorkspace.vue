@@ -9,6 +9,7 @@ import type { PlanDraft } from "../composables/use-draft.js";
 import { currentActivity, statusLabel, stepState } from "../workflow-status.js";
 import { recoveryAdvice } from "../run-report.js";
 import ExecutionEvidence from "./ExecutionEvidence.vue";
+import ExecutionInspector from "./ExecutionInspector.vue";
 import Icon from "./Icon.vue";
 import { executionLabel, isSourceWorkflow } from "../execution-label.js";
 import MarkdownView from "./MarkdownView.vue";
@@ -21,7 +22,9 @@ const WorkflowGraph = defineAsyncComponent(() => import("./WorkflowGraph.vue"));
 const PlanEditor = defineAsyncComponent(() => import("./PlanEditor.vue"));
 const ProgramEditor = defineAsyncComponent(() => import("./ProgramEditor.vue"));
 const DataInspector = defineAsyncComponent(() => import("./DataInspector.vue"));
-const RememberApproach = defineAsyncComponent(() => import("./RememberApproach.vue"));
+const RememberApproach = defineAsyncComponent(
+  () => import("./RememberApproach.vue"),
+);
 const props = defineProps<{
   run: WorkflowRun;
   draft: PlanDraft;
@@ -49,6 +52,23 @@ const initialTab = () =>
     : "workflow";
 const tab = ref(initialTab());
 const selected = ref<string>();
+const evidenceSelection = ref<{
+  nodeId: string;
+  visit: number;
+  operationId: string;
+  sessionId?: string;
+}>();
+const groupedActivity = ref(false);
+function openEvidence(
+  nodeId: string,
+  visit: number,
+  operationId: string,
+  sessionId?: string,
+) {
+  selected.value = nodeId;
+  evidenceSelection.value = { nodeId, visit, operationId, sessionId };
+  tab.value = "data";
+}
 const expanded = ref(false);
 const focusDialog = ref<HTMLDialogElement>();
 const expandButton = ref<HTMLButtonElement>();
@@ -92,6 +112,7 @@ const tabs = [
   ["results", "Results", "file"],
   ["workflow", "Workflow", "workflow"],
   ["data", "Data", "search"],
+  ["timeline", "Timeline", "clock"],
   ["activity", "Activity", "log"],
   ["artifacts", "Artifacts", "folder"],
   ["edit", "Editor", "code"],
@@ -310,6 +331,7 @@ function resume() {
   emit("action", "resume");
 }
 function selectStep(id: string) {
+  evidenceSelection.value = undefined;
   selected.value =
     plan.value.nodes.some((item) => item.id === id) ||
     findGroup(props.run.program?.structure, id)
@@ -427,10 +449,11 @@ function selectStep(id: string) {
         Keep current files
       </button>
       <span class="workflow-counts"
-        >{{ run.plan.nodes.length }} {{ run.plan.nodes.length === 1 ? "block" : "blocks" }} · {{ run.attempts.length }}/{{
-          run.config.maxSteps
-        }}
-        step visits<span v-if="activeStepCount > 1">
+        >{{ run.plan.nodes.length }}
+        {{ run.plan.nodes.length === 1 ? "block" : "blocks" }} ·
+        {{ run.attempts.length }}/{{ run.config.maxSteps }} step visits<span
+          v-if="activeStepCount > 1"
+        >
           · {{ activeStepCount }} steps running in parallel</span
         ></span
       >
@@ -680,6 +703,7 @@ function selectStep(id: string) {
               ref="graph"
               :key="run.id"
               :run="{ ...run, plan }"
+              :selected="selected"
               @select="selectStep"
             />
             <div class="graph-legend">
@@ -751,8 +775,22 @@ function selectStep(id: string) {
               >
             </div>
             <h3>Inputs & outputs</h3>
-            <p class="muted">Review declared sources before execution, then inspect each visit's stored values and model context.</p>
-            <button class="quiet" @click="tab = 'data'">Inspect step data</button>
+            <p class="muted">
+              Review declared sources before execution, then inspect each
+              visit's stored values and model context.
+            </p>
+            <button
+              class="quiet"
+              @click="
+                evidenceSelection = undefined;
+                tab = 'data';
+              "
+            >
+              Inspect step data
+            </button>
+            <button class="quiet" @click="tab = 'timeline'">
+              View step timeline
+            </button>
             <template v-if="selectedGroup?.step">
               <h3>Outcome actions</h3>
               <div
@@ -820,9 +858,54 @@ function selectStep(id: string) {
             <button @click="tab = 'edit'">View TypeScript</button>
           </aside>
         </div>
-        <DataInspector v-if="tab === 'data'" :run="run" :events="events" :selected="selected" @select="selected = $event" @editor="tab = 'edit'" @activity="tab = 'activity'" />
-        <ActivityFeed
+        <ExecutionInspector
+          v-if="tab === 'timeline'"
+          :run="run"
+          :events="events"
+          :selected="selected"
+          timeline
+          @select="selected = $event"
+          @evidence="openEvidence"
+        />
+        <DataInspector
+          v-if="tab === 'data'"
+          :run="run"
+          :events="events"
+          :selected="selected"
+          :focus="evidenceSelection"
+          @select="selected = $event"
+          @editor="tab = 'edit'"
+          @activity="tab = 'activity'"
+        />
+        <div
           v-if="tab === 'activity'"
+          class="inspection-mode"
+          role="group"
+          aria-label="Activity presentation"
+        >
+          <button
+            :aria-pressed="groupedActivity"
+            @click="groupedActivity = true"
+          >
+            Grouped calls</button
+          ><button
+            :aria-pressed="!groupedActivity"
+            @click="groupedActivity = false"
+          >
+            Event history
+          </button>
+        </div>
+        <ExecutionInspector
+          v-if="tab === 'activity' && groupedActivity"
+          :run="run"
+          :events="events"
+          :selected="selected"
+          @select="selected = $event"
+          @evidence="openEvidence"
+        />
+        <ActivityFeed
+          v-if="tab === 'activity' && !groupedActivity"
+          :run-id="run.id"
           :key="run.id"
           :events="events"
           :nodes="plan.nodes"
@@ -908,7 +991,9 @@ function selectStep(id: string) {
         </div>
         <div>
           <small>REPORTED EXECUTION COST</small
-          ><strong>{{ run.usage ? usageCost(run.usage) : "Not reported" }}</strong>
+          ><strong>{{
+            run.usage ? usageCost(run.usage) : "Not reported"
+          }}</strong>
         </div>
         <div>
           <small>EXECUTION LIMIT</small

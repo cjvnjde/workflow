@@ -4,21 +4,20 @@
 
 Workflow is an AI development engine with a browser workspace and terminal clients. Describe a task, attach files or screenshots, and the orchestrator composes a TypeScript workflow from your reusable blocks, task instructions, and model profiles. Review the graph, then start it—or enable automatic execution.
 
-![Web workspace: a shared session with a reviewable execution graph](docs/screenshots/web-workspace.jpg)
+![Execution timeline showing step visits, model requests, and nested tool calls](docs/screenshots/execution-timeline.png)
 
-![Terminal workspace connected to the same session](docs/screenshots/terminal-workspace.png)
-
-Both screenshots show the same disposable demo task. Demo mode simulates AI work; it does not change project files.
+The execution screenshots use deterministic demo data in the real browser UI, with illustrative timings.
 
 ## Why this project exists
 
 Finishing a coding task often takes several kinds of work: understand the request, implement it, write or run tests, review the result, address feedback, and sometimes commit and push. Workflow makes those responsibilities and their connections explicit.
 
-- **Make the process visible.** See the proposed graph before execution, the blocks currently running, and the results and logs of each attempt.
+- **Make the process visible.** Review the proposed graph, then follow step visits, model requests, and nested tool calls on a zoomable timeline. Open a call's recorded evidence directly from its span.
 - **Give different work to different models.** Describe model profiles for implementation, careful review, or routine work. Let the orchestrator assign them, or choose models in code.
 - **Use code for predictable operations.** A test, build, or push can run directly without a model call. AI is a capability inside a TypeScript block.
 - **Control what models receive.** Pass selected typed outputs between steps. Each AI call starts fresh; `context: "none"` omits inherited workflow context, independently of tool access.
 - **Inspect each handoff.** Compare inputs before and after schema processing, follow parallel producer visits, and inspect full stored outputs, prompts and tool feedback in the [data inspector](docs/inspecting-data.md).
+- **Keep the evidence behind each call.** Inspect captured file reads and edits, command exit status, and retained output. Page through older events after they leave the live feed. [Inspect execution](docs/execution-inspection.md).
 - **Keep optional project memory.** Save preferences and compact observations from normal runs. Memory starts disabled, uses descriptions before details, and launches no extra AI jobs. [Control project memory](docs/memory.md).
 - **Turn feedback into a controlled loop.** A test block returns diagnostics; an implementation block fixes the problem. Conditions, explicit outcomes, and visit limits decide what happens next.
 - **Keep progress across interruptions.** Temporal records execution history. Completed work is retained, and interrupted attempts have an explicit recovery and retry path.
@@ -45,6 +44,16 @@ The coordinator uses the supplied request, context, task instructions, blocks, a
 | **Task instructions and model profiles** | Guidance the orchestrator uses to choose blocks and models for a particular request. |
 
 The web UI uses Vue, Vue Flow, CodeMirror, and Catppuccin Mocha. The terminal workspace uses OpenTUI. Pi provides embedded model sessions and authentication integration; Temporal provides durable execution. Workflow owns the task workspace, configuration, approval flow, and results. [Read the design rationale](docs/concepts.md) or [explore the architecture](docs/architecture.md).
+
+## Inspect execution
+
+Open **Timeline** to see when each step visit, model request, and tool call ran. Zoom, select a time range, or switch to operation sequence. Selecting a span opens the call; **Open exact evidence** takes you to its saved visit and model session in **Data**. Retries remain separate, and missing historical timing stays visibly unavailable.
+
+In **Activity → Grouped calls**, expand a model session or shared tool to follow its child operations. File cards show captured reads and before/after text. Command cards show the recorded exit status and let you page through or download retained output. **Event history** provides the underlying saved events, including older pages beyond the live feed.
+
+![Nested tool calls with a recorded file edit and its before-and-after contents](docs/screenshots/tool-calls.png)
+
+Request traces distinguish observed first-token timing, streaming, retry backoff, context compaction, and budget waits. Costs continue to come from the usage ledger. See [the execution inspection guide](docs/execution-inspection.md) for timing semantics, output retention limits, and optional bounded parallel reads.
 
 ## Get started
 
@@ -81,7 +90,7 @@ Open **http://127.0.0.1:4310** (or use `workflow tui`):
 2. Review or edit the generated configuration in **Settings**. Provider login and model selection are also available there.
 3. Create a **New task**, describe the desired result, and attach useful context.
 4. Inspect the proposed graph and select **Approve & start**.
-5. Follow the active blocks and open **Results** for the outcome, checks, and downloadable artifacts.
+5. Follow active blocks in **Timeline**, inspect calls in **Activity**, and open **Results** for the outcome, checks, and downloadable artifacts.
 
 The current directory is the project; there is no project-path argument. Credentials are shared across projects in `~/.config/workflow/` by default. Setup is explicit: ordinary startup does not regenerate configuration or spend AI usage on setup. Use `workflow setup --regenerate` when you want a fresh project-specific library. Review is the default approval mode.
 
@@ -101,6 +110,10 @@ workflow run verify.ts --approve --wait  # execute through a running server
 ```
 
 In `workflow tui`, describe a task, inspect `/graph`, and `/approve` or `/reject` it. Use `/web` to open the same session in a browser, `/id` to show its ID, and `/open <id>` or `/sessions` to reopen work. The browser's **Open session by ID** accepts an ID or copied session link; **Continue in terminal** copies the matching CLI command. Opening a session does not automatically resume paused execution. [The terminal guide](docs/terminal.md) covers commands, shortcuts, and server attachment.
+
+![Terminal workspace with the workflow graph, task conversation, and execution activity](docs/screenshots/terminal-workspace.png)
+
+The terminal screenshot shows a separate disposable demo task. Browser and terminal clients can attach to the same saved session.
 
 The engine's application API is independent of presentation. The web GUI, terminal workspace, and CLI commands share a validated HTTP client; embedded hosts can call the application directly. [Engine and clients](docs/clients.md) covers server access, integration APIs, and separate builds. Desktop and mobile GUIs can use the same interfaces; those additional clients are not included yet.
 
@@ -167,6 +180,8 @@ Start at **[docs/README.md](docs/README.md)** for reading paths and a complete i
 | Write sequences, branches, parallel groups, and loops | [Writing workflows](docs/workflows.md) |
 | Build reusable code and AI blocks | [Writing blocks](docs/blocks.md) · [Contracts, testing and evidence](docs/block-contracts-and-evidence.md) |
 | Configure models, task instructions, skills, and MCP | [Configuration](docs/configuration.md) |
+| Inspect tool calls, timing, historical events, and retained output | [Inspecting execution](docs/execution-inspection.md) |
+| Follow typed handoffs and exact model context | [Inspecting workflow data](docs/inspecting-data.md) |
 | Understand statuses, retries, recovery, and backups | [Running and recovering workflows](docs/operations.md) |
 | Run automatically for new GitHub issues or PRs | [GitHub triggers](docs/triggers.md) |
 | Work entirely in a terminal | [Terminal workspace](docs/terminal.md) |

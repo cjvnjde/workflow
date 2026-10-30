@@ -1,3 +1,5 @@
+import { inspectGit } from "./git-inspection.js";
+import type { CommandOutputRef } from "./operation-schema.js";
 import { Workspace } from "./workspace.js";
 import { runProcess } from "./process.js";
 import type { ExecutionEnvironment } from "./tool-sdk.js";
@@ -11,6 +13,8 @@ export interface EnvironmentOptions {
   protect?: ProtectedPaths;
   isolated?: boolean;
   onOutput?: (text: string) => void;
+  outputDirectory?: string;
+  onCapture?: (ref: CommandOutputRef) => void;
 }
 export type ExecutionEnvironmentFactory = (
   options: EnvironmentOptions,
@@ -29,15 +33,18 @@ export const localExecutionEnvironment: ExecutionEnvironmentFactory = async (
   return {
     id: `local:${workspace.root}`,
     readText: (filename) => workspace.read(filename),
+    listFiles: pattern => workspace.list(pattern),
+    editText: (filename, oldText, newText) => workspace.edit(filename, oldText, newText),
+    inspectGit: input => inspectGit(workspace, input, options.signal),
     writeText: (filename, content) => workspace.write(filename, content),
     exec: (command, settings) =>
       runProcess(
         workspace.root,
         ["bash", "-e", "-o", "pipefail", "-c", command],
-        options.signal,
+        settings?.signal ? AbortSignal.any([options.signal, settings.signal]) : options.signal,
         settings?.timeoutMs ?? 120_000,
         { ...process.env, ...settings?.env },
-        { onOutput: options.onOutput },
+        { onOutput: settings?.onOutput ?? options.onOutput, captureDirectory: options.outputDirectory, onCapture: settings?.onCapture ?? options.onCapture },
       ),
   };
 };

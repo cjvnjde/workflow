@@ -1,3 +1,4 @@
+import { projectOperations, operationKey } from "../execution-history.js";
 import type { FlowStructure, RunEvent, Setup, SetupJob, TaskRequest, UsageReport, WorkflowRun } from "../contracts.js";
 
 export const colors = {
@@ -51,7 +52,7 @@ const names: Record<string, string> = {
 export function activityCard(event: RunEvent): Card | undefined {
   if (event.operation) {
     const op = event.operation;
-    return { id: `operation-${op.id}`, title: `${op.parentId ? "↳ " : ""}${op.name} · ${op.state}`,
+    return { id: `operation-${operationKey(op.id, op.visit, op.attempt)}`, title: `${op.parentId ? "↳ " : ""}${op.name} · ${op.state}`,
       tone: op.state === "completed" ? "mint" : ["failed", "interrupted"].includes(op.state) ? "red" : "blue",
       body: plain([op.summary, op.input === undefined ? "" : `Input\n${JSON.stringify(op.input, null, 2)}`,
         op.output === undefined ? "" : `Result\n${JSON.stringify(op.output, null, 2)}`,
@@ -135,13 +136,17 @@ export function transcript(task?: TaskRequest, run?: WorkflowRun, events: RunEve
     cards.push({ id: `question-${i}`, title: "Workflow", body: plain(answer.question), tone: "blue" },
       { id: `answer-${i}`, title: "You", body: plain(answer.answer), tone: "lavender" });
   }
-  const latest = new Map<string, RunEvent>();
-  for (const event of events.slice(-150)) {
-    const key = event.operation ? `operation-${event.operation.id}` : event.id;
-    const previous = latest.get(key);
-    latest.set(key, event.operation ? { ...event, operation: { ...previous?.operation, ...event.operation } } : event);
-  }
-  cards.push(...[...latest.values()].flatMap(event => activityCard(event) ?? []));
+  const recent = events.slice(-150);
+  const operations = projectOperations(recent);
+  const merged = new Map(operations.map(op => [op.lastCursor, op]));
+  cards.push(...recent.flatMap((event, cursor) => {
+    if (!event.operation) return activityCard(event) ?? [];
+    const projected = merged.get(cursor);
+    if (!projected) return [];
+    const card = activityCard({ ...event, operation: projected.operation });
+    if (card && projected.attempt !== undefined) card.title += ` · attempt ${projected.attempt}`;
+    return card ?? [];
+  }));
   for (const [id, body] of Object.entries(live)) if (body.trim()) cards.push({ id: `live-${id}`, title: "Assistant · writing", body: plain(body), tone: "blue", markdown: true, live: true });
   if (task?.rationale) cards.push({ id: "rationale", title: "The plan", body: plain(task.rationale), tone: "mint", markdown: true });
   if (task?.question) cards.push({ id: "question", title: "Your input is needed", body: plain(task.question.question) + (task.question.options.length ? "\n\n" + task.question.options.map((option, i) => `${i + 1}. ${option}`).join("\n") : ""), tone: "yellow" });

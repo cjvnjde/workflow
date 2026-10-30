@@ -26,10 +26,15 @@ import { Attachments } from "./attachments.js";
 import { mcpTools } from "./mcp-tools.js";
 import { inspectGit } from "./git-inspection.js";
 import type { FlowStructure } from "./composition-sdk.js";
-import type { OperationRecorder } from "./operation-schema.js";
+import type { CommandOutputRef, ToolPresentation, OperationRecorder } from "./operation-schema.js";
+import type { ExecutionEnvironment } from "./tool-sdk.js";
+import { localExecutionEnvironment, type ExecutionEnvironmentFactory } from "./execution-environment.js";
+import { readCommandOutput } from "./command-output.js";
 import type { AccountingContext } from "./usage-schema.js";
 
 export type BlockExecution = {
+  environmentFactory?: ExecutionEnvironmentFactory;
+  outputDirectory?: string;
   accounting?: AccountingContext;
   context?: "workflow" | "none";
   tools?: "none" | "selected";
@@ -67,20 +72,29 @@ function compositionContext(node: FlowStructure): unknown {
     children: node.children.map(compositionContext) };
 }
 
-export function workspaceTools(workspace: Workspace) {
+export function workspaceTools(workspace: Workspace, environment?: ExecutionEnvironment, onCapture?: (callId: string, ref: CommandOutputRef) => Promise<void>) {
   const bash = createBashToolDefinition(workspace.root, {
     exposeSessionEnvironment: false,
   });
   return [
-    defineTool({
+    defineTool<typeof bash.parameters, unknown>({
       name: bash.name,
       label: bash.label,
       description: bash.description,
       parameters: bash.parameters,
-      execute: bash.execute,
+      execute: environment ? async (_id, params, signal) => {
+        let captures = Promise.resolve();
+        let result;
+        try { result = await environment.exec(params.command, { timeoutMs: params.timeout === undefined ? 120_000 : Math.max(1, params.timeout * 1000), signal,
+          onCapture: ref => { captures = captures.then(() => onCapture?.(_id, ref)); },
+        }); } finally { await captures; }
+        return { ...textResult((result.timedOut ? "Command timed out.\n" : "") + result.output + (result.outputRef ? `\n[Full retained output: ${result.outputRef.id}; use read_output to inspect it.]` : "")), isError: result.timedOut || result.exitCode !== 0,
+          details: { ...result, environmentId: environment.id, toolPresentation: { card: "command", command: params.command.slice(0,16000), cwd: workspace.root, exitCode: result.exitCode, output: result.output.slice(-32000), truncated: result.outputRef ? result.outputRef.outputBytes > Buffer.byteLength(result.output) : undefined } satisfies ToolPresentation } };
+      } : (id, params, signal, _update, context) => bash.execute(id, params, signal, undefined, context),
     }),
     defineTool({
       name: "git_changes",
+      executionMode: "parallel",
       label: "Inspect Git changes",
       description:
         "Summarize local Git branch/base and working-tree changes with bounded patches. Optional path narrows output. No commits yet is reported explicitly. Use bash for other Git operations, including configuration, staging, commits, fetching and pushing.",
@@ -90,22 +104,25 @@ export function workspaceTools(workspace: Workspace) {
       }),
       async execute(_id, params, signal) {
         return textResult(
-          JSON.stringify(await inspectGit(workspace, params, signal), null, 2),
+          JSON.stringify(environment ? await (environment.inspectGit?.(params) ?? Promise.reject(new Error("This execution environment does not provide Git inspection"))) : await inspectGit(workspace, params, signal), null, 2),
         );
       },
     }),
     defineTool({
       name: "list_files",
+      executionMode: "parallel",
       label: "List files",
       description:
         "List project files using a glob, capped at 2000 files. Broad searches skip generated and runtime directories; name one explicitly (e.g. .git/**) or use bash to inspect it.",
       parameters: Type.Object({ pattern: Type.Optional(Type.String()) }),
       async execute(_id, params) {
-        return textResult((await workspace.list(params.pattern)).join("\n"));
+        const files = await (environment ? environment.listFiles?.(params.pattern) ?? Promise.reject(new Error("This execution environment does not provide file listing")) : workspace.list(params.pattern));
+        return { ...textResult(files.join("\n")), details: { toolPresentation: { card: "search", title: params.pattern || "Project files", matches: files.slice(0,500).map(path => ({path})), truncated: files.length > 500 } satisfies ToolPresentation } };
       },
     }),
     defineTool({
       name: "read_file",
+      executionMode: "parallel",
       label: "Read file",
       description:
         "Read a UTF-8 text file, at most 1 MB. Accepts relative, absolute and ~/ paths; follows links. Use bash for other file formats or larger files.",
@@ -115,16 +132,14 @@ export function workspaceTools(workspace: Workspace) {
         limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000 })),
       }),
       async execute(_id, params) {
-        const content = await workspace.read(params.path);
+        const content = await (environment ? environment.readText(params.path) : workspace.read(params.path));
         const offset = (params.offset ?? 1) - 1;
         const lines = content.split("\n");
         const selected = lines.slice(offset, offset + (params.limit ?? 300));
-        return textResult(
-          `${selected
-            .map((line, index) => `${offset + index + 1}: ${line}`)
-            .join("\n")
-            .slice(0, 40_000)}\n[${lines.length} total lines]`,
-        );
+        const output = selected.map((line, index) => `${offset + index + 1}: ${line}`).join("\n");
+        return { ...textResult(`${output.slice(0, 40_000)}\n[${lines.length} total lines]`), details: { toolPresentation: {
+          card: "file-read", path: params.path.slice(0,4000), title: `Lines ${offset + 1}–${offset + selected.length} of ${lines.length}`, output: output.slice(0,32000), truncated: output.length > 32000,
+        } satisfies ToolPresentation } };
       },
     }),
     defineTool({
@@ -137,8 +152,9 @@ export function workspaceTools(workspace: Workspace) {
         content: Type.String(),
       }),
       async execute(_id, params) {
-        await workspace.write(params.path, params.content);
-        return textResult(`Wrote ${params.path}`);
+        const before = await (environment ? environment.readText(params.path) : workspace.read(params.path)).catch(() => undefined);
+        await (environment ? environment.writeText(params.path, params.content) : workspace.write(params.path, params.content));
+        return { ...textResult(`Wrote ${params.path}`), details: { toolPresentation: { card: "file-diff", path: params.path.slice(0,4000), before: before?.slice(0,32000), after: params.content.slice(0,32000), truncated: (before?.length ?? 0) > 32000 || params.content.length > 32000 } satisfies ToolPresentation } };
       },
     }),
     defineTool({
@@ -152,8 +168,18 @@ export function workspaceTools(workspace: Workspace) {
         newText: Type.String(),
       }),
       async execute(_id, params) {
-        await workspace.edit(params.path, params.oldText, params.newText);
-        return textResult(`Edited ${params.path}`);
+        const before = await (environment ? environment.readText(params.path) : workspace.read(params.path)).catch(() => undefined);
+        if (!environment) await workspace.edit(params.path, params.oldText, params.newText);
+        else if (environment.editText) await environment.editText(params.path, params.oldText, params.newText);
+        else {
+          if (!params.oldText) throw new Error("oldText must not be empty");
+          const content = await environment.readText(params.path);
+          const first = content.indexOf(params.oldText);
+          if (first < 0 || content.indexOf(params.oldText, first + 1) >= 0) throw new Error("oldText must match exactly once");
+          await environment.writeText(params.path, content.slice(0, first) + params.newText + content.slice(first + params.oldText.length));
+        }
+        const after = await (environment ? environment.readText(params.path) : workspace.read(params.path)).catch(() => undefined);
+        return { ...textResult(`Edited ${params.path}`), details: { toolPresentation: { card: "file-diff", path: params.path.slice(0,4000), before: before?.slice(0,32000), after: after?.slice(0,32000), truncated: (before?.length ?? 0) > 32000 || (after?.length ?? 0) > 32000 } satisfies ToolPresentation } };
       },
     }),
   ];
@@ -179,7 +205,17 @@ export const runPiBlock: BlockRunner = async (execution) => {
   const finishInstruction = valueMode
     ? "Call submit_result with {value: your result} to return to the TypeScript caller. Follow the supplied value schema exactly. Put review decisions and retry feedback inside that value; the caller handles workflow routing."
     : "Call submit_result to finish this step with an outcome, summary and declared artifacts.";
-  const tools: ToolDefinition[] = workspaceTools(workspace);
+  const environment = await (execution.environmentFactory ?? localExecutionEnvironment)({ project, signal, journal: execution.journal, protect: protection, isolated: execution.absoluteJournalPaths, outputDirectory: execution.outputDirectory });
+  const tools: ToolDefinition[] = workspaceTools(workspace, environment, async (callId, outputRef) => {
+    if (execution.operation) await execution.operation.record({ id: `${execution.operation.parentId}/${callId}`, parentId: execution.operation.parentId, name: "bash", kind: "tool", state: "progress", outputRef, environmentId: environment.id });
+    else emit("command_output", JSON.stringify({ callId, outputRef }));
+  });
+  if (execution.outputDirectory) tools.push(defineTool({
+    name: "read_output", label: "Read retained command output",
+    description: "Read a saved command transcript from this step attempt by its output ID. Offsets and nextOffset are UTF-8 bytes. Use the returned nextOffset to continue. No filesystem path is accepted.",
+    parameters: Type.Object({ id: Type.String(), stream: Type.Optional(Type.Union([Type.Literal("output"), Type.Literal("stdout"), Type.Literal("stderr")])), offset: Type.Optional(Type.Integer({ minimum: 0 })), limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 64000 })) }),
+    async execute(_id, params) { signal.throwIfAborted(); return textResult(JSON.stringify(await readCommandOutput(execution.outputDirectory!, params.id, params.stream, params))); },
+  }));
   if (Object.keys(config.commands).length) {
     tools.push(
       defineTool({
@@ -191,12 +227,14 @@ export const runPiBlock: BlockRunner = async (execution) => {
           const check = bundle.definition.checks.find(
             (candidate) => candidate.command === params.command,
           ) ?? { command: params.command, expect: "success" as const };
-          const checked = await runCheck(project, config, check, signal);
+          const checked = await runCheck(project, config, check, signal, environment);
           emit(
             "check",
             `${params.command}: exit ${checked.exitCode}\n${checked.output}`,
           );
-          return textResult(JSON.stringify(checked));
+          return { ...textResult(JSON.stringify(checked)), details: { outputRef: checked.outputRef, environmentId: environment.id,
+            toolPresentation: { card: "command", title: `${params.command}: ${checked.matched ? "met expectation" : "did not meet expectation"}`, command: config.commands[params.command]?.argv.join(" ").slice(0,16000), cwd: project, exitCode: checked.exitCode, output: checked.output.slice(-32000) } satisfies ToolPresentation,
+          } };
         },
       }),
     );
@@ -375,12 +413,20 @@ export const runCommandBlock: BlockRunner = async (execution) => {
     throw new Error("Command block has no executor");
   }
   execution.emit("check_start", `Running ${executor.command}`);
-  const checked = await runCheck(
-    execution.project,
-    execution.config,
-    executor,
-    execution.signal,
-  );
+  const identity = { id: `${execution.operation?.parentId ?? "check"}/command`, parentId: execution.operation?.parentId, name: executor.command, kind: "exec" as const };
+  const environment = await (execution.environmentFactory ?? localExecutionEnvironment)({ project: execution.project, signal: execution.signal, journal: execution.journal, outputDirectory: execution.outputDirectory });
+  const started = Date.now();
+  await execution.operation?.record({ ...identity, state: "started", environmentId: environment.id, input: execution.config.commands[executor.command]?.argv ?? [], presentation: { card: "command", title: executor.command, cwd: execution.project } });
+  let checked;
+  try {
+    checked = await runCheck(execution.project, execution.config, executor, execution.signal, environment);
+    await execution.operation?.record({ ...identity, state: "completed", environmentId: environment.id, outputRef: checked.outputRef, output: checked.output.slice(-16000), durationMs: Date.now()-started,
+      presentation: { card: "command", title: `${executor.command}: ${checked.matched ? "met expectation" : "did not meet expectation"}`, cwd: execution.project, exitCode: checked.exitCode, output: checked.output.slice(-32000) },
+    });
+  } catch(error) {
+    await execution.operation?.record({ ...identity, state: execution.signal.aborted ? "interrupted" : "failed", summary: String(error).slice(0,16000), durationMs: Date.now()-started });
+    throw error;
+  }
   execution.emit(
     "check",
     `${executor.command}: ${checked.matched ? "condition met" : "condition NOT met"}\n${checked.output}`,

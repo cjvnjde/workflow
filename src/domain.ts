@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { operationRecordSchema } from "./operation-schema.js";
+import { commandOutputRefSchema, operationRecordSchema } from "./operation-schema.js";
 import { attachmentSchema, capabilitiesSchema } from "./capability-schema.js";
 import { codeExecutorSchema } from "./code-schema.js";
 import { scriptExecutorSchema } from "./script-schema.js";
@@ -22,6 +22,7 @@ const agentFields = {
   thinking: z.enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"]),
   timeoutMs: z.number().int().min(1000).max(3_600_000),
   maxToolCalls: z.number().int().min(1).max(1000),
+  maxParallelTools: z.number().int().min(1).max(8).optional(),
 };
 export const agentOverrideSchema = z.object(agentFields).partial().strict();
 export const agentSchema = z
@@ -199,6 +200,7 @@ export const checkResultSchema = z
     exitCode: z.number().nullable(),
     matched: z.boolean(),
     output: z.string(),
+    outputRef: commandOutputRefSchema.optional(),
   })
   .strict();
 export const eventSchema = z

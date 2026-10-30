@@ -13,6 +13,8 @@ export type Model = {
   thinking?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   timeoutMs?: number;
   maxToolCalls?: number;
+  /** Opt-in bounded parallel read batches; omitted keeps sequential tools. */
+  maxParallelTools?: number;
 };
 export type Outcome = "pass" | "retry" | "fail";
 export type StepResult<T = unknown> = {
@@ -68,6 +70,8 @@ export type ExecResult = {
   stderr: string;
   output: string;
   timedOut: boolean;
+  /** Scoped retained command transcript; previews may be abbreviated. */
+  outputRef?: import("./operation-schema.js").CommandOutputRef;
   /** Result written by an existing WORKFLOW_RESULT script, when present. */
   result?: StepResult;
 };

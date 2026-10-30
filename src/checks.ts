@@ -1,4 +1,5 @@
 import type { Block, CheckResult, ProjectConfig } from "./domain.js";
+import type { ExecutionEnvironment } from "./tool-sdk.js";
 import { runProcess } from "./process.js";
 
 export async function runCheck(
@@ -6,11 +7,16 @@ export async function runCheck(
   config: ProjectConfig,
   check: Block["checks"][number],
   signal: AbortSignal,
+  environment?: ExecutionEnvironment,
 ): Promise<CheckResult> {
   const command = config.commands[check.command];
   if (!command?.argv[0]) throw new Error(`Unknown check command: ${check.command}`);
-  const result = await runProcess(project, command.argv, signal, command.timeoutMs);
+  const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
+  const result = environment
+    ? await environment.exec(command.argv.map(quote).join(" "), { timeoutMs: command.timeoutMs, signal })
+    : await runProcess(project, command.argv, signal, command.timeoutMs);
   return {
+    ...(result.outputRef ? { outputRef: result.outputRef } : {}),
     command: check.command, expected: check.expect, exitCode: result.exitCode,
     matched: !result.timedOut && result.exitCode !== null &&
       (check.expect === "success" ? result.exitCode === 0 : result.exitCode !== 0),

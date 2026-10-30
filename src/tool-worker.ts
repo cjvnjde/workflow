@@ -40,17 +40,19 @@ self.onmessage = (event) => {
           try {
             const tool = tools.find(t=>t.name===name && t.version===version);
             if(!tool) throw new Error("Tool is not in this workflow's frozen module: "+name);
-            let summary, details;
+            let summary, details, presentation;
             const env = {id:info.environment, readText:path=>rpc("readText",[path]), writeText:(path,text)=>rpc("writeText",[path,text]), exec:(command,settings)=>rpc("exec",[command,settings])};
             const value = await tool.execute(tool.input.parse(input), {
               env, callId:info.callId, idempotencyKey:info.callId, request:info.request,
-              summary:text=>{summary=String(text)}, details:value=>{details=value}, progress:text=>rpc("progress",[String(text)]),
+              summary:text=>{summary=String(text)}, details:value=>{details=value}, present:value=>{presentation=value}, progress:text=>rpc("progress",[String(text)]),
             });
             if(pending.size) throw new Error("Await every tool environment operation before returning");
             const data = tool.output.parse(value);
             if(data===undefined) throw new Error("Tool results must be JSON; use null for an empty result");
             assertJSON({data,details});
-            __send(JSON.stringify({type:"result",data,summary,details}));
+            // Presentation is optional and cannot invalidate a completed effect.
+            try { assertJSON(presentation); if(JSON.stringify(presentation).length > 64000) presentation=undefined; } catch { presentation=undefined; }
+            __send(JSON.stringify({type:"result",data,summary,details,presentation}));
           } catch(error) { __send(JSON.stringify({type:"error",error:String(error?.message??error)})); }
         };
         __send(JSON.stringify({type:"ready",tools:tools.map(t=>({name:t.name,version:t.version,description:t.description,replay:t.replay,timeoutMs:t.timeoutMs,input: t.input.toJSONSchema(),output:t.output.toJSONSchema()}))}));
