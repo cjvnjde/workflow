@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agentSchema, nodeSchema, validatePlan } from "../src/domain.js";
-import { createTemplate } from "../src/templates.js";
+import { agentSchema, nodeSchema, validatePlan } from "../src/contracts/domain.js";
+import { createTemplate } from "../src/core/library/templates.js";
 import { fixture } from "./helpers.js";
 
 test("model-only overrides preserve project thinking and execution budgets", () => {
@@ -37,14 +37,10 @@ test("bug and feature recipes use different preparation and test steps", async (
     feature.nodes.map((node) => node.block),
     ["requirements", "implement", "verify", "review"],
   );
+  assert.equal(feature.nodes.find((node) => node.id === "verify")?.on.retry, "work");
   assert.equal(
-    feature.nodes.find((node) => node.id === "verify")?.on.retry,
-    "work",
-  );
-  assert.equal(
-    bug.nodes
-      .find((node) => node.id === "work")
-      ?.inputs.find((input) => input.node === "review")?.required,
+    bug.nodes.find((node) => node.id === "work")?.inputs.find((input) => input.node === "review")
+      ?.required,
     false,
   );
 });
@@ -59,21 +55,14 @@ test("graph validation rejects undeclared routes, unreachable steps and invalid 
       validatePlan(
         {
           ...plan,
-          nodes: [
-            { ...first, on: { ...first.on, pass: "missing" } },
-            ...plan.nodes.slice(1),
-          ],
+          nodes: [{ ...first, on: { ...first.on, pass: "missing" } }, ...plan.nodes.slice(1)],
         },
         library,
       ),
     /Unknown transition target/,
   );
   assert.throws(
-    () =>
-      validatePlan(
-        { ...plan, nodes: [...plan.nodes, { ...first, id: "orphan" }] },
-        library,
-      ),
+    () => validatePlan({ ...plan, nodes: [...plan.nodes, { ...first, id: "orphan" }] }, library),
     /reachable/,
   );
   assert.throws(
@@ -93,15 +82,18 @@ test("graph validation rejects undeclared routes, unreachable steps and invalid 
       ),
     /Invalid handoff/,
   );
-  assert.throws(
-    () => validatePlan({ ...plan, nodes: [...plan.nodes, first] }, library),
-    /unique/,
-  );
+  assert.throws(() => validatePlan({ ...plan, nodes: [...plan.nodes, first] }, library), /unique/);
 });
 
 test("provider changes clear inherited models at every settings layer", async () => {
-  const { resolveAgentSettings } = await import("../src/domain.js");
-  const base = agentSchema.parse({ provider: "openai", model: "openai-model", thinking: "high", timeoutMs: 12_000, maxToolCalls: 7 });
+  const { resolveAgentSettings } = await import("../src/contracts/domain.js");
+  const base = agentSchema.parse({
+    provider: "openai",
+    model: "openai-model",
+    thinking: "high",
+    timeoutMs: 12_000,
+    maxToolCalls: 7,
+  });
   const changed = resolveAgentSettings(base, { provider: "anthropic" });
   assert.equal(changed.provider, "anthropic");
   assert.equal(changed.model, undefined);
@@ -110,6 +102,13 @@ test("provider changes clear inherited models at every settings layer", async ()
   assert.equal(changed.maxToolCalls, 7);
   assert.equal(resolveAgentSettings(base, { provider: "openai" }).model, "openai-model");
   assert.equal(resolveAgentSettings(base, { model: "other-model" }).model, "other-model");
-  assert.equal(resolveAgentSettings(base, { provider: "anthropic", model: "claude" }, { provider: "openai" }).model, undefined);
-  assert.equal(resolveAgentSettings(base, { provider: "anthropic" }, { model: "claude" }).model, "claude");
+  assert.equal(
+    resolveAgentSettings(base, { provider: "anthropic", model: "claude" }, { provider: "openai" })
+      .model,
+    undefined,
+  );
+  assert.equal(
+    resolveAgentSettings(base, { provider: "anthropic" }, { model: "claude" }).model,
+    "claude",
+  );
 });

@@ -1,35 +1,31 @@
 <script setup lang="ts">
-import { agentSchema } from "../../src/contracts.js";
-import type { OrchestrationSettings } from "../../src/contracts.js";
-import { modelKey, type AvailableModel } from "../../src/contracts.js";
-import { inputValue, inputChecked } from "../form-events.js";
-import Field from "../components/Field.vue";
-import Icon from "../components/Icon.vue";
+import { agentSchema } from "../../src/contracts/index.js";
+import type { OrchestrationSettings } from "../../src/contracts/index.js";
+import { modelKey, type AvailableModel } from "../../src/contracts/index.js";
+import { inputValue, inputChecked } from "../shared/form-events.js";
+import Field from "../shared/Field.vue";
+import Icon from "../shared/Icon.vue";
 const settings = defineModel<OrchestrationSettings>({ required: true });
 const props = defineProps<{ models: AvailableModel[]; busy: boolean }>();
 const emit = defineEmits<{ generate: [prompt: string] }>();
 type Profile = OrchestrationSettings["profiles"][number];
 function add() {
   const model =
-    props.models.find(
-      (item) => item.provider === "openai" && item.id === "gpt-6.1-sol",
-    ) ?? props.models[0];
+    props.models.find((item) => item.provider === "openai" && item.id === "gpt-6.1-sol") ??
+    props.models[0];
   if (!model) {
     return;
   }
   settings.value.profiles.push({
     id: `model-${crypto.randomUUID().slice(0, 8)}`,
     name: "New model profile",
-    description:
-      "Describe when to use this model, its strengths and tradeoffs.",
+    description: "Describe when to use this model, its strengths and tradeoffs.",
     enabled: true,
     agent: {
       provider: model.provider,
       model: model.id,
       thinking: agentSchema.shape.thinking.parse(
-        model.thinkingLevels.includes("high")
-          ? "high"
-          : (model.thinkingLevels[0] ?? "off"),
+        model.thinkingLevels.includes("high") ? "high" : (model.thinkingLevels[0] ?? "off"),
       ),
     },
   });
@@ -38,9 +34,7 @@ function remove(profile: Profile) {
   if (settings.value.coordinatorProfile === profile.id) {
     settings.value.coordinatorProfile = "";
   }
-  settings.value.profiles = settings.value.profiles.filter(
-    (item) => item.id !== profile.id,
-  );
+  settings.value.profiles = settings.value.profiles.filter((item) => item.id !== profile.id);
 }
 function enable(profile: Profile, enabled: boolean) {
   profile.enabled = enabled;
@@ -50,9 +44,7 @@ function enable(profile: Profile, enabled: boolean) {
 }
 function selected(profile: Profile) {
   return props.models.find(
-    (model) =>
-      model.provider === profile.agent.provider &&
-      model.id === profile.agent.model,
+    (model) => model.provider === profile.agent.provider && model.id === profile.agent.model,
   );
 }
 function choose(profile: Profile, key: string) {
@@ -84,10 +76,9 @@ function generate() {
       <div>
         <h2>A model for each kind of work</h2>
         <p>
-          {{ settings.profiles.length }} configured role profiles ·
-          {{ models.length }} models available from connected providers. Add a
-          profile to use another model, such as Terra. These cards are roles,
-          not the full model catalog.
+          {{ settings.profiles.length }} configured role profiles · {{ models.length }} models
+          available from connected providers. Add a profile to use another model, such as Terra.
+          These cards are roles, not the full model catalog.
         </p>
       </div>
       <button :disabled="busy || !models.length" @click="add">
@@ -101,19 +92,15 @@ function generate() {
       <Icon name="spark" :size="23" />
       <div>
         <strong>{{
-          settings.profiles.length
-            ? "Refresh your model lineup"
-            : "Let AI set up your models"
+          settings.profiles.length ? "Refresh your model lineup" : "Let AI set up your models"
         }}</strong>
         <p>
-          Use this project and the connected catalog to assign routine work to
-          efficient models and demanding work to stronger ones.
+          Use this project and the connected catalog to assign routine work to efficient models and
+          demanding work to stronger ones.
         </p>
       </div>
       <button :disabled="busy || !models.length" @click="generate">
-        {{
-          settings.profiles.length ? "Regenerate with AI" : "Generate with AI"
-        }}
+        {{ settings.profiles.length ? "Regenerate with AI" : "Generate with AI" }}
       </button>
     </div>
     <div class="settings-card">
@@ -137,16 +124,12 @@ function generate() {
       <Icon name="spark" :size="28" />
       <h3>Give your models a role</h3>
       <p>
-        For example: “Careful reviewer — use for complex code and security
-        checks” or “Fast helper — use for summaries and simple changes.” Without
-        profiles, the full connected catalog is available.
+        For example: “Careful reviewer — use for complex code and security checks” or “Fast helper —
+        use for summaries and simple changes.” Without profiles, the full connected catalog is
+        available.
       </p>
     </div>
-    <article
-      v-for="profile in settings.profiles"
-      :key="profile.id"
-      class="settings-card"
-    >
+    <article v-for="profile in settings.profiles" :key="profile.id" class="settings-card">
       <div class="card-title">
         <Icon name="spark" /><strong>{{ profile.name }}</strong
         ><label class="checkbox"
@@ -163,11 +146,9 @@ function generate() {
           <Icon name="close" />
         </button>
       </div>
-      <Field v-slot="{ id }" label="Profile name"
-        ><input :id="id" v-model="profile.name"
-      /></Field>
+      <Field v-slot="{ id }" label="Profile name"><input :id="id" v-model="profile.name" /></Field>
       <Field v-slot="{ id }" label="When should this model be used?">
-        <textarea v-autosize :id="id" v-model="profile.description" :rows="3" />
+        <textarea :id="id" v-model="profile.description" v-autosize :rows="3" />
       </Field>
       <div class="field-grid">
         <Field v-slot="{ id }" label="Profile model"
@@ -182,13 +163,8 @@ function generate() {
             >
               {{ profile.agent.model }} · unavailable
             </option>
-            <option
-              v-for="model in models"
-              :key="modelKey(model)"
-              :value="modelKey(model)"
-            >
-              {{ model.name }} · {{ model.provider
-              }}{{ model.imageInput ? " · images" : "" }}
+            <option v-for="model in models" :key="modelKey(model)" :value="modelKey(model)">
+              {{ model.name }} · {{ model.provider }}{{ model.imageInput ? " · images" : "" }}
             </option>
           </select></Field
         >
@@ -196,18 +172,11 @@ function generate() {
           ><select
             :id="id"
             :value="profile.agent.thinking"
-            @change="
-              profile.agent.thinking = agentSchema.shape.thinking.parse(
-                inputValue($event),
-              )
-            "
+            @change="profile.agent.thinking = agentSchema.shape.thinking.parse(inputValue($event))"
           >
             <option
               v-for="level in [
-                ...new Set([
-                  profile.agent.thinking,
-                  ...(selected(profile)?.thinkingLevels ?? []),
-                ]),
+                ...new Set([profile.agent.thinking, ...(selected(profile)?.thinkingLevels ?? [])]),
               ]"
               :key="level"
               :value="level"
@@ -220,8 +189,8 @@ function generate() {
       <details>
         <summary>Session limits</summary>
         <p>
-          Leave blank to inherit project defaults. A longer code-block timeout
-          does not extend an AI session.
+          Leave blank to inherit project defaults. A longer code-block timeout does not extend an AI
+          session.
         </p>
         <div class="field-grid">
           <Field v-slot="{ id }" label="Session timeout (minutes)">
@@ -232,16 +201,10 @@ function generate() {
               max="60"
               step="1"
               placeholder="Project default"
-              :value="
-                profile.agent.timeoutMs === undefined
-                  ? ''
-                  : profile.agent.timeoutMs / 60000
-              "
+              :value="profile.agent.timeoutMs === undefined ? '' : profile.agent.timeoutMs / 60000"
               @input="
                 profile.agent.timeoutMs =
-                  inputValue($event) === ''
-                    ? undefined
-                    : Number(inputValue($event)) * 60000
+                  inputValue($event) === '' ? undefined : Number(inputValue($event)) * 60000
               "
             />
           </Field>
@@ -256,9 +219,7 @@ function generate() {
               :value="profile.agent.maxToolCalls"
               @input="
                 profile.agent.maxToolCalls =
-                  inputValue($event) === ''
-                    ? undefined
-                    : Number(inputValue($event))
+                  inputValue($event) === '' ? undefined : Number(inputValue($event))
               "
             />
           </Field>

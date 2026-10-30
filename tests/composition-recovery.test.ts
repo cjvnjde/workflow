@@ -2,14 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { WorkflowEngine } from "../src/engine.js";
-import type { UsageTotals } from "../src/domain.js";
-import { FileClaims, FileJournal } from "../src/recovery.js";
-import { Workspace } from "../src/workspace.js";
+import { WorkflowEngine } from "../src/core/engine.js";
+import type { UsageTotals } from "../src/contracts/domain.js";
+import { FileClaims, FileJournal } from "../src/core/storage/recovery.js";
+import { Workspace } from "../src/core/storage/workspace.js";
 import { fixture } from "./helpers.js";
 
-const header =
-  'import { workflow, block, step, sequence, parallel } from "workflow";';
+const header = 'import { workflow, block, step, sequence, parallel } from "workflow";';
 
 function deferred() {
   let resolve!: () => void;
@@ -86,25 +85,11 @@ test("cancelling parallel attempts restores every active managed edit and preser
         step("b", active, {inputs: {file: "b.txt"}}),
       ], {concurrency: 2}),
     )});`;
-  const draft = await engine.createProgram(
-    "Cancel parallel work",
-    "Task",
-    { source },
-    library,
-  );
+  const draft = await engine.createProgram("Cancel parallel work", "Task", { source }, library);
   await engine.approve(draft.id);
-  await until(
-    () => started.size === 2,
-    "Both independent attempts should start",
-  );
-  assert.equal(
-    await readFile(path.join(project, "a.txt"), "utf8"),
-    "partial edit",
-  );
-  assert.equal(
-    await readFile(path.join(project, "b.txt"), "utf8"),
-    "partial edit",
-  );
+  await until(() => started.size === 2, "Both independent attempts should start");
+  assert.equal(await readFile(path.join(project, "a.txt"), "utf8"), "partial edit");
+  assert.equal(await readFile(path.join(project, "b.txt"), "utf8"), "partial edit");
 
   await engine.cancel(draft.id);
   await engine.waitForIdle();
@@ -112,21 +97,11 @@ test("cancelling parallel attempts restores every active managed edit and preser
   assert.equal(run.status, "cancelled", run.error);
   assert.deepEqual(aborted, new Set(["a", "b"]));
   assert.deepEqual(run.activeNodes, []);
+  assert.equal(await readFile(path.join(project, "a.txt"), "utf8"), "original-a");
+  assert.equal(await readFile(path.join(project, "b.txt"), "utf8"), "original-b");
+  assert.equal(await readFile(path.join(project, "completed.txt"), "utf8"), "keep completed work");
   assert.equal(
-    await readFile(path.join(project, "a.txt"), "utf8"),
-    "original-a",
-  );
-  assert.equal(
-    await readFile(path.join(project, "b.txt"), "utf8"),
-    "original-b",
-  );
-  assert.equal(
-    await readFile(path.join(project, "completed.txt"), "utf8"),
-    "keep completed work",
-  );
-  assert.equal(
-    run.attempts.find((attempt) => attempt.nodeId === "completed")?.recovery
-      ?.status,
+    run.attempts.find((attempt) => attempt.nodeId === "completed")?.recovery?.status,
     "committed",
   );
   for (const id of ["a", "b"]) {
@@ -161,29 +136,19 @@ test("restart resumes only the interrupted parallel sibling and retains every at
       step("a", job, {inputs: {file: "a.txt"}, maxVisits: 3}),
       step("b", job, {inputs: {file: "b.txt"}, maxVisits: 3}),
     ])});`;
-  const draft = await engine.createProgram(
-    "Recover siblings",
-    "Task",
-    { source },
-    library,
-  );
+  const draft = await engine.createProgram("Recover siblings", "Task", { source }, library);
   await engine.approve(draft.id);
   await until(
     () =>
       calls.includes("b:1") &&
-      !!engine.get(draft.id).attempts.find((attempt) => attempt.nodeId === "a")
-        ?.finishedAt,
+      !!engine.get(draft.id).attempts.find((attempt) => attempt.nodeId === "a")?.finishedAt,
     "Sibling A should finish while sibling B remains active",
   );
   await engine.shutdown();
 
   const restarted = new WorkflowEngine(project, "live", async (execution) => {
     calls.push(`${execution.node.id}:${execution.visit}`);
-    assert.equal(
-      execution.node.id,
-      "b",
-      "Completed sibling A must not run again",
-    );
+    assert.equal(execution.node.id, "b", "Completed sibling A must not run again");
     assert.equal(execution.visit, 2);
     await execution.onUsage?.(usage(0.3));
     return { outcome: "pass", summary: "Recovered sibling B", artifacts: {} };
@@ -195,14 +160,8 @@ test("restart resumes only the interrupted parallel sibling and retains every at
     "Worker loss should await an explicit retry",
   );
   assert.deepEqual(calls.toSorted(), ["a:1", "b:1"]);
-  assert.equal(
-    await readFile(path.join(project, "a.txt"), "utf8"),
-    "changed-1",
-  );
-  assert.equal(
-    await readFile(path.join(project, "b.txt"), "utf8"),
-    "original-b",
-  );
+  assert.equal(await readFile(path.join(project, "a.txt"), "utf8"), "changed-1");
+  assert.equal(await readFile(path.join(project, "b.txt"), "utf8"), "original-b");
   assert.equal(restarted.get(draft.id).usage?.requests, 2);
 
   await restarted.resume(draft.id);
@@ -217,19 +176,11 @@ test("restart resumes only the interrupted parallel sibling and retains every at
   assert.equal(run.usage?.requests, 3);
   assert.ok(Math.abs((run.usage?.costUsd ?? 0) - 0.6) < 1e-10);
   assert.equal(
-    run.attempts.find(
-      (attempt) => attempt.nodeId === "b" && attempt.visit === 1,
-    )?.usage?.costUsd,
+    run.attempts.find((attempt) => attempt.nodeId === "b" && attempt.visit === 1)?.usage?.costUsd,
     0.2,
   );
-  assert.equal(
-    await readFile(path.join(project, "a.txt"), "utf8"),
-    "changed-1",
-  );
-  assert.equal(
-    await readFile(path.join(project, "b.txt"), "utf8"),
-    "changed-2",
-  );
+  assert.equal(await readFile(path.join(project, "a.txt"), "utf8"), "changed-1");
+  assert.equal(await readFile(path.join(project, "b.txt"), "utf8"), "changed-2");
 });
 
 test("nested parallel groups obey the global limit and stop admitted waiters after failure while paused", async (t) => {
@@ -238,6 +189,7 @@ test("nested parallel groups obey the global limit and stop admitted waiters aft
   const calls: string[] = [];
   let active = 0;
   let maximum = 0;
+  // eslint-disable-next-line prefer-const -- Running callbacks read undefined before the first admitted step is selected below.
   let failureId: string | undefined;
   const engine = new WorkflowEngine(project, "live", async (execution) => {
     calls.push(execution.node.id);
@@ -275,17 +227,9 @@ test("nested parallel groups obey the global limit and stop admitted waiters aft
       return answer;
     }});
     export default workflow({name: "Nested limits", flow: parallel([${groups.join(",")}], {concurrency: 3})});`;
-  const draft = await engine.createProgram(
-    "Nested limits",
-    "Task",
-    { source },
-    library,
-  );
+  const draft = await engine.createProgram("Nested limits", "Task", { source }, library);
   await engine.approve(draft.id);
-  await until(
-    () => calls.length >= 8,
-    "The first eight independent effects should start",
-  );
+  await until(() => calls.length >= 8, "The first eight independent effects should start");
   assert.equal(calls.length, 8);
   assert.equal(maximum, 8);
   assert.equal((await engine.refresh(draft.id)).activeNodes?.length, 8);
@@ -297,8 +241,7 @@ test("nested parallel groups obey the global limit and stop admitted waiters aft
       engine
         .get(draft.id)
         .attempts.some(
-          (attempt) =>
-            attempt.nodeId === failureId && attempt.result?.outcome === "fail",
+          (attempt) => attempt.nodeId === failureId && attempt.result?.outcome === "fail",
         ),
     "The failed active step should publish its outcome while paused",
   );
@@ -347,12 +290,7 @@ test("Resume received before an interrupted checkpoint returns is not lost", asy
     `
     const work = step("work", block({run: ctx => ctx.ai({prompt: ctx.prompt})}), {maxVisits: 2});
     export default workflow({name: "Resume checkpoint race", flow: work});`;
-  const draft = await engine.createProgram(
-    "Resume checkpoint race",
-    "Task",
-    { source },
-    library,
-  );
+  const draft = await engine.createProgram("Resume checkpoint race", "Task", { source }, library);
   await engine.approve(draft.id);
   await checkpointStored.promise;
   assert.equal(engine.get(draft.id).status, "interrupted");
@@ -388,17 +326,8 @@ test("overlapping historical claims cannot commit away evidence needed to protec
   const recoveredFirst = await FileJournal.open(firstDirectory, claims);
   const recoveredSecond = await FileJournal.open(secondDirectory, claims);
   const workspace = await Workspace.create(project);
-  assert.equal(
-    (await recoveredFirst.settle(workspace, false)).status,
-    "conflict",
-  );
-  assert.equal(
-    (await recoveredSecond.settle(workspace, true)).status,
-    "conflict",
-  );
-  assert.equal(
-    (await recoveredFirst.settle(workspace, false)).status,
-    "conflict",
-  );
+  assert.equal((await recoveredFirst.settle(workspace, false)).status, "conflict");
+  assert.equal((await recoveredSecond.settle(workspace, true)).status, "conflict");
+  assert.equal((await recoveredFirst.settle(workspace, false)).status, "conflict");
   assert.equal(await readFile(filename, "utf8"), "identical changes");
 });

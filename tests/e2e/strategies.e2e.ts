@@ -1,10 +1,5 @@
-import {
-  expect,
-  test,
-  type APIRequestContext,
-  type Page,
-} from "@playwright/test";
-import { strategyPreviewSchema } from "../../src/memory-schema.js";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { strategyPreviewSchema } from "../../src/contracts/memory-schema.js";
 
 const source = `import { workflow, block, step, sequence } from "workflow";
 const inspect = step("inspect", block({ run(){ return {summary:"ARTIFACT_CONTENT_SENTINEL", private:"SOURCE_CODE_SENTINEL"}; } }), {label:"Inspect the current state"});
@@ -27,9 +22,7 @@ async function completed(page: Page, request: APIRequestContext) {
   await expect(
     page.getByRole("button", { name: "Remember this approach", exact: true }),
   ).toHaveCount(0);
-  await page
-    .getByRole("button", { name: "Approve & start", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Approve & start", exact: true }).click();
   await expect(page.locator(".status-pill")).toHaveText("Completed", {
     timeout: 20000,
   });
@@ -47,9 +40,7 @@ async function open(page: Page) {
       name: /^(Remember this approach|Approach remembered)$/,
     })
     .click();
-  await expect(
-    dialog(page).getByLabel("Strategy title", { exact: true }),
-  ).toBeVisible();
+  await expect(dialog(page).getByLabel("Strategy title", { exact: true })).toBeVisible();
   return dialog(page);
 }
 
@@ -61,23 +52,15 @@ test("remembering requires explicit save, keeps memory off, and reopens the exis
   const run = await completed(page, request);
   const before = await (await request.get("/api/memory")).json();
   expect(before.enabled).toBe(false);
-  const previewResponse = await request.get(
-    `/api/runs/${run.id}/strategy-preview`,
-  );
+  const previewResponse = await request.get(`/api/runs/${run.id}/strategy-preview`);
   expect(previewResponse.ok(), await previewResponse.text()).toBe(true);
   const preview = strategyPreviewSchema.parse(await previewResponse.json());
   expect(JSON.stringify(preview)).not.toContain("SOURCE_CODE_SENTINEL");
   expect(JSON.stringify(preview)).not.toContain("ARTIFACT_CONTENT_SENTINEL");
-  expect(preview.metadata.roles.map((role) => role.nodeId)).toEqual([
-    "inspect",
-    "verify",
-  ]);
+  expect(preview.metadata.roles.map((role) => role.nodeId)).toEqual(["inspect", "verify"]);
   let posts = 0;
   page.on("request", (request) => {
-    if (
-      request.method() === "POST" &&
-      request.url().endsWith(`/api/runs/${run.id}/remember`)
-    )
+    if (request.method() === "POST" && request.url().endsWith(`/api/runs/${run.id}/remember`))
       posts++;
   });
   let panel = await open(page);
@@ -95,43 +78,30 @@ test("remembering requires explicit save, keeps memory off, and reopens the exis
     before.entries.length,
   );
   panel = await open(page);
-  await panel
-    .getByLabel("Strategy title", { exact: true })
-    .fill("Focused evidence before changes");
+  await panel.getByLabel("Strategy title", { exact: true }).fill("Focused evidence before changes");
   await panel
     .getByLabel("When this is useful", { exact: true })
-    .fill(
-      "Small code changes that need clear evidence without a broad investigation.",
-    );
+    .fill("Small code changes that need clear evidence without a broad investigation.");
   await panel
     .getByLabel("Reusable guidance", { exact: true })
     .fill(
       "Inspect the current state, then run focused deterministic checks. Keep independent validation.",
     );
-  await panel
-    .getByLabel("Strategy tags", { exact: true })
-    .fill("review, checks");
+  await panel.getByLabel("Strategy tags", { exact: true }).fill("review, checks");
   await panel.evaluate((element) => {
     element.scrollTop = 0;
   });
   await panel.screenshot({ path: "/tmp/workflow-feature6-strategy.png" });
-  await panel
-    .getByRole("button", { name: "Save strategy", exact: true })
-    .click({ clickCount: 2 });
-  await expect(panel).toContainText(
-    "Approach saved. Project memory remains off",
-  );
+  await panel.getByRole("button", { name: "Save strategy", exact: true }).click({ clickCount: 2 });
+  await expect(panel).toContainText("Approach saved. Project memory remains off");
   expect(posts).toBe(1);
   const saved = await (await request.get("/api/memory")).json();
   expect(saved.enabled).toBe(false);
   const description = saved.entries.find(
-    (entry: { title: string }) =>
-      entry.title === "Focused evidence before changes",
+    (entry: { title: string }) => entry.title === "Focused evidence before changes",
   );
   expect(description.kind).toBe("strategy");
-  const entry = await (
-    await request.get(`/api/memory/entries/${description.id}`)
-  ).json();
+  const entry = await (await request.get(`/api/memory/entries/${description.id}`)).json();
   expect(entry.strategy.sourceRunId).toBe(run.id);
   expect(entry.details).toBe(
     "Inspect the current state, then run focused deterministic checks. Keep independent validation.",
@@ -139,12 +109,8 @@ test("remembering requires explicit save, keeps memory off, and reopens the exis
   await panel.getByRole("button", { name: "Done", exact: true }).click();
   panel = await open(page);
   await expect(panel).toContainText("Already remembered");
-  await expect(panel.getByLabel("Strategy title", { exact: true })).toHaveValue(
-    entry.title,
-  );
-  await expect(
-    panel.getByRole("button", { name: "Save strategy", exact: true }),
-  ).toHaveCount(0);
+  await expect(panel.getByLabel("Strategy title", { exact: true })).toHaveValue(entry.title);
+  await expect(panel.getByRole("button", { name: "Save strategy", exact: true })).toHaveCount(0);
   expect(posts).toBe(1);
   await panel.getByRole("button", { name: "Done", exact: true }).click();
   await page.goto("/#settings");
@@ -156,32 +122,20 @@ test("remembering requires explicit save, keeps memory off, and reopens the exis
     name: "Project memory",
     exact: true,
   });
-  await memory
-    .getByLabel("Entry type", { exact: true })
-    .selectOption("strategy");
+  await memory.getByLabel("Entry type", { exact: true }).selectOption("strategy");
   await memory.getByRole("button", { name: new RegExp(entry.title) }).click();
-  await expect(
-    memory.getByLabel("Reusable guidance", { exact: true }),
-  ).toHaveValue(entry.details);
+  await expect(memory.getByLabel("Reusable guidance", { exact: true })).toHaveValue(entry.details);
   await expect(
     memory.getByRole("region", { name: "Strategy source facts", exact: true }),
   ).toContainText("Demo source");
   await memory
     .getByLabel("Reusable guidance", { exact: true })
     .fill("Preserve focused checks and explicitly review their evidence.");
-  await memory
-    .getByRole("button", { name: "Save memory entry", exact: true })
-    .click();
-  await expect(memory).toContainText(
-    "Memory entry saved. Project memory remains disabled.",
-  );
-  const updated = await (
-    await request.get(`/api/memory/entries/${entry.id}`)
-  ).json();
+  await memory.getByRole("button", { name: "Save memory entry", exact: true }).click();
+  await expect(memory).toContainText("Memory entry saved. Project memory remains disabled.");
+  const updated = await (await request.get(`/api/memory/entries/${entry.id}`)).json();
   expect(updated.strategy).toEqual(entry.strategy);
-  expect(updated.details).toBe(
-    "Preserve focused checks and explicitly review their evidence.",
-  );
+  expect(updated.details).toBe("Preserve focused checks and explicitly review their evidence.");
 });
 
 test("stale memory revisions preserve strategy edits until latest facts are reviewed", async ({
@@ -190,9 +144,7 @@ test("stale memory revisions preserve strategy edits until latest facts are revi
 }) => {
   const run = await completed(page, request);
   const panel = await open(page);
-  await panel
-    .getByLabel("Strategy title", { exact: true })
-    .fill("My reusable approach");
+  await panel.getByLabel("Strategy title", { exact: true }).fill("My reusable approach");
   await panel
     .getByLabel("Reusable guidance", { exact: true })
     .fill("Keep this unsaved guidance while reviewing a conflict.");
@@ -209,33 +161,21 @@ test("stale memory revisions preserve strategy edits until latest facts are revi
     },
   });
   expect(other.ok(), await other.text()).toBe(true);
-  await panel
-    .getByRole("button", { name: "Save strategy", exact: true })
-    .click();
+  await panel.getByRole("button", { name: "Save strategy", exact: true }).click();
   await expect(panel.getByRole("alert")).toBeVisible();
   await expect(panel).toContainText("Your draft is preserved");
-  await expect(
-    panel.getByLabel("Reusable guidance", { exact: true }),
-  ).toHaveValue("Keep this unsaved guidance while reviewing a conflict.");
-  await expect(
-    panel.getByRole("button", { name: "Save strategy", exact: true }),
-  ).toBeDisabled();
-  await panel
-    .getByRole("button", { name: "Review latest source & memory", exact: true })
-    .click();
+  await expect(panel.getByLabel("Reusable guidance", { exact: true })).toHaveValue(
+    "Keep this unsaved guidance while reviewing a conflict.",
+  );
+  await expect(panel.getByRole("button", { name: "Save strategy", exact: true })).toBeDisabled();
+  await panel.getByRole("button", { name: "Review latest source & memory", exact: true }).click();
   await expect(panel).toContainText("Your draft is unchanged");
   await expect(panel.getByLabel("Strategy title", { exact: true })).toHaveValue(
     "My reusable approach",
   );
-  await panel
-    .getByRole("button", { name: "Save strategy", exact: true })
-    .click();
-  await expect(panel).toContainText(
-    "Approach saved. Project memory remains off",
-  );
-  const saved = await (
-    await request.get(`/api/runs/${run.id}/strategy-preview`)
-  ).json();
+  await panel.getByRole("button", { name: "Save strategy", exact: true }).click();
+  await expect(panel).toContainText("Approach saved. Project memory remains off");
+  const saved = await (await request.get(`/api/runs/${run.id}/strategy-preview`)).json();
   expect(saved.existingEntry.details).toBe(
     "Keep this unsaved guidance while reviewing a conflict.",
   );
@@ -253,10 +193,7 @@ test("cancelled and delayed previews never write or replace a later preview", as
   let reads = 0;
   let posts = 0;
   page.on("request", (request) => {
-    if (
-      request.method() === "POST" &&
-      request.url().endsWith(`/api/runs/${run.id}/remember`)
-    )
+    if (request.method() === "POST" && request.url().endsWith(`/api/runs/${run.id}/remember`))
       posts++;
   });
   await page.route(`**/api/runs/${run.id}/strategy-preview`, (route) => {
@@ -271,19 +208,13 @@ test("cancelled and delayed previews never write or replace a later preview", as
       },
     });
   });
-  await page
-    .getByRole("button", { name: "Remember this approach", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Remember this approach", exact: true }).click();
   await expect(dialog(page)).toContainText("Loading strategy preview");
   await expect.poll(() => !!delayed).toBe(true);
-  await dialog(page)
-    .getByRole("button", { name: "Cancel", exact: true })
-    .click();
+  await dialog(page).getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(dialog(page)).not.toBeVisible();
   const panel = await open(page);
-  await expect(panel.getByLabel("Strategy title", { exact: true })).toHaveValue(
-    "Current preview",
-  );
+  await expect(panel.getByLabel("Strategy title", { exact: true })).toHaveValue("Current preview");
   await delayed!
     .fulfill({
       json: {
@@ -292,14 +223,10 @@ test("cancelled and delayed previews never write or replace a later preview", as
       },
     })
     .catch(() => {});
-  await expect(panel.getByLabel("Strategy title", { exact: true })).toHaveValue(
-    "Current preview",
-  );
+  await expect(panel.getByLabel("Strategy title", { exact: true })).toHaveValue("Current preview");
   await page.setViewportSize({ width: 390, height: 900 });
   expect(
-    await panel.evaluate(
-      (element) => element.getBoundingClientRect().right <= innerWidth,
-    ),
+    await panel.evaluate((element) => element.getBoundingClientRect().right <= innerWidth),
   ).toBe(true);
   await panel.evaluate((element) => {
     element.scrollTop = 0;

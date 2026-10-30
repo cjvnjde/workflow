@@ -22,7 +22,7 @@ A consumer can take selected outputs from several earlier blocks:
 
 ```ts
 const compare = step("compare", compareReports, {
-  inputs: ctx => ({
+  inputs: (ctx) => ({
     frontend: ctx.output(frontend)!,
     backend: ctx.output(backend)!,
   }),

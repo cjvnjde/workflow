@@ -14,17 +14,17 @@ Notifications record run updates received while the app is open. They are a conv
 
 Planning has its own task state: queued, planning, needs input, ready, failed, or cancelled. A ready task links to a workflow run. The run has a separate lifecycle:
 
-| Run status | Meaning | Next action |
-| --- | --- | --- |
-| `draft` | Source and graph are saved; no execution has started. | Edit, approve, or reject. |
-| `running` | The approved workflow is executing. | Inspect activity, pause, or stop. |
-| `pausing` | Pause requested; active work is finishing. | Wait for the boundary. |
-| `paused` | No new steps will start until resumed. | Resume or cancel. |
-| `interrupted` | An activity failed or recovery needs attention. | Inspect effects, resolve conflicts, then explicitly resume. |
-| `completed` | The workflow reached successful completion. | Inspect its actual findings and artifacts. |
-| `failed` | Code, routing, a condition, or an execution limit ended the workflow. | Read the cause and create a corrected task/workflow when appropriate. |
-| `cancelled` | Execution was stopped. | Inspect retained effects and recovery results. |
-| `rejected` | The draft was declined before execution. | Create another task if needed. |
+| Run status    | Meaning                                                               | Next action                                                           |
+| ------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `draft`       | Source and graph are saved; no execution has started.                 | Edit, approve, or reject.                                             |
+| `running`     | The approved workflow is executing.                                   | Inspect activity, pause, or stop.                                     |
+| `pausing`     | Pause requested; active work is finishing.                            | Wait for the boundary.                                                |
+| `paused`      | No new steps will start until resumed.                                | Resume or cancel.                                                     |
+| `interrupted` | An activity failed or recovery needs attention.                       | Inspect effects, resolve conflicts, then explicitly resume.           |
+| `completed`   | The workflow reached successful completion.                           | Inspect its actual findings and artifacts.                            |
+| `failed`      | Code, routing, a condition, or an execution limit ended the workflow. | Read the cause and create a corrected task/workflow when appropriate. |
+| `cancelled`   | Execution was stopped.                                                | Inspect retained effects and recovery results.                        |
+| `rejected`    | The draft was declined before execution.                              | Create another task if needed.                                        |
 
 A terminal `failed` run is different from an `interrupted` run awaiting resume. A passing command is evidence about that command; a completed workflow is not a guarantee that every requested behavior is correct. Read the block's findings.
 
@@ -129,23 +129,23 @@ Approval first persists a pending start receipt. If a crash occurs before Tempor
 
 ## Troubleshooting
 
-| Symptom | What to check |
-| --- | --- |
-| “No complete `.workflow/` configuration” | Run `workflow init` from the intended project folder. The CLI does not search parent folders. |
-| Model unavailable or unsupported for the account | Refresh the connected catalog, select a supported model, then update the draft or replan. Defaults do not change existing drafts. |
-| Planning stopped without a workflow | Open Planning activity for the validation/provider error. The coordinator has automatic correction continuations, but time/tool limits and persistent errors can still stop planning. |
-| “Primitive … declared but unused” | Attach the step/group to the exported `flow`, or remove an intentionally excluded declaration. |
-| Review has no branch/base comparison | The execution step should inspect the baseline and adapt to accessible working files when no base exists. Findings must state that limitation. |
-| Command exited nonzero but workflow continued | `ctx.exec` returns status as data. Set `ctx.outcome`, throw, or branch on the result explicitly. |
-| A loop stopped before approval | Check both `maxIterations` and per-step/total visit limits, and the step's outcome actions. |
-| Parallel AI appears sequential | A spending limit serializes model sessions against the remaining budget. Group concurrency and the overall eight-step cap also apply. |
-| Parallel file conflict | Sequence overlapping edits. Commands bypass managed-write claims, so review their effects too. |
-| Host startup fails or the host has stopped unexpectedly | Run `workflow status --json` and inspect `.workflow/host.log`. Use `--port 0` if another project owns the default port. A background host does not restart itself after a crash or reboot. |
-| Another workflow owns the project | Resume or cancel the paused/interrupted execution before approving a competing run. |
-| Saved block file edits do not appear | Check the active manifest's `sourceFiles`. Old inline-only libraries become source-backed after the next Apply/setup; current generated blocks load their registered `block.ts` files. Existing runs retain approved snapshots. |
-| Missing Temporal history or archive | Restore the matching project backup. Do not delete more state or start the old work under a new snapshot. |
-| Stale form/draft revision | Load the latest version, reconcile your edits, and save again. |
-| Bun warns about `v8.promiseHooks.createHook` | The pinned SDK cannot collect workflow stack traces on Bun. It is a diagnostic limitation; execution still uses Temporal. |
+| Symptom                                                 | What to check                                                                                                                                                                                                                   |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| “No complete `.workflow/` configuration”                | Run `workflow init` from the intended project folder. The CLI does not search parent folders.                                                                                                                                   |
+| Model unavailable or unsupported for the account        | Refresh the connected catalog, select a supported model, then update the draft or replan. Defaults do not change existing drafts.                                                                                               |
+| Planning stopped without a workflow                     | Open Planning activity for the validation/provider error. The coordinator has automatic correction continuations, but time/tool limits and persistent errors can still stop planning.                                           |
+| “Primitive … declared but unused”                       | Attach the step/group to the exported `flow`, or remove an intentionally excluded declaration.                                                                                                                                  |
+| Review has no branch/base comparison                    | The execution step should inspect the baseline and adapt to accessible working files when no base exists. Findings must state that limitation.                                                                                  |
+| Command exited nonzero but workflow continued           | `ctx.exec` returns status as data. Set `ctx.outcome`, throw, or branch on the result explicitly.                                                                                                                                |
+| A loop stopped before approval                          | Check both `maxIterations` and per-step/total visit limits, and the step's outcome actions.                                                                                                                                     |
+| Parallel AI appears sequential                          | A spending limit serializes model sessions against the remaining budget. Group concurrency and the overall eight-step cap also apply.                                                                                           |
+| Parallel file conflict                                  | Sequence overlapping edits. Commands bypass managed-write claims, so review their effects too.                                                                                                                                  |
+| Host startup fails or the host has stopped unexpectedly | Run `workflow status --json` and inspect `.workflow/host.log`. Use `--port 0` if another project owns the default port. A background host does not restart itself after a crash or reboot.                                      |
+| Another workflow owns the project                       | Resume or cancel the paused/interrupted execution before approving a competing run.                                                                                                                                             |
+| Saved block file edits do not appear                    | Check the active manifest's `sourceFiles`. Old inline-only libraries become source-backed after the next Apply/setup; current generated blocks load their registered `block.ts` files. Existing runs retain approved snapshots. |
+| Missing Temporal history or archive                     | Restore the matching project backup. Do not delete more state or start the old work under a new snapshot.                                                                                                                       |
+| Stale form/draft revision                               | Load the latest version, reconcile your edits, and save again.                                                                                                                                                                  |
+| Bun warns about `v8.promiseHooks.createHook`            | The pinned SDK cannot collect workflow stack traces on Bun. It is a diagnostic limitation; execution still uses Temporal.                                                                                                       |
 
 ## Current boundaries
 

@@ -3,8 +3,8 @@ import { link, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/
 import path from "node:path";
 import test from "node:test";
 import os from "node:os";
-import { initializeProject, loadLibrary } from "../src/library.js";
-import { Workspace } from "../src/workspace.js";
+import { initializeProject, loadLibrary } from "../src/core/library/library.js";
+import { Workspace } from "../src/core/storage/workspace.js";
 import { fixture } from "./helpers.js";
 
 test("file tools can update source, tests, manifests and project configuration", async (t) => {
@@ -50,14 +50,8 @@ test("exact edits require one nonempty match and preserve the file on error", as
   assert.ok(fix);
   const workspace = await Workspace.create(project);
   await workspace.write("source.ts", "same same");
-  await assert.rejects(
-    workspace.edit("source.ts", "same", "different"),
-    /exactly once/,
-  );
-  await assert.rejects(
-    workspace.edit("source.ts", "", "different"),
-    /must not be empty/,
-  );
+  await assert.rejects(workspace.edit("source.ts", "same", "different"), /exactly once/);
+  await assert.rejects(workspace.edit("source.ts", "", "different"), /must not be empty/);
   assert.equal(await workspace.read("source.ts"), "same same");
 });
 
@@ -74,20 +68,31 @@ test("init never overwrites an existing policy and skills cannot escape their bl
   await assert.rejects(loadLibrary(project), /must stay inside/);
 });
 
-test("special files are rejected before opening can block", { skip: process.platform === "win32" }, async (t) => {
-  const { execFileSync } = await import("node:child_process");
-  const { project } = await fixture(t);
-  execFileSync("mkfifo", [path.join(project, "pipe")]);
-  // Use an isolated process: a regression would otherwise leave an open() blocked in this test runner.
-  const source = new URL("../src/workspace.ts", import.meta.url).pathname;
-  execFileSync(process.execPath, ["-e", `
+test(
+  "special files are rejected before opening can block",
+  { skip: process.platform === "win32" },
+  async (t) => {
+    const { execFileSync } = await import("node:child_process");
+    const { project } = await fixture(t);
+    execFileSync("mkfifo", [path.join(project, "pipe")]);
+    // Use an isolated process: a regression would otherwise leave an open() blocked in this test runner.
+    const source = new URL("../src/core/storage/workspace.ts", import.meta.url).pathname;
+    execFileSync(
+      process.execPath,
+      [
+        "-e",
+        `
     import assert from 'node:assert/strict';
     import { Workspace } from ${JSON.stringify(source)};
     const workspace = await Workspace.create(${JSON.stringify(project)});
     await assert.rejects(workspace.read('pipe'), /regular file/);
     await assert.rejects(workspace.write('pipe', 'content'), /regular file/);
-  `], { timeout: 2000 });
-});
+  `,
+      ],
+      { timeout: 2000 },
+    );
+  },
+);
 
 test("Git metadata and dotfiles are accessible with explicit paths", async (t) => {
   const { project } = await fixture(t);
@@ -102,13 +107,20 @@ test("Git metadata and dotfiles are accessible with explicit paths", async (t) =
   assert.ok(!(await workspace.list()).includes(".git/HEAD"));
 });
 
-test('isolated managed writes cannot escape through absolute paths or links', async t => {
- const {project}=await fixture(t);
- const isolated=path.join(project,'isolated');await mkdir(isolated);
- const workspace=await Workspace.create(isolated,{writeRootOnly:true,absoluteJournalPaths:true});
- await writeFile(path.join(project,'outside.txt'),'keep');
- await assert.rejects(workspace.write(path.join(project,'outside.txt'),'changed'),/stay inside/);
- await symlink(path.join(project,'outside.txt'),path.join(isolated,'alias'));
- await assert.rejects(workspace.write('alias','changed'),/stay inside/);
- assert.equal(await readFile(path.join(project,'outside.txt'),'utf8'),'keep');
+test("isolated managed writes cannot escape through absolute paths or links", async (t) => {
+  const { project } = await fixture(t);
+  const isolated = path.join(project, "isolated");
+  await mkdir(isolated);
+  const workspace = await Workspace.create(isolated, {
+    writeRootOnly: true,
+    absoluteJournalPaths: true,
+  });
+  await writeFile(path.join(project, "outside.txt"), "keep");
+  await assert.rejects(
+    workspace.write(path.join(project, "outside.txt"), "changed"),
+    /stay inside/,
+  );
+  await symlink(path.join(project, "outside.txt"), path.join(isolated, "alias"));
+  await assert.rejects(workspace.write("alias", "changed"), /stay inside/);
+  assert.equal(await readFile(path.join(project, "outside.txt"), "utf8"), "keep");
 });

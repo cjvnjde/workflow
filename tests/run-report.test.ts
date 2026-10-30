@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { recoveryAdvice, runReport } from "../web/run-report.js";
-import type { WorkflowRun, RunEvent } from "../src/domain.js";
+import { recoveryAdvice, runReport } from "../web/features/execution/run-report.js";
+import type { WorkflowRun, RunEvent } from "../src/contracts/domain.js";
 test("report separates acceptance from success, uses latest failures and pairs actual model calls", () => {
   const run = {
     status: "completed",
@@ -82,6 +82,10 @@ test("recovery diagnoses ownership without encouraging repair to rewrite reprodu
 });
 
 test("explicit blocked results outrank incidental diagnostic keywords", () => {
- const run = {status:"failed",error:"Review output: missing implementation; provide input",attempts:[{result:{disposition:"blocked",summary:"No implementation exists"}}]} as unknown as WorkflowRun;
- assert.equal(recoveryAdvice(run)?.category,"Missing prerequisite");
+  const run = {
+    status: "failed",
+    error: "Review output: missing implementation; provide input",
+    attempts: [{ result: { disposition: "blocked", summary: "No implementation exists" } }],
+  } as unknown as WorkflowRun;
+  assert.equal(recoveryAdvice(run)?.category, "Missing prerequisite");
 });

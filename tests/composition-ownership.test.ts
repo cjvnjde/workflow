@@ -1,18 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validateCompositionOwnership } from "../src/composition-ownership.js";
-import { bundleSchema, type Library } from "../src/domain.js";
-import type { FlowStructure } from "../src/composition-sdk.js";
+import { validateCompositionOwnership } from "../src/core/execution/composition-ownership.js";
+import { bundleSchema, type Library } from "../src/contracts/domain.js";
+import type { FlowStructure } from "../src/sdk/composition-sdk.js";
 const step = (id: string): FlowStructure => ({
   kind: "step",
   id,
   label: id,
   children: [],
 });
-const group = (
-  kind: FlowStructure["kind"],
-  children: FlowStructure[],
-): FlowStructure => ({ kind, id: "group", label: "Group", children });
+const group = (kind: FlowStructure["kind"], children: FlowStructure[]): FlowStructure => ({
+  kind,
+  id: "group",
+  label: "Group",
+  children,
+});
 const blocks = (a: string, b: string): Library["blocks"] =>
   Object.fromEntries(
     [a, b].map((options, index) => {
@@ -35,10 +37,7 @@ const blocks = (a: string, b: string): Library["blocks"] =>
     }),
   );
 test("parallel disjoint allowlists are rejected because each protects the sibling's files", () => {
-  const code = blocks(
-    'writablePaths:["backend/**"]',
-    'writablePaths:["frontend/**"]',
-  );
+  const code = blocks('writablePaths:["backend/**"]', 'writablePaths:["frontend/**"]');
   assert.throws(
     () =>
       validateCompositionOwnership(
@@ -48,10 +47,7 @@ test("parallel disjoint allowlists are rejected because each protects the siblin
     /conflicting ownership guards/,
   );
   assert.doesNotThrow(() =>
-    validateCompositionOwnership(
-      group("sequence", [step("a"), step("b")]),
-      code,
-    ),
+    validateCompositionOwnership(group("sequence", [step("a"), step("b")]), code),
   );
   assert.doesNotThrow(() =>
     validateCompositionOwnership(
@@ -63,10 +59,7 @@ test("parallel disjoint allowlists are rejected because each protects the siblin
 test("read-only calls can overlap, while an overlapping shared writer requires isolation", () => {
   const root = group("parallel", [step("a"), step("b")]);
   assert.doesNotThrow(() =>
-    validateCompositionOwnership(
-      root,
-      blocks('protectedPaths:["**/*"]', "writablePaths:[]"),
-    ),
+    validateCompositionOwnership(root, blocks('protectedPaths:["**/*"]', "writablePaths:[]")),
   );
   assert.throws(
     () =>

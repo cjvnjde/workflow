@@ -32,9 +32,7 @@ const options: ts.CompilerOptions = {
   allowNonTsExtensions: true,
 };
 const createProgram = proxyCreateProgram(ts, ts.createProgram, () => ({
-  languagePlugins: [
-    createVueLanguagePlugin(ts, options, vue.vueOptions, (id: string) => id),
-  ],
+  languagePlugins: [createVueLanguagePlugin(ts, options, vue.vueOptions, (id: string) => id)],
 }));
 const program = createProgram({
   rootNames: config.fileNames,
@@ -56,8 +54,6 @@ if (diagnostics.length) {
     }),
   );
 }
-process.exitCode = diagnostics.some(
-  (item) => item.category === ts.DiagnosticCategory.Error,
-)
+process.exitCode = diagnostics.some((item) => item.category === ts.DiagnosticCategory.Error)
   ? 1
   : 0;

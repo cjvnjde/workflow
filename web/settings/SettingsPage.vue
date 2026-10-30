@@ -1,19 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onScopeDispose, ref, watch } from "vue";
 import type { z } from "zod";
-import type { Library } from "../../src/contracts.js";
-import {
-  modelCatalogSchema,
-  type AvailableModel,
-} from "../../src/contracts.js";
-import {
-  orchestrationStateSchema,
-  type OrchestrationState,
-} from "../../src/contracts.js";
-import { executionSettingsSchema } from "../../src/contracts.js";
-import { type DesignScope } from "../../src/contracts.js";
-import { request } from "../api.js";
-import Icon from "../components/Icon.vue";
+import type { Library } from "../../src/contracts/index.js";
+import { modelCatalogSchema, type AvailableModel } from "../../src/contracts/index.js";
+import { orchestrationStateSchema, type OrchestrationState } from "../../src/contracts/index.js";
+import { executionSettingsSchema } from "../../src/contracts/index.js";
+import { type DesignScope } from "../../src/contracts/index.js";
+import { request } from "../shared/api.js";
+import Icon from "../shared/Icon.vue";
 import ModelSettings from "./ModelSettings.vue";
 import ModelProfiles from "./ModelProfiles.vue";
 import TaskCases from "./TaskCases.vue";
@@ -22,9 +16,9 @@ import Capabilities from "./Capabilities.vue";
 import ExecutionSettings from "./ExecutionSettings.vue";
 import TriggerSettings from "./TriggerSettings.vue";
 import MemorySettings from "./MemorySettings.vue";
-import UsageSummary from "../components/UsageSummary.vue";
-import SetupProgress from "../components/SetupProgress.vue";
-import type { SetupJobsController } from "../composables/use-setup-jobs.js";
+import UsageSummary from "../features/usage/UsageSummary.vue";
+import SetupProgress from "../features/setup/SetupProgress.vue";
+import type { SetupJobsController } from "../features/setup/use-setup-jobs.js";
 const props = defineProps<{
   library: Library;
   onSaved: () => Promise<void>;
@@ -69,9 +63,7 @@ watch(
   () =>
     emit("context", {
       section: tab.value,
-      ...(tab.value === "blocks" && selectedBlock.value
-        ? { blockId: selectedBlock.value }
-        : {}),
+      ...(tab.value === "blocks" && selectedBlock.value ? { blockId: selectedBlock.value } : {}),
     }),
   { immediate: true },
 );
@@ -96,16 +88,10 @@ const editorRevision = ref(0);
 const staleSettings = ref(false);
 let loadSequence = 0;
 const controller = new AbortController();
-const refreshingDesign = computed(
-  () => loadedDesignRevision.value !== props.designRevision,
-);
-const dirty = computed(
-  () => !!state.value && JSON.stringify(state.value.settings) !== saved.value,
-);
+const refreshingDesign = computed(() => loadedDesignRevision.value !== props.designRevision);
+const dirty = computed(() => !!state.value && JSON.stringify(state.value.settings) !== saved.value);
 const executionDirty = computed(
-  () =>
-    !!execution.value &&
-    JSON.stringify(execution.value) !== savedExecution.value,
+  () => !!execution.value && JSON.stringify(execution.value) !== savedExecution.value,
 );
 const hasEdits = computed(
   () =>
@@ -180,11 +166,7 @@ watch(
   hasEdits,
   (value) => {
     emit("dirty", value);
-    if (
-      !value &&
-      error.value ===
-        "Save or discard your form edits before designing with AI."
-    )
+    if (!value && error.value === "Save or discard your form edits before designing with AI.")
       error.value = "";
   },
   { immediate: true },
@@ -215,23 +197,20 @@ async function perform(action: () => Promise<void>) {
 }
 async function save() {
   if (dirty.value && state.value) {
-    const updated = await request(
-      "/api/settings/orchestration",
-      orchestrationStateSchema,
-      { method: "PUT", body: state.value },
-    );
+    const updated = await request("/api/settings/orchestration", orchestrationStateSchema, {
+      method: "PUT",
+      body: state.value,
+    });
     state.value = updated;
     saved.value = JSON.stringify(updated.settings);
     await props.onSaved();
-    notice.value =
-      "Settings saved. New task requests use these instructions and capabilities.";
+    notice.value = "Settings saved. New task requests use these instructions and capabilities.";
   }
   if (executionDirty.value && execution.value) {
-    const updated = await request(
-      "/api/settings/execution",
-      executionSettingsSchema,
-      { method: "PUT", body: execution.value },
-    );
+    const updated = await request("/api/settings/execution", executionSettingsSchema, {
+      method: "PUT",
+      body: execution.value,
+    });
     execution.value = updated;
     savedExecution.value = JSON.stringify(updated);
     await props.onSaved();
@@ -249,10 +228,7 @@ function design(scope: DesignScope, prompt?: string) {
 function changeTab(id: (typeof tabs)[number][0]) {
   if (
     id !== tab.value &&
-    (blockDirty.value ||
-      modelDirty.value ||
-      triggerDirty.value ||
-      memoryDirty.value) &&
+    (blockDirty.value || modelDirty.value || triggerDirty.value || memoryDirty.value) &&
     !window.confirm("Discard unsaved changes in this section?")
   ) {
     return;
@@ -264,10 +240,7 @@ async function providersSaved() {
   models.value = (await request("/api/models", modelCatalogSchema)).models;
   // Provider defaults share config.json with execution settings. Preserve local edits.
   if (!executionDirty.value) {
-    const config = await request(
-      "/api/settings/execution",
-      executionSettingsSchema,
-    );
+    const config = await request("/api/settings/execution", executionSettingsSchema);
     execution.value = config;
     savedExecution.value = JSON.stringify(config);
   }
@@ -275,10 +248,7 @@ async function providersSaved() {
   await props.setupController.refresh();
 }
 async function reload() {
-  if (
-    !hasEdits.value ||
-    window.confirm("Discard unsaved settings and reload?")
-  ) {
+  if (!hasEdits.value || window.confirm("Discard unsaved settings and reload?")) {
     discardAll();
     await nextTick();
     void perform(load);
@@ -291,9 +261,7 @@ async function reload() {
     <div class="page-heading">
       <span class="eyebrow">WORKSPACE</span>
       <h1>Settings</h1>
-      <p>
-        Shape how your orchestrator plans, chooses models, and executes work.
-      </p>
+      <p>Shape how your orchestrator plans, chooses models, and executes work.</p>
     </div>
     <UsageSummary scope="project" :revision="usageRevision" active />
     <nav class="settings-tabs" aria-label="Settings sections">
@@ -310,17 +278,12 @@ async function reload() {
     <div v-if="error" class="inline-error" role="alert">{{ error }}</div>
     <div v-if="notice" class="setup-notice" role="status">{{ notice }}</div>
     <div v-if="staleSettings" class="setup-notice" role="status">
-      Project settings changed while you were editing. Your unsaved edits are
-      preserved.
-      <button :disabled="busy || applyingDesign" @click="reload">
-        Reload saved settings
-      </button>
+      Project settings changed while you were editing. Your unsaved edits are preserved.
+      <button :disabled="busy || applyingDesign" @click="reload">Reload saved settings</button>
     </div>
     <div v-if="hasEdits" class="unsaved-bar" role="status">
       <span><Icon name="file" :size="15" />You have unsaved edits.</span>
-      <button :disabled="busy || applyingDesign" @click="discardAll">
-        Discard all edits
-      </button>
+      <button :disabled="busy || applyingDesign" @click="discardAll">Discard all edits</button>
     </div>
     <MemorySettings
       v-if="tab === 'memory'"
@@ -332,9 +295,7 @@ async function reload() {
     <fieldset
       v-else
       class="settings-fields"
-      :disabled="
-        applyingDesign || refreshingDesign || (busy && tab !== 'providers')
-      "
+      :disabled="applyingDesign || refreshingDesign || (busy && tab !== 'providers')"
     >
       <ModelSettings
         v-if="tab === 'providers'"
@@ -386,19 +347,10 @@ async function reload() {
         @dirty="triggerDirty = $event"
         @busy="busy = $event"
       />
-      <div
-        v-if="!['providers', 'blocks', 'triggers'].includes(tab)"
-        class="settings-save"
-      >
-        <span>{{
-          dirty || executionDirty ? "Unsaved changes" : "All changes saved"
-        }}</span
+      <div v-if="!['providers', 'blocks', 'triggers'].includes(tab)" class="settings-save">
+        <span>{{ dirty || executionDirty ? "Unsaved changes" : "All changes saved" }}</span
         ><button :disabled="busy" @click="reload">Reload settings</button
-        ><button
-          v-if="dirty || executionDirty"
-          :disabled="busy"
-          @click="discardSettings"
-        >
+        ><button v-if="dirty || executionDirty" :disabled="busy" @click="discardSettings">
           Discard settings changes</button
         ><button
           class="primary"

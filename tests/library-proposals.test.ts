@@ -4,19 +4,42 @@ import test from "node:test";
 import { mkdir, readFile, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import { fixture } from "./helpers.js";
-import { loadLibrary } from "../src/library.js";
-import { LibraryProposals, libraryHash, validateLibraryChanges, validatePlanModels } from "../src/library-proposals.js";
-import { generateLibraryChanges } from "../src/library-generator.js";
-import { createTemplate } from "../src/templates.js";
-import { createAiPlan } from "../src/planner.js";
+import { loadLibrary } from "../src/core/library/library.js";
+import {
+  LibraryProposals,
+  libraryHash,
+  validateLibraryChanges,
+  validatePlanModels,
+} from "../src/core/library/library-proposals.js";
+import { generateLibraryChanges } from "../src/core/library/library-generator.js";
+import { createTemplate } from "../src/core/library/templates.js";
+import { createAiPlan } from "../src/core/planning/planner.js";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { AvailableModel } from "../src/library-editor-schema.js";
+import type { AvailableModel } from "../src/contracts/library-editor-schema.js";
 
 const toolContext = {} as Parameters<ToolDefinition["execute"]>[4];
 
 const testModels: AvailableModel[] = [
-  { provider: "test", id: "strong", name: "Strong reasoner", reasoning: true, thinkingLevels: ["off", "low", "medium", "high"], contextWindow: 200_000, maxTokens: 8000, cost: { input: 5, output: 15, cacheRead: 0, cacheWrite: 0 } },
-  { provider: "test", id: "cheap", name: "Cheap writer", reasoning: false, thinkingLevels: ["off"], contextWindow: 32_000, maxTokens: 4000, cost: { input: 0.1, output: 0.2, cacheRead: 0, cacheWrite: 0 } },
+  {
+    provider: "test",
+    id: "strong",
+    name: "Strong reasoner",
+    reasoning: true,
+    thinkingLevels: ["off", "low", "medium", "high"],
+    contextWindow: 200_000,
+    maxTokens: 8000,
+    cost: { input: 5, output: 15, cacheRead: 0, cacheWrite: 0 },
+  },
+  {
+    provider: "test",
+    id: "cheap",
+    name: "Cheap writer",
+    reasoning: false,
+    thinkingLevels: ["off"],
+    contextWindow: 32_000,
+    maxTokens: 4000,
+    cost: { input: 0.1, output: 0.2, cacheRead: 0, cacheWrite: 0 },
+  },
 ];
 
 test("manual block proposals do not change the library before review; apply is atomic and retryable", async (t) => {
@@ -24,14 +47,24 @@ test("manual block proposals do not change the library before review; apply is a
   const store = new LibraryProposals(project);
   const bundle = structuredClone(library.blocks.review!);
   bundle.prompt = "Review every acceptance criterion and return concrete feedback.";
-  const proposal = await store.create(library, "manual", { summary: "Sharper review", blocks: [{ bundle, rationale: "Explicit acceptance evidence" }] }, []);
+  const proposal = await store.create(
+    library,
+    "manual",
+    { summary: "Sharper review", blocks: [{ bundle, rationale: "Explicit acceptance evidence" }] },
+    [],
+  );
   assert.equal((await loadLibrary(project)).blocks.review!.prompt, library.blocks.review!.prompt);
   assert.equal((await store.get(proposal.id)).status, "draft");
   await store.apply(proposal.id, []);
   assert.equal((await loadLibrary(project)).blocks.review!.prompt, bundle.prompt);
   assert.equal((await loadLibrary(project)).blocks.fix!.prompt, library.blocks.fix!.prompt);
   assert.equal((await store.apply(proposal.id, [])).status, "applied");
-  const before = JSON.parse(await readFile(path.join(project, ".workflow", "libraries", `${proposal.baseHash}.json`), "utf8"));
+  const before = JSON.parse(
+    await readFile(
+      path.join(project, ".workflow", "libraries", `${proposal.baseHash}.json`),
+      "utf8",
+    ),
+  );
   assert.equal(before.blocks.review.prompt, library.blocks.review!.prompt);
   // Simulate a crash after publishing the library but before marking the proposal applied.
   const filename = path.join(project, ".workflow", "library-proposals", `${proposal.id}.json`);
@@ -43,9 +76,15 @@ test("manual block proposals do not change the library before review; apply is a
 test("stale or rejected library proposals preserve later manual edits", async (t) => {
   const { project, library } = await fixture(t);
   const store = new LibraryProposals(project);
-  const changes = { summary: "Review adjustment", blocks: [{ bundle: library.blocks.review!, rationale: "Manual change" }] };
+  const changes = {
+    summary: "Review adjustment",
+    blocks: [{ bundle: library.blocks.review!, rationale: "Manual change" }],
+  };
   const stale = await store.create(library, "manual", changes, []);
-  await writeFile(path.join(project, ".workflow", "blocks", "review", "prompt.md"), "Important manual edit");
+  await writeFile(
+    path.join(project, ".workflow", "blocks", "review", "prompt.md"),
+    "Important manual edit",
+  );
   await assert.rejects(store.apply(stale.id, []), /changed/);
   assert.equal((await loadLibrary(project)).blocks.review!.prompt, "Important manual edit");
   const rejected = await store.create(await loadLibrary(project), "manual", changes, []);
@@ -53,16 +92,37 @@ test("stale or rejected library proposals preserve later manual edits", async (t
   await assert.rejects(store.apply(rejected.id, []), /Only draft/);
 });
 
-test("deleting a block preserves dependencies imported by remaining library blocks", async t => {
+test("deleting a block preserves dependencies imported by remaining library blocks", async (t) => {
   const { project, library } = await fixture(t);
   const store = new LibraryProposals(project);
   const bundle = (id: string, source: string) => ({
-    definition: { id, name: id, description: "Shared code", executor: { kind: "code", source } }, skills: [],
+    definition: { id, name: id, description: "Shared code", executor: { kind: "code", source } },
+    skills: [],
   });
-  const proposal = await store.create(library, "manual", { summary: "Add dependent blocks", blocks: [
-    { bundle: bundle("base", 'import {block} from "workflow"; export default block({run(){return "shared";}});'), rationale: "Reusable behavior" },
-    { bundle: bundle("composed", 'import {block} from "workflow"; import base from "../base/block.ts"; export default block({run(ctx){return base.options.run(ctx);}});'), rationale: "Reuse the base block" },
-  ] }, []);
+  const proposal = await store.create(
+    library,
+    "manual",
+    {
+      summary: "Add dependent blocks",
+      blocks: [
+        {
+          bundle: bundle(
+            "base",
+            'import {block} from "workflow"; export default block({run(){return "shared";}});',
+          ),
+          rationale: "Reusable behavior",
+        },
+        {
+          bundle: bundle(
+            "composed",
+            'import {block} from "workflow"; import base from "../base/block.ts"; export default block({run(ctx){return base.options.run(ctx);}});',
+          ),
+          rationale: "Reuse the base block",
+        },
+      ],
+    },
+    [],
+  );
   await store.apply(proposal.id, []);
   const current = await loadLibrary(project);
   await assert.rejects(store.removeBlock("base", libraryHash(current)), /Cannot find module.*base/);
@@ -73,22 +133,44 @@ test("deleting a block preserves dependencies imported by remaining library bloc
   assert.equal(remaining.blocks.composed, undefined);
 });
 
-test("deleting a block cannot resolve its removed dependency from stale physical source", async t => {
+test("deleting a block cannot resolve its removed dependency from stale physical source", async (t) => {
   const { project, library } = await fixture(t);
   const store = new LibraryProposals(project);
   await writeFile(path.join(project, "helper.ts"), 'export const message = "shared helper";');
   const bundle = (id: string, source: string) => ({
-    definition: { id, name: id, description: "Shared code", executor: { kind: "code", source } }, skills: [],
+    definition: { id, name: id, description: "Shared code", executor: { kind: "code", source } },
+    skills: [],
   });
-  const proposal = await store.create(library, "manual", { summary: "Add dependent blocks", blocks: [
-    { bundle: bundle("base", 'import {block} from "workflow"; import {message} from "../../../helper.ts"; export default block({run(){return "current: " + message;}});'), rationale: "Reusable behavior" },
-    { bundle: bundle("composed", 'import {block} from "workflow"; import base from "../base/block.ts"; export default block({run(ctx){return base.options.run(ctx);}});'), rationale: "Reuse the base block" },
-  ] }, []);
+  const proposal = await store.create(
+    library,
+    "manual",
+    {
+      summary: "Add dependent blocks",
+      blocks: [
+        {
+          bundle: bundle(
+            "base",
+            'import {block} from "workflow"; import {message} from "../../../helper.ts"; export default block({run(){return "current: " + message;}});',
+          ),
+          rationale: "Reusable behavior",
+        },
+        {
+          bundle: bundle(
+            "composed",
+            'import {block} from "workflow"; import base from "../base/block.ts"; export default block({run(ctx){return base.options.run(ctx);}});',
+          ),
+          rationale: "Reuse the base block",
+        },
+      ],
+    },
+    [],
+  );
   await store.apply(proposal.id, []);
   // The editable source exists after applying, and later disk edits are active.
   const baseDirectory = path.join(project, ".workflow", "blocks", "base");
   await mkdir(baseDirectory, { recursive: true });
-  const stale = 'import {block} from "workflow"; export default block({run(){return "stale behavior";}});';
+  const stale =
+    'import {block} from "workflow"; export default block({run(){return "stale behavior";}});';
   await writeFile(path.join(baseDirectory, "block.ts"), stale);
   const current = await loadLibrary(project);
   await assert.rejects(store.removeBlock("base", libraryHash(current)), /Cannot find module.*base/);
@@ -96,7 +178,12 @@ test("deleting a block cannot resolve its removed dependency from stale physical
   const removal = { summary: "Remove base", blocks: [], remove: ["base"] };
   await assert.rejects(store.create(current, "manual", removal, []), /Cannot find module.*base/);
   // Old app versions could already have persisted an invalid removal proposal.
-  const savedRemoval = { ...proposal, id: randomUUID(), baseHash: libraryHash(current), changes: removal };
+  const savedRemoval = {
+    ...proposal,
+    id: randomUUID(),
+    baseHash: libraryHash(current),
+    changes: removal,
+  };
   await store["save"](savedRemoval);
   await assert.rejects(store.apply(savedRemoval.id, []), /Cannot find module.*base/);
   assert.deepEqual(await loadLibrary(project), current);
@@ -106,14 +193,30 @@ test("deleting a block cannot resolve its removed dependency from stale physical
   assert.equal(await readFile(path.join(baseDirectory, "block.ts"), "utf8"), stale);
 });
 
-test("editable TypeScript source invalidates old proposals and missing files never silently fall back", async t => {
+test("editable TypeScript source invalidates old proposals and missing files never silently fall back", async (t) => {
   const { project, library } = await fixture(t);
   const store = new LibraryProposals(project);
-  const changes = { summary: "Add code", blocks: [{ rationale: "Ordinary reusable TypeScript", bundle: {
-    definition: { id: "small", name: "Small", description: "Simple code", executor: {
-      kind: "code", source: 'import {block} from "workflow";export default block({run(){return "original";}});',
-    } }, skills: [],
-  } }] };
+  const changes = {
+    summary: "Add code",
+    blocks: [
+      {
+        rationale: "Ordinary reusable TypeScript",
+        bundle: {
+          definition: {
+            id: "small",
+            name: "Small",
+            description: "Simple code",
+            executor: {
+              kind: "code",
+              source:
+                'import {block} from "workflow";export default block({run(){return "original";}});',
+            },
+          },
+          skills: [],
+        },
+      },
+    ],
+  };
   const proposal = await store.create(library, "manual", changes, []);
   await store.apply(proposal.id, []);
   const current = await loadLibrary(project);
@@ -128,28 +231,68 @@ test("editable TypeScript source invalidates old proposals and missing files nev
   await assert.rejects(loadLibrary(project), /ENOENT/);
 });
 
-test("editable source uses the same character limit as the code schema for non-ASCII comments", async t => {
+test("editable source uses the same character limit as the code schema for non-ASCII comments", async (t) => {
   const { project, library } = await fixture(t);
   const store = new LibraryProposals(project);
   const source = `// ${"界".repeat(45_000)}\nimport {block} from "workflow";export default block({run(){return "valid";}});`;
   assert.ok(Buffer.byteLength(source) > 128_000);
-  const proposal = await store.create(library, "manual", { summary: "Unicode source", blocks: [{ rationale: "Comments may be non-ASCII", bundle: {
-    definition: { id: "unicode", name: "Unicode", description: "Valid multibyte source", executor: { kind: "code", source } }, skills: [],
-  } }] }, []);
+  const proposal = await store.create(
+    library,
+    "manual",
+    {
+      summary: "Unicode source",
+      blocks: [
+        {
+          rationale: "Comments may be non-ASCII",
+          bundle: {
+            definition: {
+              id: "unicode",
+              name: "Unicode",
+              description: "Valid multibyte source",
+              executor: { kind: "code", source },
+            },
+            skills: [],
+          },
+        },
+      ],
+    },
+    [],
+  );
   await store.apply(proposal.id, []);
   const executor = (await loadLibrary(project)).blocks.unicode!.definition.executor;
   assert.equal(executor?.kind, "code");
   assert.ok(executor?.kind === "code" && executor.source.includes("界".repeat(45_000)));
 });
 
-test("reapplying interrupted source publication repairs missing files but preserves later manual edits", async t => {
+test("reapplying interrupted source publication repairs missing files but preserves later manual edits", async (t) => {
   const { project, library } = await fixture(t);
   const store = new LibraryProposals(project);
-  const proposal = await store.create(library, "manual", { summary: "Add code", blocks: [{ rationale: "Recoverable code", bundle: {
-    definition: { id: "small", name: "Small", description: "Simple code", executor: {
-      kind: "code", source: 'import {block} from "workflow";export default block({run(){return "original";}});',
-    } }, skills: [],
-  } }] }, []);
+  const proposal = await store.create(
+    library,
+    "manual",
+    {
+      summary: "Add code",
+      blocks: [
+        {
+          rationale: "Recoverable code",
+          bundle: {
+            definition: {
+              id: "small",
+              name: "Small",
+              description: "Simple code",
+              executor: {
+                kind: "code",
+                source:
+                  'import {block} from "workflow";export default block({run(){return "original";}});',
+              },
+            },
+            skills: [],
+          },
+        },
+      ],
+    },
+    [],
+  );
   await store.apply(proposal.id, []);
   const manifestFile = path.join(project, ".workflow/library.json");
   const sourceFile = path.join(project, ".workflow/blocks/small/block.ts");
@@ -168,49 +311,131 @@ test("reapplying interrupted source publication repairs missing files but preser
 
 test("model-only updates require every block and preserve instructions and limits", async (t) => {
   const { library } = await fixture(t);
-  const blocks = Object.values(library.blocks).map((entry) => ({ bundle: { ...entry, definition: { ...entry.definition, agent: { provider: "test", model: "strong", thinking: "high" as const } } }, rationale: "Strong reasoning for this task" }));
+  const blocks = Object.values(library.blocks).map((entry) => ({
+    bundle: {
+      ...entry,
+      definition: {
+        ...entry.definition,
+        agent: { provider: "test", model: "strong", thinking: "high" as const },
+      },
+    },
+    rationale: "Strong reasoning for this task",
+  }));
   const good = { summary: "Choose suitable models", blocks };
-  assert.equal(validateLibraryChanges(good, library, "models", testModels).blocks.review!.definition.agent!.model, "strong");
-  assert.throws(() => validateLibraryChanges({ ...good, blocks: blocks.slice(1) }, library, "models", testModels), /every existing block/);
+  assert.equal(
+    validateLibraryChanges(good, library, "models", testModels).blocks.review!.definition.agent!
+      .model,
+    "strong",
+  );
+  assert.throws(
+    () =>
+      validateLibraryChanges({ ...good, blocks: blocks.slice(1) }, library, "models", testModels),
+    /every existing block/,
+  );
   const changed = structuredClone(good);
   changed.blocks[0]!.bundle.prompt = "Overwritten prompt";
-  assert.throws(() => validateLibraryChanges(changed, library, "models", testModels), /preserve block instructions/);
+  assert.throws(
+    () => validateLibraryChanges(changed, library, "models", testModels),
+    /preserve block instructions/,
+  );
   const limits = structuredClone(good);
   Object.assign(limits.blocks[0]!.bundle.definition.agent, { maxToolCalls: 1000 });
-  assert.throws(() => validateLibraryChanges(limits, library, "models", testModels), /execution limits/);
+  assert.throws(
+    () => validateLibraryChanges(limits, library, "models", testModels),
+    /execution limits/,
+  );
 });
 
 test("generated blocks reject invented models, unsupported thinking, undefined commands and unsafe resources", async (t) => {
   const { library } = await fixture(t);
   const bundle = structuredClone(library.blocks.review!);
   bundle.definition.agent = { provider: "test", model: "imaginary", thinking: "high" };
-  const changes = () => ({ summary: "Proposed review", blocks: [{ bundle, rationale: "Reasoning choice" }] });
-  assert.throws(() => validateLibraryChanges(changes(), library, "regenerate", testModels), /not available/);
+  const changes = () => ({
+    summary: "Proposed review",
+    blocks: [{ bundle, rationale: "Reasoning choice" }],
+  });
+  assert.throws(
+    () => validateLibraryChanges(changes(), library, "regenerate", testModels),
+    /not available/,
+  );
   bundle.definition.agent.model = "cheap";
-  assert.throws(() => validateLibraryChanges(changes(), library, "regenerate", testModels), /not supported/);
+  assert.throws(
+    () => validateLibraryChanges(changes(), library, "regenerate", testModels),
+    /not supported/,
+  );
   bundle.definition.agent = { provider: "test", model: "cheap", thinking: "off" };
   bundle.definition.checks = [{ command: "git-commit", expect: "success" }];
-  assert.throws(() => validateLibraryChanges(changes(), library, "regenerate", testModels), /undefined command/);
+  assert.throws(
+    () => validateLibraryChanges(changes(), library, "regenerate", testModels),
+    /undefined command/,
+  );
   bundle.definition.checks = [];
   bundle.definition.skills = ["../secret"];
   bundle.skills = [{ path: "../secret", content: "bad" }];
-  assert.throws(() => validateLibraryChanges(changes(), library, "regenerate", testModels), /Invalid.*resource/);
+  assert.throws(
+    () => validateLibraryChanges(changes(), library, "regenerate", testModels),
+    /Invalid.*resource/,
+  );
 });
 
 test("AI model assignment sees the real allowed catalog and submits strong review plus cheap routine choices", async (t) => {
   const { project, library } = await fixture(t);
   const before = structuredClone(library);
-  const changes = await generateLibraryChanges({ project, library, kind: "models", models: testModels, instructions: "Strong review, cheap requirements summaries", signal: new AbortController().signal, emit: () => {} }, async (options) => {
-    assert.match(options.systemPrompt, /Available models/);
-    assert.match(options.systemPrompt, /Strong reasoner/);
-    assert.match(options.systemPrompt, /Price.*not.*quality|not reliable quality/);
-    assert.match(options.prompt, /cheap requirements/);
-    assert.equal(options.tools.some((tool) => tool.name === "write_file"), true);
-    const submit = options.tools.find((tool) => tool.name === "submit_library")!;
-    await submit.execute("call", { json: JSON.stringify({ summary: "Balance quality and cost", assignments: Object.keys(library.blocks).map((id) => ({ block: id, agent: { provider: "test", model: id === "requirements" ? "cheap" : "strong", thinking: id === "requirements" ? "off" : "high" }, rationale: id === "requirements" ? "Routine summary uses cheaper model" : "Complex work needs strong reasoning" })) }) }, new AbortController().signal, undefined, toolContext);
-  });
-  assert.equal(changes.blocks.find((entry) => entry.bundle.definition.id === "review")!.bundle.definition.agent!.model, "strong");
-  assert.equal(changes.blocks.find((entry) => entry.bundle.definition.id === "requirements")!.bundle.definition.agent!.model, "cheap");
+  const changes = await generateLibraryChanges(
+    {
+      project,
+      library,
+      kind: "models",
+      models: testModels,
+      instructions: "Strong review, cheap requirements summaries",
+      signal: new AbortController().signal,
+      emit: () => {},
+    },
+    async (options) => {
+      assert.match(options.systemPrompt, /Available models/);
+      assert.match(options.systemPrompt, /Strong reasoner/);
+      assert.match(options.systemPrompt, /Price.*not.*quality|not reliable quality/);
+      assert.match(options.prompt, /cheap requirements/);
+      assert.equal(
+        options.tools.some((tool) => tool.name === "write_file"),
+        true,
+      );
+      const submit = options.tools.find((tool) => tool.name === "submit_library")!;
+      await submit.execute(
+        "call",
+        {
+          json: JSON.stringify({
+            summary: "Balance quality and cost",
+            assignments: Object.keys(library.blocks).map((id) => ({
+              block: id,
+              agent: {
+                provider: "test",
+                model: id === "requirements" ? "cheap" : "strong",
+                thinking: id === "requirements" ? "off" : "high",
+              },
+              rationale:
+                id === "requirements"
+                  ? "Routine summary uses cheaper model"
+                  : "Complex work needs strong reasoning",
+            })),
+          }),
+        },
+        new AbortController().signal,
+        undefined,
+        toolContext,
+      );
+    },
+  );
+  assert.equal(
+    changes.blocks.find((entry) => entry.bundle.definition.id === "review")!.bundle.definition
+      .agent!.model,
+    "strong",
+  );
+  assert.equal(
+    changes.blocks.find((entry) => entry.bundle.definition.id === "requirements")!.bundle.definition
+      .agent!.model,
+    "cheap",
+  );
   assert.deepEqual(library, before);
   assert.deepEqual(await loadLibrary(project), before);
 });
@@ -218,17 +443,65 @@ test("AI model assignment sees the real allowed catalog and submits strong revie
 test("AI-generated new blocks can write commit-message artifacts without creating an executable commit command", async (t) => {
   const { project, library } = await fixture(t);
   const bundle = structuredClone(library.blocks.review!);
-  bundle.definition = { ...bundle.definition, id: "commit-message", name: "Write commit message", outputs: ["message"], checks: [], agent: { provider: "test", model: "cheap", thinking: "off" } };
+  bundle.definition = {
+    ...bundle.definition,
+    id: "commit-message",
+    name: "Write commit message",
+    outputs: ["message"],
+    checks: [],
+    agent: { provider: "test", model: "cheap", thinking: "off" },
+  };
   bundle.prompt = "Read the changes and publish a concise commit message artifact. Do not commit.";
-  const changes = await generateLibraryChanges({ project, library, kind: "regenerate", models: testModels, instructions: "Add a commit message block", signal: new AbortController().signal, emit: () => {} }, async (options) => {
-    await options.tools.find((tool) => tool.name === "submit_library")!.execute("call", { json: JSON.stringify({ summary: "Add routine message writer", blocks: [{ bundle, rationale: "Cheaper model handles a concise message" }] }) }, new AbortController().signal, undefined, toolContext);
-  });
+  const changes = await generateLibraryChanges(
+    {
+      project,
+      library,
+      kind: "regenerate",
+      models: testModels,
+      instructions: "Add a commit message block",
+      signal: new AbortController().signal,
+      emit: () => {},
+    },
+    async (options) => {
+      await options.tools
+        .find((tool) => tool.name === "submit_library")!
+        .execute(
+          "call",
+          {
+            json: JSON.stringify({
+              summary: "Add routine message writer",
+              blocks: [{ bundle, rationale: "Cheaper model handles a concise message" }],
+            }),
+          },
+          new AbortController().signal,
+          undefined,
+          toolContext,
+        );
+    },
+  );
   const store = new LibraryProposals(project);
   const proposal = await store.create(library, "regenerate", changes, testModels);
   await store.apply(proposal.id, testModels);
-  assert.equal((await loadLibrary(project)).blocks["commit-message"]!.definition.agent!.model, "cheap");
-  assert.equal(Object.keys((await loadLibrary(project)).blocks).length, Object.keys(library.blocks).length + 1);
-  await assert.rejects(generateLibraryChanges({ project, library, kind: "models", models: [], instructions: "", signal: new AbortController().signal, emit: () => {} }), /No models/);
+  assert.equal(
+    (await loadLibrary(project)).blocks["commit-message"]!.definition.agent!.model,
+    "cheap",
+  );
+  assert.equal(
+    Object.keys((await loadLibrary(project)).blocks).length,
+    Object.keys(library.blocks).length + 1,
+  );
+  await assert.rejects(
+    generateLibraryChanges({
+      project,
+      library,
+      kind: "models",
+      models: [],
+      instructions: "",
+      signal: new AbortController().signal,
+      emit: () => {},
+    }),
+    /No models/,
+  );
 });
 
 test("workflow model validation includes block defaults and rejects unauthenticated or unavailable overrides", async (t) => {
@@ -244,18 +517,47 @@ test("workflow model validation includes block defaults and rejects unauthentica
 test("AI draft refinement receives the existing graph and cannot submit an unavailable model", async (t) => {
   const { project, library } = await fixture(t);
   const previousPlan = createTemplate("Keep the exact task", "feature", library);
-  const plan = await createAiPlan({ project, library, task: previousPlan.task, previousPlan, instructions: "Strengthen the review", models: testModels, signal: new AbortController().signal, emit: () => {} }, async (options) => {
-    assert.match(options.systemPrompt, /Available models/);
-    assert.equal(JSON.parse(options.prompt).previousPlan.title, previousPlan.title);
-    assert.equal(JSON.parse(options.prompt).coordinatorInstructions, "Strengthen the review");
-    const submit = options.tools.find((tool) => tool.name === "submit_plan")!;
-    const next = structuredClone(previousPlan);
-    next.nodes.forEach((node) => { node.agent = { provider: "test", model: "strong", thinking: "high" }; });
-    next.nodes[0]!.agent!.model = "invented";
-    await assert.rejects(submit.execute("call", { json: JSON.stringify(next) }, new AbortController().signal, undefined, toolContext), /not available/);
-    next.nodes[0]!.agent!.model = "strong";
-    await submit.execute("call", { json: JSON.stringify(next) }, new AbortController().signal, undefined, toolContext);
-  });
+  const plan = await createAiPlan(
+    {
+      project,
+      library,
+      task: previousPlan.task,
+      previousPlan,
+      instructions: "Strengthen the review",
+      models: testModels,
+      signal: new AbortController().signal,
+      emit: () => {},
+    },
+    async (options) => {
+      assert.match(options.systemPrompt, /Available models/);
+      assert.equal(JSON.parse(options.prompt).previousPlan.title, previousPlan.title);
+      assert.equal(JSON.parse(options.prompt).coordinatorInstructions, "Strengthen the review");
+      const submit = options.tools.find((tool) => tool.name === "submit_plan")!;
+      const next = structuredClone(previousPlan);
+      next.nodes.forEach((node) => {
+        node.agent = { provider: "test", model: "strong", thinking: "high" };
+      });
+      next.nodes[0]!.agent!.model = "invented";
+      await assert.rejects(
+        submit.execute(
+          "call",
+          { json: JSON.stringify(next) },
+          new AbortController().signal,
+          undefined,
+          toolContext,
+        ),
+        /not available/,
+      );
+      next.nodes[0]!.agent!.model = "strong";
+      await submit.execute(
+        "call",
+        { json: JSON.stringify(next) },
+        new AbortController().signal,
+        undefined,
+        toolContext,
+      );
+    },
+  );
   assert.equal(plan.task, previousPlan.task);
   assert.equal(plan.nodes[0]!.agent!.model, "strong");
 });

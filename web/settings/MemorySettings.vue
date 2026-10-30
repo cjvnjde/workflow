@@ -1,15 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onScopeDispose, ref, watch } from "vue";
-import type {
-  MemoryEntry,
-  MemoryState,
-  MemoryDescription,
-} from "../../src/contracts.js";
-import { WorkflowApiError } from "../../src/client.js";
-import { client } from "../api.js";
-import { usageCost, usageTokens } from "../usage-presentation.js";
-import Field from "../components/Field.vue";
-import StrategyFacts from "../components/StrategyFacts.vue";
+import type { MemoryEntry, MemoryState, MemoryDescription } from "../../src/contracts/index.js";
+import { WorkflowApiError } from "../../src/client/client.js";
+import { client } from "../shared/api.js";
+import { usageCost, usageTokens } from "../features/usage/usage-presentation.js";
+import Field from "../shared/Field.vue";
+import StrategyFacts from "../features/tasks/StrategyFacts.vue";
 
 const emit = defineEmits<{ dirty: [value: boolean]; busy: [value: boolean] }>();
 const state = ref<MemoryState>();
@@ -35,9 +31,7 @@ let detailController: AbortController | undefined;
 let detailVersion = 0;
 let stateVersion = 0;
 let disposed = false;
-const dirty = computed(
-  () => editing.value && JSON.stringify(form.value) !== saved.value,
-);
+const dirty = computed(() => editing.value && JSON.stringify(form.value) !== saved.value);
 const entries = computed(() => {
   const text = query.value.trim().toLocaleLowerCase();
   return (state.value?.entries ?? []).filter(
@@ -54,8 +48,8 @@ const changed = computed(
   () =>
     selected.value &&
     state.value &&
-    state.value.entries.find((entry) => entry.id === selected.value!.id)
-      ?.updatedAt !== selected.value.updatedAt,
+    state.value.entries.find((entry) => entry.id === selected.value!.id)?.updatedAt !==
+      selected.value.updatedAt,
 );
 const observation = computed(() => selected.value?.observation);
 const strategy = computed(() => selected.value?.strategy);
@@ -113,8 +107,7 @@ async function load() {
     if (version === stateVersion && !disposed) state.value = value;
   } catch (failure) {
     if (version === stateVersion && !disposed)
-      loadError.value =
-        failure instanceof Error ? failure.message : String(failure);
+      loadError.value = failure instanceof Error ? failure.message : String(failure);
   } finally {
     if (version === stateVersion && !disposed) loading.value = false;
   }
@@ -139,8 +132,7 @@ async function open(entry: MemoryDescription) {
     editing.value = true;
   } catch (failure) {
     if (version === detailVersion && !disposed)
-      error.value =
-        failure instanceof Error ? failure.message : String(failure);
+      error.value = failure instanceof Error ? failure.message : String(failure);
   } finally {
     if (version === detailVersion && !disposed) detailLoading.value = false;
   }
@@ -153,10 +145,8 @@ async function perform(action: () => Promise<void>) {
     await action();
   } catch (failure) {
     if (!disposed) {
-      error.value =
-        failure instanceof Error ? failure.message : String(failure);
-      conflict.value =
-        failure instanceof WorkflowApiError && failure.status === 409;
+      error.value = failure instanceof Error ? failure.message : String(failure);
+      conflict.value = failure instanceof WorkflowApiError && failure.status === 409;
       if (conflict.value) latest.value = undefined;
     }
   } finally {
@@ -222,10 +212,7 @@ async function remove() {
     !window.confirm(`Delete “${selected.value.title}” from project memory?`)
   )
     return;
-  const updated = await client.deleteMemoryEntry(
-    selected.value.id,
-    formRevision.value,
-  );
+  const updated = await client.deleteMemoryEntry(selected.value.id, formRevision.value);
   if (disposed) return;
   applyState(updated);
   reset();
@@ -265,8 +252,8 @@ onScopeDispose(() => {
       <div>
         <h2>Project memory</h2>
         <p>
-          Keep concise project guidance and recorded outcomes for future
-          planning. Disabled by default.
+          Keep concise project guidance and recorded outcomes for future planning. Disabled by
+          default.
         </p>
       </div>
       <button :disabled="busy || loading" @click="load">
@@ -276,9 +263,7 @@ onScopeDispose(() => {
     <p v-if="loading && !state" role="status">Loading project memory…</p>
     <div v-if="loadError" class="inline-error" role="alert">
       {{ loadError }}
-      <button :disabled="loading || busy" @click="load">
-        Retry loading memory
-      </button>
+      <button :disabled="loading || busy" @click="load">Retry loading memory</button>
     </div>
     <div v-if="error" class="inline-error" role="alert">{{ error }}</div>
     <p v-if="notice" class="setup-notice" role="status">{{ notice }}</p>
@@ -294,20 +279,13 @@ onScopeDispose(() => {
             }}
           </p>
           <small
-            >Turning memory off keeps your entries. It stops future reads and
-            collection; context already supplied to an active session cannot be
-            recalled. Memory does not launch background AI jobs or
-            benchmarks.</small
+            >Turning memory off keeps your entries. It stops future reads and collection; context
+            already supplied to an active session cannot be recalled. Memory does not launch
+            background AI jobs or benchmarks.</small
           >
         </div>
-        <button
-          :class="{ primary: !state.enabled }"
-          :disabled="busy"
-          @click="perform(toggle)"
-        >
-          {{
-            state.enabled ? "Disable project memory" : "Enable project memory"
-          }}
+        <button :class="{ primary: !state.enabled }" :disabled="busy" @click="perform(toggle)">
+          {{ state.enabled ? "Disable project memory" : "Enable project memory" }}
         </button>
       </div>
       <div class="memory-list-heading">
@@ -317,15 +295,11 @@ onScopeDispose(() => {
             <small>{{ state.entries.length }} / {{ state.limit }}</small>
           </h3>
           <p>
-            Descriptions help the planner choose what to read. Details load when
-            you open an entry.
+            Descriptions help the planner choose what to read. Details load when you open an entry.
           </p>
         </div>
         <div class="button-row">
-          <button
-            :disabled="busy || state.entries.length >= state.limit"
-            @click="create('note')"
-          >
+          <button :disabled="busy || state.entries.length >= state.limit" @click="create('note')">
             New note</button
           ><button
             :disabled="busy || state.entries.length >= state.limit"
@@ -340,11 +314,7 @@ onScopeDispose(() => {
       </p>
       <div v-if="state.entries.length" class="memory-filters">
         <Field v-slot="{ id }" label="Search memory descriptions"
-          ><input
-            :id="id"
-            v-model="query"
-            type="search"
-            placeholder="Title, description or tags"
+          ><input :id="id" v-model="query" type="search" placeholder="Title, description or tags"
         /></Field>
         <Field v-slot="{ id }" label="Entry type"
           ><select :id="id" v-model="kind">
@@ -359,13 +329,10 @@ onScopeDispose(() => {
       <div class="memory-layout">
         <div class="memory-list" aria-label="Memory descriptions">
           <p v-if="!state.entries.length" class="memory-empty">
-            No saved entries yet. Add a project note or an explicit preference.
-            Observations appear only from ordinary live runs started while
-            memory is enabled.
+            No saved entries yet. Add a project note or an explicit preference. Observations appear
+            only from ordinary live runs started while memory is enabled.
           </p>
-          <p v-else-if="!entries.length" class="memory-empty">
-            No descriptions match your search.
-          </p>
+          <p v-else-if="!entries.length" class="memory-empty">No descriptions match your search.</p>
           <button
             v-for="entry in entries"
             :key="entry.id"
@@ -377,9 +344,7 @@ onScopeDispose(() => {
             <span class="memory-kind">{{ caption(entry.kind) }}</span
             ><strong>{{ entry.title }}</strong
             ><span>{{ entry.description }}</span
-            ><small v-if="entry.tags.length">{{
-              entry.tags.join(" · ")
-            }}</small>
+            ><small v-if="entry.tags.length">{{ entry.tags.join(" · ") }}</small>
           </button>
         </div>
         <div class="memory-detail">
@@ -403,26 +368,20 @@ onScopeDispose(() => {
                       : "New project note"
                 }}
               </h3>
-              <small v-if="selected"
-                >Updated {{ date(selected.updatedAt) }}</small
-              >
+              <small v-if="selected">Updated {{ date(selected.updatedAt) }}</small>
             </div>
             <p v-if="(selected?.kind ?? newKind) === 'preference'">
-              This is an explicit preference you choose to save. Workflow does
-              not infer preferences from your activity.
+              This is an explicit preference you choose to save. Workflow does not infer preferences
+              from your activity.
             </p>
             <p v-if="selected?.kind === 'observation'">
-              {{
-                selected.edited
-                  ? "Your annotation"
-                  : "Generated observation text"
-              }}: you can edit this guidance. The recorded facts below remain
-              unchanged.
+              {{ selected.edited ? "Your annotation" : "Generated observation text" }}: you can edit
+              this guidance. The recorded facts below remain unchanged.
             </p>
             <p v-if="selected?.kind === 'strategy'">
-              You chose to remember this approach. Edit the reusable guidance;
-              source facts stay unchanged. Future planning composes a fresh
-              workflow under the current models and permissions.
+              You chose to remember this approach. Edit the reusable guidance; source facts stay
+              unchanged. Future planning composes a fresh workflow under the current models and
+              permissions.
             </p>
             <fieldset class="settings-fields" :disabled="busy">
               <Field v-slot="{ id }" label="Memory title"
@@ -470,40 +429,23 @@ onScopeDispose(() => {
                 v-slot="{ id }"
                 label="Memory tags"
                 help="Optional, comma separated. Up to 8 tags of 40 characters each."
-                ><input
-                  :id="id"
-                  v-model="form.tags"
-                  placeholder="review, frontend"
+                ><input :id="id" v-model="form.tags" placeholder="review, frontend"
               /></Field>
               <div class="button-row">
                 <button type="submit" class="primary" :disabled="!dirty">
                   {{ busy ? "Saving…" : "Save memory entry" }}</button
-                ><button v-if="dirty" type="button" @click="discard">
-                  Discard entry edits</button
-                ><button
-                  v-if="selected"
-                  type="button"
-                  class="danger"
-                  @click="perform(remove)"
-                >
+                ><button v-if="dirty" type="button" @click="discard">Discard entry edits</button
+                ><button v-if="selected" type="button" class="danger" @click="perform(remove)">
                   Delete entry
                 </button>
               </div>
             </fieldset>
-            <div
-              v-if="conflict || changed"
-              class="memory-conflict"
-              role="status"
-            >
+            <div v-if="conflict || changed" class="memory-conflict" role="status">
               <p>
-                The saved memory changed. Your draft is preserved. Review the
-                latest saved version before replacing it.
+                The saved memory changed. Your draft is preserved. Review the latest saved version
+                before replacing it.
               </p>
-              <button
-                type="button"
-                :disabled="busy"
-                @click="perform(reviewLatest)"
-              >
+              <button type="button" :disabled="busy" @click="perform(reviewLatest)">
                 Review latest saved entry
               </button>
               <div v-if="latest" class="memory-latest">
@@ -511,9 +453,7 @@ onScopeDispose(() => {
                 <strong>{{ latest.entry.title }}</strong>
                 <p>{{ latest.entry.description }}</p>
                 <pre>{{ latest.entry.details }}</pre>
-                <p v-if="latest.entry.tags.length">
-                  Tags: {{ latest.entry.tags.join(", ") }}
-                </p>
+                <p v-if="latest.entry.tags.length">Tags: {{ latest.entry.tags.join(", ") }}</p>
                 <div class="button-row">
                   <button type="button" :disabled="busy" @click="reloadLatest">
                     Reload latest entry</button
@@ -536,16 +476,13 @@ onScopeDispose(() => {
           >
             <h3>Recorded facts</h3>
             <p>
-              These are observed execution outcomes, not a quality score or
-              proof that changes were correct. Matched check conditions can
-              include expected failures.
+              These are observed execution outcomes, not a quality score or proof that changes were
+              correct. Matched check conditions can include expected failures.
             </p>
             <dl class="memory-facts">
               <div>
                 <dt>Task type</dt>
-                <dd>
-                  {{ observation.taskCaseName }} · {{ observation.taskCaseId }}
-                </dd>
+                <dd>{{ observation.taskCaseName }} · {{ observation.taskCaseId }}</dd>
               </div>
               <div>
                 <dt>Block</dt>
@@ -576,8 +513,7 @@ onScopeDispose(() => {
               <div>
                 <dt>Visit outcomes</dt>
                 <dd>
-                  {{ observation.outcomes.pass }} pass ·
-                  {{ observation.outcomes.retry }} retry ·
+                  {{ observation.outcomes.pass }} pass · {{ observation.outcomes.retry }} retry ·
                   {{ observation.outcomes.fail }} fail ·
                   {{ observation.outcomes.interrupted }} interrupted
                 </dd>
@@ -601,8 +537,8 @@ onScopeDispose(() => {
                         observation.sessionStatuses.interrupted > 0,
                     )
                   }}
-                  · {{ usageTokens(observation.usage).toLocaleString() }} tokens
-                  · {{ observation.sessions }} sessions
+                  · {{ usageTokens(observation.usage).toLocaleString() }} tokens ·
+                  {{ observation.sessions }} sessions
                 </dd>
               </div>
             </dl>
@@ -618,8 +554,8 @@ onScopeDispose(() => {
               <p>
                 {{ observation.dispositions.workCompleted }} work completed ·
                 {{ observation.dispositions.accepted }} accepted ·
-                {{ observation.dispositions.changesRequested }} changes
-                requested · {{ observation.dispositions.blocked }} blocked
+                {{ observation.dispositions.changesRequested }} changes requested ·
+                {{ observation.dispositions.blocked }} blocked
               </p>
             </details>
             <p>
@@ -632,8 +568,7 @@ onScopeDispose(() => {
                 v-for="source in observation.sources"
                 :key="`${source.runId}/${source.nodeId}/${source.visit}`"
               >
-                <a :href="`#run=${source.runId}`"
-                  >{{ source.nodeId }} · visit {{ source.visit }}</a
+                <a :href="`#run=${source.runId}`">{{ source.nodeId }} · visit {{ source.visit }}</a
                 ><small>{{ date(source.at) }} · {{ source.runId }}</small>
               </li>
             </ul>

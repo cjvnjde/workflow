@@ -1,13 +1,4 @@
-import {
-  workflow,
-  block,
-  step,
-  sequence,
-  parallel,
-  when,
-  repeatUntil,
-  z,
-} from "workflow";
+import { workflow, block, step, sequence, parallel, when, repeatUntil, z } from "workflow";
 
 const implement = step(
   "implement",
@@ -43,9 +34,7 @@ const tests = step(
       const passed = result.exitCode === 0 && !result.timedOut;
       ctx.outcome(passed ? "pass" : "retry");
       ctx.summary(
-        passed
-          ? "Tests passed."
-          : "Tests failed; returning diagnostics to implementation.",
+        passed ? "Tests passed." : "Tests failed; returning diagnostics to implementation.",
       );
       return { passed, feedback: result.output };
     },
@@ -110,10 +99,6 @@ export default workflow({
       until: (ctx) => ctx.output(review)?.approved === true,
       maxIterations: 3,
     }),
-    when(
-      "report-approved",
-      (ctx) => ctx.output(review)?.approved === true,
-      report,
-    ),
+    when("report-approved", (ctx) => ctx.output(review)?.approved === true, report),
   ),
 });

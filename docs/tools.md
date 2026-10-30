@@ -54,17 +54,17 @@ Each call loads a fresh module instance. Module globals are not shared state or 
 
 Tool code has a small context:
 
-| API | Behavior |
-| --- | --- |
-| `ctx.env.readText(path)` | Read through the host environment. |
-| `ctx.env.writeText(path, text)` | Managed file write; the local implementation uses the existing journal and ownership checks. |
-| `ctx.env.exec(command, options?)` | Run a command; returns `{ exitCode, stdout, stderr, output, timedOut }`. Nonzero exit is a result. |
-| `ctx.progress(text)` | Persist a progress update. Await it like any other effect. |
-| `ctx.summary(text)` | Optional model-facing summary and display preview, up to 16,000 characters. |
-| `ctx.details(value)` | Optional JSON evidence for clients. |
-| `ctx.present(value)` | Optional inert human-facing card metadata, independent of the model summary and typed return. |
+| API                                 | Behavior                                                                                                                 |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `ctx.env.readText(path)`            | Read through the host environment.                                                                                       |
+| `ctx.env.writeText(path, text)`     | Managed file write; the local implementation uses the existing journal and ownership checks.                             |
+| `ctx.env.exec(command, options?)`   | Run a command; returns `{ exitCode, stdout, stderr, output, timedOut }`. Nonzero exit is a result.                       |
+| `ctx.progress(text)`                | Persist a progress update. Await it like any other effect.                                                               |
+| `ctx.summary(text)`                 | Optional model-facing summary and display preview, up to 16,000 characters.                                              |
+| `ctx.details(value)`                | Optional JSON evidence for clients.                                                                                      |
+| `ctx.present(value)`                | Optional inert human-facing card metadata, independent of the model summary and typed return.                            |
 | `ctx.callId` / `ctx.idempotencyKey` | Stable identity for this invocation, including automatic activity retries. A new explicit step retry has a new identity. |
-| `ctx.request` | Original workflow request. |
+| `ctx.request`                       | Original workflow request.                                                                                               |
 
 Return the typed data from `execute`. Code receives that data directly. Models receive its JSON representation unless `ctx.summary()` replaces it; include everything the model needs in that summary. Presentation details remain available to the clients. Results are bounded to 256 KB; activity evidence is abbreviated at 16,000 characters and marked as truncated. Persist large reports as explicit artifacts/files.
 
@@ -93,7 +93,7 @@ import { createApplication, localExecutionEnvironment } from "predictable-workfl
 
 const app = await createApplication({
   project: process.cwd(),
-  environment: async options => {
+  environment: async (options) => {
     const local = await localExecutionEnvironment(options);
     return { ...local, id: "instrumented-local" };
   },
@@ -108,8 +108,12 @@ Custom implementations must honor cancellation and the passed ownership/recovery
 A shared tool can supply a card through `ctx.present()`:
 
 ```ts
-ctx.present({ card: "command", command: "bun test", exitCode: result.exitCode,
-  output: result.output.slice(-32000) });
+ctx.present({
+  card: "command",
+  command: "bun test",
+  exitCode: result.exitCode,
+  output: result.output.slice(-32000),
+});
 ```
 
 The supported card kinds are `generic`, `command`, `file-read`, `file-diff`, and `search`. Metadata is validated and persisted with the call. Invalid or oversized presentation falls back to ordinary evidence without changing the tool's typed result. Captured before/after text must describe the actual operation; the browser never rereads today's file to reconstruct a historical diff. Tool source, including presentation generation, stays frozen with the approved version.

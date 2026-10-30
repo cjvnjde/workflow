@@ -1,25 +1,11 @@
 <script setup lang="ts">
-import {
-  computed,
-  onMounted,
-  onScopeDispose,
-  ref,
-  shallowRef,
-  watch,
-} from "vue";
+import { computed, onMounted, onScopeDispose, ref, shallowRef, watch } from "vue";
 import { z } from "zod";
-import {
-  resolveAgentSettings,
-  type AgentSettings,
-} from "../../src/contracts.js";
-import {
-  modelCatalogSchema,
-  modelKey,
-  type AvailableModel,
-} from "../../src/contracts.js";
-import { setupSchema, type Setup } from "../../src/contracts.js";
-import { request } from "../api.js";
-import { inputValue } from "../form-events.js";
+import { resolveAgentSettings, type AgentSettings } from "../../src/contracts/index.js";
+import { modelCatalogSchema, modelKey, type AvailableModel } from "../../src/contracts/index.js";
+import { setupSchema, type Setup } from "../../src/contracts/index.js";
+import { request } from "../shared/api.js";
+import { inputValue } from "../shared/form-events.js";
 import ProviderLogin from "./ProviderLogin.vue";
 const props = defineProps<{ onSaved: () => Promise<void> }>();
 const emit = defineEmits<{ busy: [value: boolean]; dirty: [value: boolean] }>();
@@ -34,14 +20,9 @@ const notice = ref("");
 const controller = new AbortController();
 const dirty = computed(() => {
   if (!setup.value) return false;
-  const saved = resolveAgentSettings(
-    setup.value.userAgent,
-    setup.value.projectAgent,
-  );
+  const saved = resolveAgentSettings(setup.value.userAgent, setup.value.projectAgent);
   const key =
-    saved.provider && saved.model
-      ? modelKey({ provider: saved.provider, id: saved.model })
-      : "";
+    saved.provider && saved.model ? modelKey({ provider: saved.provider, id: saved.model }) : "";
   return selection.value !== key || thinking.value !== saved.thinking;
 });
 watch(dirty, (value) => emit("dirty", value), { immediate: true });
@@ -51,9 +32,7 @@ function acceptSetup(value: Setup, preserveEdits = false) {
   if (keep) return;
   const agent = resolveAgentSettings(value.userAgent, value.projectAgent);
   selection.value =
-    agent.provider && agent.model
-      ? modelKey({ provider: agent.provider, id: agent.model })
-      : "";
+    agent.provider && agent.model ? modelKey({ provider: agent.provider, id: agent.model }) : "";
   thinking.value = agent.thinking;
 }
 function discard() {
@@ -98,9 +77,7 @@ async function perform(action: () => Promise<void>) {
     emit("busy", false);
   }
 }
-const model = computed(() =>
-  models.value.find((item) => modelKey(item) === selection.value),
-);
+const model = computed(() => models.value.find((item) => modelKey(item) === selection.value));
 async function save(inherit: boolean) {
   if (!setup.value || (!inherit && !model.value)) {
     return;
@@ -152,8 +129,7 @@ function disconnect(provider: Setup["providers"][number]) {
     models.value = catalog.models;
     warnings.value = catalog.warnings;
     await props.onSaved();
-    notice.value =
-      "Saved credentials removed. Provider-side access has not been revoked.";
+    notice.value = "Saved credentials removed. Provider-side access has not been revoked.";
   });
 }
 function choose(value: string) {
@@ -161,9 +137,7 @@ function choose(value: string) {
   const selected = model.value;
   if (selected && !selected.thinkingLevels.includes(thinking.value)) {
     thinking.value = (
-      selected.thinkingLevels.includes("off")
-        ? "off"
-        : (selected.thinkingLevels[0] ?? "off")
+      selected.thinkingLevels.includes("off") ? "off" : (selected.thinkingLevels[0] ?? "off")
     ) as AgentSettings["thinking"];
   }
 }
@@ -174,8 +148,8 @@ function choose(value: string) {
     <div class="eyebrow">PROJECT SETUP</div>
     <h1 id="setup-title">Providers & models</h1>
     <p>
-      Start with ChatGPT, or connect another provider using an API key. Choose a
-      default model to plan new requests and generate your project library.
+      Start with ChatGPT, or connect another provider using an API key. Choose a default model to
+      plan new requests and generate your project library.
     </p>
     <div v-if="error" class="error-banner" role="alert">{{ error }}</div>
     <div v-if="notice" class="setup-notice" role="status">{{ notice }}</div>
@@ -186,8 +160,7 @@ function choose(value: string) {
           :loading="!setup"
           :chatgpt-connected="
             !!setup?.providers.some(
-              (provider) =>
-                provider.id === 'openai' && provider.method === 'oauth',
+              (provider) => provider.id === 'openai' && provider.method === 'oauth',
             )
           "
           :on-connected="() => perform(refresh)"
@@ -199,11 +172,7 @@ function choose(value: string) {
             ><span
               >{{ provider.method === "oauth" ? "Account sign-in" : "API key" }}
               ·
-              {{
-                provider.source === "stored"
-                  ? "saved credentials"
-                  : provider.source
-              }}</span
+              {{ provider.source === "stored" ? "saved credentials" : provider.source }}</span
             ><button
               v-if="provider.source === 'stored'"
               :disabled="busy"
@@ -215,10 +184,9 @@ function choose(value: string) {
         </ul>
         <p v-else class="muted">No providers are configured yet.</p>
         <small
-          >Credentials stay in Workflow's private store in your home directory
-          and are shared across projects and interfaces. Status reflects
-          configured credentials; model access is checked when a request
-          runs.</small
+          >Credentials stay in Workflow's private store in your home directory and are shared across
+          projects and interfaces. Status reflects configured credentials; model access is checked
+          when a request runs.</small
         >
         <button
           :disabled="busy"
@@ -248,31 +216,16 @@ function choose(value: string) {
           <option v-if="selection && !model" :value="selection">
             {{ selection }} · unavailable
           </option>
-          <option
-            v-for="item in models"
-            :key="modelKey(item)"
-            :value="modelKey(item)"
-          >
+          <option v-for="item in models" :key="modelKey(item)" :value="modelKey(item)">
             {{ item.name }} · {{ modelKey(item) }}
           </option>
         </select>
         <label for="project-thinking">Thinking level</label
-        ><select
-          id="project-thinking"
-          v-model="thinking"
-          :disabled="busy || !model"
-        >
-          <option
-            v-if="!model?.thinkingLevels.includes(thinking)"
-            :value="thinking"
-          >
+        ><select id="project-thinking" v-model="thinking" :disabled="busy || !model">
+          <option v-if="!model?.thinkingLevels.includes(thinking)" :value="thinking">
             {{ thinking }}{{ model ? " · unsupported" : "" }}
           </option>
-          <option
-            v-for="level in model?.thinkingLevels"
-            :key="level"
-            :value="level"
-          >
+          <option v-for="level in model?.thinkingLevels" :key="level" :value="level">
             {{ level }}
           </option>
         </select>
@@ -293,9 +246,7 @@ function choose(value: string) {
         ><button :disabled="busy || !setup" @click="perform(() => save(true))">
           Use shared defaults
         </button>
-        <button v-if="dirty" :disabled="busy" @click="discard">
-          Discard model changes
-        </button>
+        <button v-if="dirty" :disabled="busy" @click="discard">Discard model changes</button>
         <details class="shared-defaults">
           <summary>Shared defaults across projects</summary>
           <p class="muted">
@@ -307,8 +258,8 @@ function choose(value: string) {
           </p>
         </details>
         <small
-          >These controls update this project's model and thinking overrides.
-          Execution limits and existing run snapshots are preserved.</small
+          >These controls update this project's model and thinking overrides. Execution limits and
+          existing run snapshots are preserved.</small
         >
       </section>
     </div>

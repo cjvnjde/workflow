@@ -5,9 +5,9 @@ import {
   type Trigger,
   type TriggerConfig,
   type TriggerState,
-} from "../../src/contracts.js";
-import { client } from "../api.js";
-import Field from "../components/Field.vue";
+} from "../../src/contracts/index.js";
+import { client } from "../shared/api.js";
+import Field from "../shared/Field.vue";
 const emit = defineEmits<{ dirty: [value: boolean]; busy: [value: boolean] }>();
 const defaults = (): TriggerConfig => ({
   name: "",
@@ -45,12 +45,9 @@ let loading = false;
 watch(dirty, (value) => emit("dirty", value));
 watch(busy, (value) => emit("busy", value));
 function select(trigger?: Trigger) {
-  if (dirty.value && !window.confirm("Discard unsaved trigger changes?"))
-    return;
+  if (dirty.value && !window.confirm("Discard unsaved trigger changes?")) return;
   selected.value = trigger;
-  form.value = trigger
-    ? triggerConfigSchema.strip().parse(trigger)
-    : defaults();
+  form.value = trigger ? triggerConfigSchema.strip().parse(trigger) : defaults();
   labels.value = form.value.labels.join(", ");
   authors.value = form.value.authors.join(", ");
   saved.value = serialized();
@@ -106,11 +103,7 @@ async function save() {
       .map((value) => value.trim())
       .filter(Boolean),
   });
-  const trigger = await client.saveTrigger(
-    config,
-    selected.value?.id,
-    selected.value?.revision,
-  );
+  const trigger = await client.saveTrigger(config, selected.value?.id, selected.value?.revision);
   selected.value = trigger;
   form.value = triggerConfigSchema.strip().parse(trigger);
   saved.value = serialized();
@@ -157,8 +150,8 @@ onScopeDispose(() => {
       <div>
         <h2>GitHub triggers</h2>
         <p>
-          Run a saved workflow when new issues or pull requests appear. Workflow
-          must remain running; the browser can be closed.
+          Run a saved workflow when new issues or pull requests appear. Workflow must remain
+          running; the browser can be closed.
         </p>
       </div>
       <div class="button-row">
@@ -167,8 +160,8 @@ onScopeDispose(() => {
       </div>
     </div>
     <p>
-      GitHub access uses GH_TOKEN, GITHUB_TOKEN, or your GitHub CLI sign-in.
-      Public repositories can be read without signing in.
+      GitHub access uses GH_TOKEN, GITHUB_TOKEN, or your GitHub CLI sign-in. Public repositories can
+      be read without signing in.
     </p>
     <div v-if="error || state.error" class="inline-error" role="alert">
       {{ error || state.error }}
@@ -183,10 +176,7 @@ onScopeDispose(() => {
         @click="select(trigger)"
       >
         <strong>{{ trigger.name }}</strong
-        ><span
-          >{{ trigger.repository }} ·
-          {{ trigger.enabled ? "Enabled" : "Disabled" }}</span
-        >
+        ><span>{{ trigger.repository }} · {{ trigger.enabled ? "Enabled" : "Disabled" }}</span>
         <small v-if="trigger.error">{{ trigger.error }}</small>
         <small v-else>{{
           trigger.lastPollAt
@@ -200,18 +190,10 @@ onScopeDispose(() => {
       <fieldset class="settings-fields" :disabled="busy">
         <div class="field-grid">
           <Field v-slot="{ id }" label="Trigger name"
-            ><input
-              :id="id"
-              v-model="form.name"
-              required
-              placeholder="Review new pull requests"
+            ><input :id="id" v-model="form.name" required placeholder="Review new pull requests"
           /></Field>
           <Field v-slot="{ id }" label="GitHub repository"
-            ><input
-              :id="id"
-              v-model="form.repository"
-              required
-              placeholder="owner/repository"
+            ><input :id="id" v-model="form.repository" required placeholder="owner/repository"
           /></Field>
           <Field v-slot="{ id }" label="Event"
             ><select :id="id" v-model="form.event">
@@ -224,14 +206,9 @@ onScopeDispose(() => {
             label="Saved workflow"
             help="Captures this workflow's code, blocks, models and settings. Later edits do not change the captured version."
             ><select :id="id" v-model="form.workflowRunId" required>
-              <option disabled value="">
-                Choose a draft or completed workflow
-              </option>
+              <option disabled value="">Choose a draft or completed workflow</option>
               <option
-                v-if="
-                  selected &&
-                  !runs.some((run) => run.id === selected?.workflowRunId)
-                "
+                v-if="selected && !runs.some((run) => run.id === selected?.workflowRunId)"
                 :value="selected.workflowRunId"
               >
                 {{ selected.workflowTitle }} (captured)
@@ -245,10 +222,7 @@ onScopeDispose(() => {
             v-slot="{ id }"
             label="Required labels"
             help="Comma separated. Every label must match when the event is observed."
-            ><input
-              :id="id"
-              v-model="labels"
-              placeholder="Optional: workflow, bug"
+            ><input :id="id" v-model="labels" placeholder="Optional: workflow, bug"
           /></Field>
           <Field
             v-slot="{ id }"
@@ -289,84 +263,58 @@ onScopeDispose(() => {
           >
         </div>
         <label v-if="form.event === 'pull_request.opened'" class="toggle-row"
-          ><input v-model="form.includeDrafts" type="checkbox" />Include draft
-          pull requests</label
+          ><input v-model="form.includeDrafts" type="checkbox" />Include draft pull requests</label
         >
         <label class="toggle-row"
-          ><input v-model="form.enabled" type="checkbox" />Enable automatic
-          execution</label
+          ><input v-model="form.enabled" type="checkbox" />Enable automatic execution</label
         >
         <p>
-          New triggers watch items created from the time they are saved.
-          Disabled triggers pause admission and queued work; enabling catches up
-          from the saved checkpoint. Runs execute one at a time in this project.
+          New triggers watch items created from the time they are saved. Disabled triggers pause
+          admission and queued work; enabling catches up from the saved checkpoint. Runs execute one
+          at a time in this project.
         </p>
         <div class="button-row">
-          <button type="submit" class="primary" :disabled="selected && !dirty">
-            Save trigger</button
-          ><button v-if="dirty" type="button" @click="discard">
-            Discard trigger edits
-          </button>
+          <button type="submit" class="primary" :disabled="selected && !dirty">Save trigger</button
+          ><button v-if="dirty" type="button" @click="discard">Discard trigger edits</button>
         </div>
       </fieldset>
     </form>
     <div v-if="selected" class="settings-card">
       <h3>Test this trigger</h3>
       <p>
-        Choose an existing item to create a draft, without automatic execution
-        or a GitHub result comment. Testing bypasses label, author and
-        creation-time filters.
+        Choose an existing item to create a draft, without automatic execution or a GitHub result
+        comment. Testing bypasses label, author and creation-time filters.
       </p>
       <Field v-slot="{ id }" label="Issue or pull request number"
         ><input :id="id" v-model.number="number" type="number" min="1"
       /></Field>
-      <button :disabled="busy || dirty || !number" @click="perform(test)">
-        Create test draft
-      </button>
+      <button :disabled="busy || dirty || !number" @click="perform(test)">Create test draft</button>
     </div>
     <div class="settings-section-title">
       <div>
         <h2>Event history</h2>
         <p>
-          The latest 100 events, including queued work and test drafts. Open a
-          run to inspect its results or resolve an interruption.
+          The latest 100 events, including queued work and test drafts. Open a run to inspect its
+          results or resolve an interruption.
         </p>
       </div>
     </div>
     <p v-if="!state.jobs.length">No events yet.</p>
-    <article
-      v-for="job in state.jobs"
-      :key="job.id"
-      class="settings-card trigger-job"
-    >
+    <article v-for="job in state.jobs" :key="job.id" class="settings-card trigger-job">
       <div class="card-title">
-        <strong
-          >{{ job.triggerName }} · {{ job.event.repository }}#{{
-            job.event.number
-          }}</strong
+        <strong>{{ job.triggerName }} · {{ job.event.repository }}#{{ job.event.number }}</strong
         ><span
           >{{ job.test ? "Test · " : "" }}{{ job.status
-          }}{{
-            job.runStatus && job.runStatus !== job.status
-              ? ` · ${job.runStatus}`
-              : ""
-          }}</span
+          }}{{ job.runStatus && job.runStatus !== job.status ? ` · ${job.runStatus}` : "" }}</span
         >
       </div>
       <p>{{ job.event.title }}</p>
       <p v-if="job.error" class="inline-error">{{ job.error }}</p>
       <div class="button-row">
-        <a
-          v-if="job.status !== 'queued' && job.status !== 'failed'"
-          :href="`#run=${job.runId}`"
+        <a v-if="job.status !== 'queued' && job.status !== 'failed'" :href="`#run=${job.runId}`"
           >Open workflow</a
-        ><a :href="job.event.url" target="_blank" rel="noopener noreferrer"
-          >View GitHub item</a
-        ><a
-          v-if="job.resultUrl"
-          :href="job.resultUrl"
-          target="_blank"
-          rel="noopener noreferrer"
+        ><a :href="job.event.url" target="_blank" rel="noopener noreferrer">View GitHub item</a
+        ><a v-if="job.resultUrl" :href="job.resultUrl" target="_blank" rel="noopener noreferrer"
           >Published result</a
         >
         <button
@@ -374,11 +322,7 @@ onScopeDispose(() => {
           :disabled="busy"
           @click="perform(() => jobAction(job.id, 'retry'))"
         >
-          {{
-            job.status === "publishing"
-              ? "Check delivery again"
-              : "Retry dispatch"
-          }}
+          {{ job.status === "publishing" ? "Check delivery again" : "Retry dispatch" }}
         </button>
         <button
           v-if="['queued', 'failed'].includes(job.status)"

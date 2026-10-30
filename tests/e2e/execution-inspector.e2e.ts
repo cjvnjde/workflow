@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { projectOperations, type RunEvent } from "../../src/contracts.js";
+import { projectOperations, type RunEvent } from "../../src/contracts/index.js";
 
 const source = `import {workflow,block,step,repeatUntil} from "workflow";
 const work=step("work",block({run(ctx){return {round:ctx.input.round};}}),{label:"Inspection fixture",maxVisits:2,inputs:ctx=>({round:ctx.iteration("rounds")})});
@@ -21,9 +21,7 @@ test("timeline selects historical visits and opens persisted call details", asyn
   expect(response.ok(), await response.text()).toBe(true);
   const created = await response.json();
   await page.goto(`/#run=${created.id}`);
-  await page
-    .getByRole("button", { name: "Approve & start", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Approve & start", exact: true }).click();
   await expect(page.locator(".status-pill")).toHaveText("Completed", {
     timeout: 20000,
   });
@@ -153,12 +151,8 @@ test("timeline selects historical visits and opens persisted call details", asyn
       ),
     )
     .toBe(true);
-  await inspector
-    .getByRole("combobox", { name: "Visit", exact: true })
-    .selectOption("1");
-  await inspector
-    .getByRole("button", { name: "Fold calls", exact: true })
-    .click();
+  await inspector.getByRole("combobox", { name: "Visit", exact: true }).selectOption("1");
+  await inspector.getByRole("button", { name: "Fold calls", exact: true }).click();
   await expect(inspector.locator(".call-select")).toHaveCount(1);
   await inspector
     .getByRole("searchbox", { name: "Search calls", exact: true })
@@ -185,9 +179,7 @@ test("timeline selects historical visits and opens persisted call details", asyn
     name: "Step data inspector",
     exact: true,
   });
-  await expect(
-    data.getByRole("combobox", { name: "Visit", exact: true }),
-  ).toHaveValue("1");
+  await expect(data.getByRole("combobox", { name: "Visit", exact: true })).toHaveValue("1");
   await expect(data).toContainText("Inspection fixture · visit 1");
   await page.setViewportSize({ width: 390, height: 844 });
   await page
@@ -196,16 +188,11 @@ test("timeline selects historical visits and opens persisted call details", asyn
     .click();
   await expect(inspector).toBeVisible();
   expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth + 2,
-    ),
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2),
   ).toBe(true);
 });
 
-test("raw history loads earlier records beyond the live event tail", async ({
-  page,
-  request,
-}) => {
+test("raw history loads earlier records beyond the live event tail", async ({ page, request }) => {
   const response = await request.post("/api/programs", {
     headers: { "x-workflow-client": "1" },
     data: {
@@ -222,12 +209,9 @@ test("raw history loads earlier records beyond the live event tail", async ({
     runId: run.id,
     nodeId: "work",
     // Append order is authoritative even if clocks move backward or tie.
-    time: new Date(
-      Date.UTC(2026, 0, 1, 0, 0, Math.floor((599 - index) / 2)),
-    ).toISOString(),
+    time: new Date(Date.UTC(2026, 0, 1, 0, 0, Math.floor((599 - index) / 2))).toISOString(),
     kind: "agent_message",
-    message:
-      index === 1 ? "Early retained diagnostic" : "Historical update " + index,
+    message: index === 1 ? "Early retained diagnostic" : "Historical update " + index,
   }));
   await page.route(`**/api/runs/${run.id}/events`, (route) =>
     route.fulfill({ json: history.slice(-500) }),
@@ -254,24 +238,13 @@ test("raw history loads earlier records beyond the live event tail", async ({
     .getByRole("button", { name: "Activity", exact: true })
     .click();
   await expect(
-    page
-      .locator(".activity-feed .event")
-      .filter({ hasText: "Historical update" })
-      .first(),
+    page.locator(".activity-feed .event").filter({ hasText: "Historical update" }).first(),
   ).toContainText("Historical update 599");
-  await page
-    .getByRole("button", { name: "Load earlier events", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Load earlier events", exact: true })
-    .click();
-  await page
-    .getByRole("searchbox", { name: "Search activity" })
-    .fill("Early retained diagnostic");
-  await expect(page.locator(".activity-feed")).toContainText(
-    "Early retained diagnostic",
+  await page.getByRole("button", { name: "Load earlier events", exact: true }).click();
+  await page.getByRole("button", { name: "Load earlier events", exact: true }).click();
+  await page.getByRole("searchbox", { name: "Search activity" }).fill("Early retained diagnostic");
+  await expect(page.locator(".activity-feed")).toContainText("Early retained diagnostic");
+  await expect(page.getByRole("button", { name: "Load earlier events", exact: true })).toHaveCount(
+    0,
   );
-  await expect(
-    page.getByRole("button", { name: "Load earlier events", exact: true }),
-  ).toHaveCount(0);
 });

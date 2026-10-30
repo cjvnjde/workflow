@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
-import { WorkflowVersions } from "../src/workflow-versions.js";
+import { WorkflowVersions } from "../src/infrastructure/workflow-versions.js";
 import { fixture } from "./helpers.js";
 
 test("version archives retain earlier bundles and verify content integrity", async (t) => {
@@ -26,6 +26,9 @@ test("incompatible Temporal SDK versions fail safely rather than replaying with 
   const bundle = path.join(project, "bundle.js");
   await writeFile(bundle, "bundle");
   const manifest = await versions.install(bundle);
-  await writeFile(path.join(project, ".workflow/versions", manifest.id, "manifest.json"), JSON.stringify({ ...manifest, sdkVersion: "another-sdk" }));
+  await writeFile(
+    path.join(project, ".workflow/versions", manifest.id, "manifest.json"),
+    JSON.stringify({ ...manifest, sdkVersion: "another-sdk" }),
+  );
   await assert.rejects(versions.load(manifest.id), /requires Temporal SDK/);
 });

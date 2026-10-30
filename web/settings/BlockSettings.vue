@@ -1,13 +1,5 @@
 <script setup lang="ts">
-import {
-  computed,
-  onMounted,
-  onScopeDispose,
-  ref,
-  shallowRef,
-  watch,
-  toRaw,
-} from "vue";
+import { computed, onMounted, onScopeDispose, ref, shallowRef, watch, toRaw } from "vue";
 import { z } from "zod";
 import {
   bundleSchema,
@@ -15,13 +7,13 @@ import {
   identifierSchema,
   type BlockBundle,
   type Library,
-} from "../../src/contracts.js";
-import { libraryProposalSchema } from "../../src/contracts.js";
-import type { OrchestrationSettings } from "../../src/contracts.js";
-import { request } from "../api.js";
-import Field from "../components/Field.vue";
-import CodeEditor from "../components/CodeEditor.vue";
-import Icon from "../components/Icon.vue";
+} from "../../src/contracts/index.js";
+import { libraryProposalSchema } from "../../src/contracts/index.js";
+import type { OrchestrationSettings } from "../../src/contracts/index.js";
+import { request } from "../shared/api.js";
+import Field from "../shared/Field.vue";
+import CodeEditor from "../shared/CodeEditor.vue";
+import Icon from "../shared/Icon.vue";
 
 const props = defineProps<{
   library: Library;
@@ -60,9 +52,7 @@ onMounted(() => {
 });
 const baseline = computed(() => state.value?.codeBlocks[selected.value]);
 const dirty = computed(
-  () =>
-    !!bundle.value &&
-    JSON.stringify(bundle.value) !== JSON.stringify(baseline.value),
+  () => !!bundle.value && JSON.stringify(bundle.value) !== JSON.stringify(baseline.value),
 );
 watch(dirty, (value) => emit("dirty", value), { immediate: true });
 onScopeDispose(() => {
@@ -72,9 +62,7 @@ onScopeDispose(() => {
 const definition = computed(() => bundle.value?.definition);
 function discard() {
   if (busy.value) return;
-  bundle.value = baseline.value
-    ? structuredClone(toRaw(baseline.value))
-    : undefined;
+  bundle.value = baseline.value ? structuredClone(toRaw(baseline.value)) : undefined;
   if (!bundle.value) selected.value = "";
   error.value = "";
   notice.value = "";
@@ -109,9 +97,7 @@ async function perform(action: () => Promise<void>) {
 const testInput = ref("{}"),
   testPrompt = ref("Test this block with the supplied inputs.");
 async function playground() {
-  const inputs = z
-    .record(z.string(), z.json())
-    .parse(JSON.parse(testInput.value));
+  const inputs = z.record(z.string(), z.json()).parse(JSON.parse(testInput.value));
   const run = await request("/api/programs", runSchema, {
     method: "POST",
     body: {
@@ -152,31 +138,24 @@ function add() {
 async function save() {
   const current = bundle.value;
   if (!current) return;
-  const proposal = await request(
-    "/api/library/proposals",
-    libraryProposalSchema,
-    {
-      method: "POST",
-      body: {
-        kind: "manual",
-        baseHash: state.value?.revision,
-        changes: {
-          summary: `Update ${current.definition.name}`,
-          blocks: [{ bundle: current, rationale: "Configured in Settings" }],
-        },
+  const proposal = await request("/api/library/proposals", libraryProposalSchema, {
+    method: "POST",
+    body: {
+      kind: "manual",
+      baseHash: state.value?.revision,
+      changes: {
+        summary: `Update ${current.definition.name}`,
+        blocks: [{ bundle: current, rationale: "Configured in Settings" }],
       },
     },
-  );
-  await request(
-    `/api/library/proposals/${proposal.id}/apply`,
-    libraryProposalSchema,
-    { method: "POST", body: {} },
-  );
+  });
+  await request(`/api/library/proposals/${proposal.id}/apply`, libraryProposalSchema, {
+    method: "POST",
+    body: {},
+  });
   await load();
   selected.value = current.definition.id;
-  bundle.value = structuredClone(
-    toRaw(state.value!.codeBlocks[selected.value]!),
-  );
+  bundle.value = structuredClone(toRaw(state.value!.codeBlocks[selected.value]!));
   await props.onSaved();
   notice.value =
     "Block saved. New workflows use this definition; existing runs keep their snapshots.";
@@ -192,11 +171,10 @@ function remove() {
   )
     return;
   void perform(async () => {
-    await request(
-      `/api/library/blocks/${id}`,
-      z.object({ removed: z.boolean() }),
-      { method: "DELETE", body: { revision: state.value!.revision } },
-    );
+    await request(`/api/library/blocks/${id}`, z.object({ removed: z.boolean() }), {
+      method: "DELETE",
+      body: { revision: state.value!.revision },
+    });
     await load();
     bundle.value = undefined;
     selected.value = "";
@@ -233,14 +211,12 @@ function download() {
       <div>
         <h2>Reusable blocks</h2>
         <p>
-          TypeScript functions with typed inputs and outputs. Call AI, run
-          commands, or combine both in the same block.
+          TypeScript functions with typed inputs and outputs. Call AI, run commands, or combine both
+          in the same block.
         </p>
       </div>
       <div class="button-row">
-        <button :disabled="busy" @click="add">
-          <Icon name="plus" />Add block
-        </button>
+        <button :disabled="busy" @click="add"><Icon name="plus" />Add block</button>
       </div>
     </div>
     <pre v-if="error" class="inline-error" role="alert">{{ error }}</pre>
@@ -270,30 +246,19 @@ function download() {
             <Field v-slot="{ id }" label="Block name"
               ><input :id="id" v-model="definition.name"
             /></Field>
-            <Field
-              v-slot="{ id }"
-              label="Block ID"
-              help="Referenced by workflow steps."
-              ><input
-                :id="id"
-                v-model="definition.id"
-                :disabled="!!state?.blocks[selected]"
+            <Field v-slot="{ id }" label="Block ID" help="Referenced by workflow steps."
+              ><input :id="id" v-model="definition.id" :disabled="!!state?.blocks[selected]"
             /></Field>
           </div>
           <Field v-slot="{ id }" label="When should this block be used?">
-            <textarea
-              v-autosize
-              :id="id"
-              v-model="definition.description"
-              :rows="2"
-            />
+            <textarea :id="id" v-model="definition.description" v-autosize :rows="2" />
           </Field>
           <details class="script-contract block-code-help">
             <summary>Block contract</summary>
             <p>
-              Document the handoff and effects for callers. Input/output schemas
-              and capability/ownership restrictions in TypeScript enforce the
-              contract; these notes describe it.
+              Document the handoff and effects for callers. Input/output schemas and
+              capability/ownership restrictions in TypeScript enforce the contract; these notes
+              describe it.
             </p>
             <button
               v-if="!definition.contract"
@@ -311,43 +276,22 @@ function download() {
             </button>
             <template v-if="definition.contract">
               <Field v-slot="{ id }" label="Required inputs">
-                <textarea
-                  :id="id"
-                  v-model="definition.contract.inputs"
-                  maxlength="2000"
-                />
+                <textarea :id="id" v-model="definition.contract.inputs" maxlength="2000" />
               </Field>
               <Field v-slot="{ id }" label="Returned outputs">
-                <textarea
-                  :id="id"
-                  v-model="definition.contract.outputs"
-                  maxlength="2000"
-                />
+                <textarea :id="id" v-model="definition.contract.outputs" maxlength="2000" />
               </Field>
-              <Field
-                v-slot="{ id }"
-                label="Tools, file ownership and side effects"
-              >
-                <textarea
-                  :id="id"
-                  v-model="definition.contract.effects"
-                  maxlength="2000"
-                />
+              <Field v-slot="{ id }" label="Tools, file ownership and side effects">
+                <textarea :id="id" v-model="definition.contract.effects" maxlength="2000" />
               </Field>
               <Field v-slot="{ id }" label="Failure and retry behavior">
-                <textarea
-                  :id="id"
-                  v-model="definition.contract.failure"
-                  maxlength="2000"
-                />
+                <textarea :id="id" v-model="definition.contract.failure" maxlength="2000" />
               </Field>
             </template>
           </details>
           <div class="editor-actions">
             <strong>Block TypeScript</strong>
-            <button class="quiet" @click="copy">
-              <Icon name="copy" :size="14" />Copy code
-            </button>
+            <button class="quiet" @click="copy"><Icon name="copy" :size="14" />Copy code</button>
             <button class="quiet" @click="download">
               <Icon name="download" :size="14" />Download .ts
             </button>
@@ -363,20 +307,15 @@ function download() {
           <details class="script-contract block-code-help">
             <summary>Test this block</summary>
             <p>
-              Create a one-step draft using the saved block. Review and approve
-              it before execution. This uses real project tools and records
-              outputs, checks and model calls in the run history.
+              Create a one-step draft using the saved block. Review and approve it before execution.
+              This uses real project tools and records outputs, checks and model calls in the run
+              history.
             </p>
             <Field v-slot="{ id }" label="Test request">
               <textarea :id="id" v-model="testPrompt" />
             </Field>
             <Field v-slot="{ id }" label="Input JSON">
-              <textarea
-                :id="id"
-                v-model="testInput"
-                rows="5"
-                spellcheck="false"
-              />
+              <textarea :id="id" v-model="testInput" rows="5" spellcheck="false" />
             </Field>
             <button
               :disabled="busy || dirty || !baseline || !testPrompt.trim()"
@@ -389,52 +328,42 @@ function download() {
           <details class="script-contract block-code-help">
             <summary>Block API & examples</summary>
             <p>
-              Import <code>block, z</code> from <code>"workflow"</code> and
-              export
-              <code>block({ input, output, async run(ctx) { … } })</code>.
-              Schemas are optional; returning a value passes it to the next
-              step.
+              Import <code>block, z</code> from <code>"workflow"</code> and export
+              <code>block({ input, output, async run(ctx) { … } })</code>. Schemas are optional;
+              returning a value passes it to the next step.
             </p>
             <p>
-              <code
-                >await ctx.ai({ prompt, model, output: z.object({ … }) })</code
-              >
-              returns a typed AI result. Omit <code>output</code> for Markdown.
-              Set a model in code, accept one through inputs, or use
-              <code>ctx.model</code> for the step’s default. Omitting
-              <code>model</code> uses the model assigned by the orchestrator or
-              in the workflow editor. An explicit model here takes precedence.
+              <code>await ctx.ai({ prompt, model, output: z.object({ … }) })</code>
+              returns a typed AI result. Omit <code>output</code> for Markdown. Set a model in code,
+              accept one through inputs, or use <code>ctx.model</code> for the step’s default.
+              Omitting <code>model</code> uses the model assigned by the orchestrator or in the
+              workflow editor. An explicit model here takes precedence.
             </p>
             <p v-if="settings.profiles.some((profile) => profile.enabled)">
               Available profiles:
               <code
-                v-for="profile in settings.profiles.filter(
-                  (item) => item.enabled,
-                )"
+                v-for="profile in settings.profiles.filter((item) => item.enabled)"
                 :key="profile.id"
                 >ctx.models[{{ JSON.stringify(profile.id) }}]
               </code>
             </p>
             <p>
               <code>await ctx.exec("bun test")</code> returns
-              <code>exitCode, stdout, stderr, output, timedOut</code>. Return
-              failure feedback for the workflow to route to implementation. Run
-              project TypeScript files with
+              <code>exitCode, stdout, stderr, output, timedOut</code>. Return failure feedback for
+              the workflow to route to implementation. Run project TypeScript files with
               <code>ctx.exec("bun scripts/check.ts")</code>.
             </p>
             <p>
-              <code>ctx.readFile(path)</code>,
-              <code>ctx.writeFile(path, text)</code> and
+              <code>ctx.readFile(path)</code>, <code>ctx.writeFile(path, text)</code> and
               <code>ctx.log(message)</code> are awaited operations.
-              <code>ctx.summary(markdown)</code> and
-              <code>ctx.artifact(name, text)</code> make results easy to find.
-              Set <code>timeoutMs</code> and <code>maxOperations</code> on the
+              <code>ctx.summary(markdown)</code> and <code>ctx.artifact(name, text)</code> make
+              results easy to find. Set <code>timeoutMs</code> and <code>maxOperations</code> on the
               block when needed.
             </p>
             <p>
-              Source and imports are frozen with each workflow. Commands run in
-              the project with its environment. Use context operations for host
-              effects so the engine can record and recover work.
+              Source and imports are frozen with each workflow. Commands run in the project with its
+              environment. Use context operations for host effects so the engine can record and
+              recover work.
             </p>
           </details>
           <div class="button-row">
@@ -442,17 +371,9 @@ function download() {
               {{ busy ? "Typechecking…" : "Save block" }}
             </button>
             <button v-if="dirty" @click="discard">
-              {{
-                state?.blocks[selected]
-                  ? "Discard block changes"
-                  : "Cancel new block"
-              }}
+              {{ state?.blocks[selected] ? "Discard block changes" : "Cancel new block" }}
             </button>
-            <button
-              v-if="state?.blocks[selected]"
-              class="danger-quiet"
-              @click="remove"
-            >
+            <button v-if="state?.blocks[selected]" class="danger-quiet" @click="remove">
               Remove block
             </button>
           </div>

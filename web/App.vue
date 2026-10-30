@@ -1,47 +1,34 @@
 <script setup lang="ts">
-import { isSourceWorkflow } from "./execution-label.js";
-import {
-  computed,
-  defineAsyncComponent,
-  onMounted,
-  onUnmounted,
-  ref,
-  watch,
-} from "vue";
-import { runSchema } from "../src/contracts.js";
-import { taskSchema, taskListSchema, runListSchema } from "../src/contracts.js";
-import { orchestrationStateSchema } from "../src/contracts.js";
-import { libraryProposalSchema } from "../src/contracts.js";
-import type { DesignScope } from "../src/contracts.js";
-import { apiUrl, request } from "./api.js";
-import { useDraft } from "./composables/use-draft.js";
-import { useTaskDraft } from "./composables/use-task-draft.js";
-import { useWorkflowData } from "./composables/use-workflow-data.js";
-import { useTasks } from "./composables/use-tasks.js";
-import { useSetupJobs } from "./composables/use-setup-jobs.js";
-import { statusLabel } from "./workflow-status.js";
-import type { DesignRequest } from "./design-types.js";
-import TaskComposer from "./components/TaskComposer.vue";
-import ProgramComposer from "./components/ProgramComposer.vue";
-import type { ProgramSource } from "../src/contracts.js";
-import TaskPlanning from "./components/TaskPlanning.vue";
-import RunWorkspace from "./components/RunWorkspace.vue";
-import Icon from "./components/Icon.vue";
-import SessionSwitcher from "./components/SessionSwitcher.vue";
-import SetupProgress from "./components/SetupProgress.vue";
-import UsageSummary from "./components/UsageSummary.vue";
-import { parseSessionLocation, sessionLink } from "./session-location.js";
-const SettingsPage = defineAsyncComponent(
-  () => import("./settings/SettingsPage.vue"),
-);
+import { isSourceWorkflow } from "./features/execution/execution-label.js";
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from "vue";
+import { runSchema } from "../src/contracts/index.js";
+import { taskSchema, taskListSchema, runListSchema } from "../src/contracts/index.js";
+import { orchestrationStateSchema } from "../src/contracts/index.js";
+import { libraryProposalSchema } from "../src/contracts/index.js";
+import type { DesignScope } from "../src/contracts/index.js";
+import { apiUrl, request } from "./shared/api.js";
+import { useDraft } from "./features/tasks/use-draft.js";
+import { useTaskDraft } from "./features/tasks/use-task-draft.js";
+import { useWorkflowData } from "./app/use-workflow-data.js";
+import { useTasks } from "./features/tasks/use-tasks.js";
+import { useSetupJobs } from "./features/setup/use-setup-jobs.js";
+import { statusLabel } from "./features/execution/workflow-status.js";
+import type { DesignRequest } from "./features/design/design-types.js";
+import TaskComposer from "./features/tasks/TaskComposer.vue";
+import ProgramComposer from "./features/programs/ProgramComposer.vue";
+import type { ProgramSource } from "../src/contracts/index.js";
+import TaskPlanning from "./features/tasks/TaskPlanning.vue";
+import RunWorkspace from "./features/execution/RunWorkspace.vue";
+import Icon from "./shared/Icon.vue";
+import SessionSwitcher from "./features/sessions/SessionSwitcher.vue";
+import SetupProgress from "./features/setup/SetupProgress.vue";
+import UsageSummary from "./features/usage/UsageSummary.vue";
+import { parseSessionLocation, sessionLink } from "./features/sessions/session-location.js";
+const SettingsPage = defineAsyncComponent(() => import("./settings/SettingsPage.vue"));
 const refinementController = ref<AbortController>();
-const DesignDock = defineAsyncComponent(
-  () => import("./components/DesignDock.vue"),
-);
+const DesignDock = defineAsyncComponent(() => import("./features/design/DesignDock.vue"));
 const initialLocation = new URLSearchParams(window.location.hash.slice(1));
-const initialSession = new URLSearchParams(window.location.search).get(
-  "session",
-);
+const initialSession = new URLSearchParams(window.location.search).get("session");
 const copiedSession = ref("");
 const {
   project,
@@ -67,14 +54,10 @@ const {
 } = useWorkflowData();
 const notificationsOpen = ref(false);
 const dismissedNotice = ref("");
-const unread = computed(
-  () => notices.value.filter((item) => !item.read).length,
-);
+const unread = computed(() => notices.value.filter((item) => !item.read).length);
 const latestNotice = computed(() => {
   const item = notices.value[0];
-  return item && !item.read && item.id !== dismissedNotice.value
-    ? item
-    : undefined;
+  return item && !item.read && item.id !== dismissedNotice.value ? item : undefined;
 });
 watch(
   () => latestNotice.value?.id,
@@ -95,18 +78,9 @@ function openNotice(id: string) {
   markNoticesRead();
   notificationsOpen.value = false;
 }
-const view = ref<"task" | "settings">(
-  initialLocation.has("settings") ? "settings" : "task",
-);
-const selectedTask = ref<string | undefined>(
-  initialLocation.get("task") ?? undefined,
-);
-const {
-  tasks,
-  task,
-  apply: applyTask,
-  error: taskError,
-} = useTasks(selectedTask);
+const view = ref<"task" | "settings">(initialLocation.has("settings") ? "settings" : "task");
+const selectedTask = ref<string | undefined>(initialLocation.get("task") ?? undefined);
+const { tasks, task, apply: applyTask, error: taskError } = useTasks(selectedTask);
 const draft = useDraft(run);
 const busy = ref(false);
 const automatic = ref(false);
@@ -147,8 +121,8 @@ const {
 const filter = ref("");
 async function readSettings() {
   automatic.value =
-    (await request("/api/settings/orchestration", orchestrationStateSchema))
-      .settings.approval === "automatic";
+    (await request("/api/settings/orchestration", orchestrationStateSchema)).settings.approval ===
+    "automatic";
 }
 onMounted(() => {
   if (initialSession) void perform(() => openSession(initialSession));
@@ -190,9 +164,7 @@ function readLocation() {
   const next = location.has("settings") ? "settings" : "task";
   navigate(next, () => {
     selectedTask.value = location.get("task") ?? undefined;
-    selectRun(
-      selectedTask.value ? undefined : (location.get("run") ?? undefined),
-    );
+    selectRun(selectedTask.value ? undefined : (location.get("run") ?? undefined));
   });
   // Restore the current URL if the user declines to discard settings.
   syncLocation();
@@ -249,8 +221,7 @@ const entries = computed(() => {
     ...tasks.value
       .filter(
         (item) =>
-          !item.deletedAt &&
-          !runs.value.some((run) => run.id === item.runId && run.deletedAt),
+          !item.deletedAt && !runs.value.some((run) => run.id === item.runId && run.deletedAt),
       )
       .map((item) => {
         const execution = runs.value.find((entry) => entry.id === item.runId);
@@ -272,9 +243,7 @@ const entries = computed(() => {
         createdAt: item.createdAt,
       })),
   ]
-    .filter((item) =>
-      item.title.toLowerCase().includes(filter.value.toLowerCase()),
-    )
+    .filter((item) => item.title.toLowerCase().includes(filter.value.toLowerCase()))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 });
 const activeStatuses = new Set([
@@ -300,22 +269,13 @@ const groups = computed(() => [
   },
 ]);
 const selectedEntry = computed(
-  () =>
-    selectedTask.value ?? (selectedId.value ? `run:${selectedId.value}` : ""),
+  () => selectedTask.value ?? (selectedId.value ? `run:${selectedId.value}` : ""),
 );
-const selectedItem = computed(() =>
-  entries.value.find((item) => item.id === selectedEntry.value),
-);
+const selectedItem = computed(() => entries.value.find((item) => item.id === selectedEntry.value));
 const cannotDelete = (status: string) =>
-  [
-    "queued",
-    "planning",
-    "needs_input",
-    "running",
-    "pausing",
-    "paused",
-    "interrupted",
-  ].includes(status);
+  ["queued", "planning", "needs_input", "running", "pausing", "paused", "interrupted"].includes(
+    status,
+  );
 function deleteEntry(item: (typeof entries.value)[number]) {
   if (busy.value || cannotDelete(item.status)) return;
   if (
@@ -348,11 +308,8 @@ function deleteEntry(item: (typeof entries.value)[number]) {
 watch([tasks, runs], () => {
   if (
     (selectedTask.value &&
-      tasks.value.some(
-        (item) => item.id === selectedTask.value && item.deletedAt,
-      )) ||
-    (selectedId.value &&
-      runs.value.some((item) => item.id === selectedId.value && item.deletedAt))
+      tasks.value.some((item) => item.id === selectedTask.value && item.deletedAt)) ||
+    (selectedId.value && runs.value.some((item) => item.id === selectedId.value && item.deletedAt))
   ) {
     selectedTask.value = undefined;
     selectRun(undefined);
@@ -370,11 +327,9 @@ async function openSession(value: string, signal?: AbortSignal) {
   ]);
   signal?.throwIfAborted();
   const foundTask =
-    session.kind !== "run" &&
-    knownTasks.find((item) => item.id === session.id && !item.deletedAt);
+    session.kind !== "run" && knownTasks.find((item) => item.id === session.id && !item.deletedAt);
   const foundRun =
-    session.kind !== "task" &&
-    knownRuns.find((item) => item.id === session.id && !item.deletedAt);
+    session.kind !== "task" && knownRuns.find((item) => item.id === session.id && !item.deletedAt);
   if (!foundTask && !foundRun)
     throw new Error(
       "Session not found in this project. Check the full ID and the project server you connected to.",
@@ -405,8 +360,7 @@ async function copySession(kind: "link" | "terminal" | "id") {
           ? "Terminal command copied"
           : "Session ID copied";
   } catch {
-    copiedSession.value =
-      "Clipboard unavailable. Select and copy the session ID below.";
+    copiedSession.value = "Clipboard unavailable. Select and copy the session ID below.";
   }
 }
 watch(sessionId, () => {
@@ -508,9 +462,7 @@ function savePlan() {
       runSchema,
       {
         method: "PUT",
-        body: isSourceWorkflow(current)
-          ? edit.validProgram
-          : JSON.parse(edit.text),
+        body: isSourceWorkflow(current) ? edit.validProgram : JSON.parse(edit.text),
         revision: edit.revision,
       },
     );
@@ -530,16 +482,12 @@ function refine(instructions: string) {
     coordinatorText.value = "";
     coordinatorActivity.value = "Refining the workflow…";
     try {
-      const updated = await request(
-        `/api/runs/${current.id}/refine`,
-        runSchema,
-        {
-          method: "POST",
-          body: { instructions },
-          revision: current.revision,
-          signal: controller.signal,
-        },
-      );
+      const updated = await request(`/api/runs/${current.id}/refine`, runSchema, {
+        method: "POST",
+        body: { instructions },
+        revision: current.revision,
+        signal: controller.signal,
+      });
       applyRun(updated);
       edit.saved(updated);
       await refreshRuns();
@@ -558,30 +506,23 @@ function saveSuggestedBlocks() {
     return;
   }
   void perform(async () => {
-    const proposal = await request(
-      "/api/library/proposals",
-      libraryProposalSchema,
-      {
-        method: "POST",
-        body: {
-          kind: "manual",
-          changes: {
-            summary: "Save task-specific blocks for reuse",
-            blocks: currentTask.suggestedBlocks.map((item) => ({
-              bundle:
-                currentRun.program?.catalog[item.id] ??
-                currentRun.blocks[item.id],
-              rationale: item.rationale,
-            })),
-          },
+    const proposal = await request("/api/library/proposals", libraryProposalSchema, {
+      method: "POST",
+      body: {
+        kind: "manual",
+        changes: {
+          summary: "Save task-specific blocks for reuse",
+          blocks: currentTask.suggestedBlocks.map((item) => ({
+            bundle: currentRun.program?.catalog[item.id] ?? currentRun.blocks[item.id],
+            rationale: item.rationale,
+          })),
         },
       },
-    );
-    await request(
-      `/api/library/proposals/${proposal.id}/apply`,
-      libraryProposalSchema,
-      { method: "POST", body: {} },
-    );
+    });
+    await request(`/api/library/proposals/${proposal.id}/apply`, libraryProposalSchema, {
+      method: "POST",
+      body: {},
+    });
     await refreshProject();
   });
 }
@@ -637,11 +578,7 @@ async function designApplied() {
           <div class="history-heading">
             {{ group.label }}<span>{{ group.items.length }}</span>
           </div>
-          <div
-            v-for="item in group.items"
-            :key="item.id"
-            class="task-history-entry"
-          >
+          <div v-for="item in group.items" :key="item.id" class="task-history-entry">
             <button
               class="task-item"
               :class="{
@@ -705,19 +642,11 @@ async function designApplied() {
         <div class="workspace-breadcrumb">
           <span>{{ projectName }}</span
           ><Icon name="chevron" :size="12" /><strong>{{
-            view === "settings"
-              ? "Settings"
-              : selectedEntry
-                ? "Task workspace"
-                : "New task"
+            view === "settings" ? "Settings" : selectedEntry ? "Task workspace" : "New task"
           }}</strong>
         </div>
         <div class="topbar-right">
-          <button
-            class="ai-button"
-            aria-label="Open AI designer"
-            @click="design('project')"
-          >
+          <button class="ai-button" aria-label="Open AI designer" @click="design('project')">
             <Icon name="spark" />Design with AI
           </button>
           <div class="notifications">
@@ -727,11 +656,7 @@ async function designApplied() {
               :aria-expanded="notificationsOpen"
               @click="notificationsOpen = !notificationsOpen"
             >
-              <Icon name="bell" /><span
-                v-if="unread"
-                class="notification-count"
-                >{{ unread }}</span
-              >
+              <Icon name="bell" /><span v-if="unread" class="notification-count">{{ unread }}</span>
             </button>
             <section
               v-if="notificationsOpen"
@@ -740,9 +665,7 @@ async function designApplied() {
             >
               <div class="card-title">
                 <strong>Notifications</strong
-                ><button class="quiet" @click="markNoticesRead">
-                  Mark all read
-                </button>
+                ><button class="quiet" @click="markNoticesRead">Mark all read</button>
               </div>
               <p v-if="!notices.length" class="muted">
                 Workflow completions, failures and pauses appear here.
@@ -780,13 +703,7 @@ async function designApplied() {
         </button>
       </div>
       <main
-        :class="
-          view === 'settings'
-            ? 'settings-main'
-            : !selectedEntry
-              ? 'home-main'
-              : 'task-main'
-        "
+        :class="view === 'settings' ? 'settings-main' : !selectedEntry ? 'home-main' : 'task-main'"
       >
         <SettingsPage
           v-if="view === 'settings' && project"
@@ -805,10 +722,7 @@ async function designApplied() {
           <div class="home-symbol"><Icon name="workflow" :size="30" /></div>
           <div class="home-eyebrow">YOUR PROJECT. A CLEAR PLAN.</div>
           <h1>What should we work on?</h1>
-          <p>
-            Share the goal. Choose what flows between steps. Follow the work
-            anywhere.
-          </p>
+          <p>Share the goal. Choose what flows between steps. Follow the work anywhere.</p>
           <SetupProgress
             v-if="project"
             :controller="setupJobs"
@@ -821,17 +735,16 @@ async function designApplied() {
             :key="composerKey"
             :text="taskDraft.text"
             :files="taskDraft.files"
+            :automatic="automatic"
+            :on-submit="submitTask"
             @update:text="setTaskDraftText"
             @update:files="setTaskDraftFiles"
             @discard="clearTaskDraft"
-            :automatic="automatic"
-            :on-submit="submitTask"
             @settings="navigate('settings')"
           />
           <ProgramComposer :on-submit="submitProgram" />
           <p v-if="project?.mode === 'demo'" class="demo-note">
-            Demo mode simulates planning, agents and checks. Task files stay
-            unchanged.
+            Demo mode simulates planning, agents and checks. Task files stay unchanged.
           </p>
         </div>
         <div v-else class="task-content">
@@ -861,36 +774,23 @@ async function designApplied() {
               </div>
             </div>
             <p>{{ task?.prompt ?? run?.plan.task ?? "Loading request…" }}</p>
-            <div
-              v-if="sessionId"
-              class="session-access"
-              aria-label="Shared session"
-            >
+            <div v-if="sessionId" class="session-access" aria-label="Shared session">
               <span class="session-id"
                 ><Icon name="terminal" :size="14" /><span>Session</span
                 ><code>{{ sessionId }}</code></span
               >
               <div class="session-access-actions">
-                <button
-                  class="quiet"
-                  @click="copySession('id')"
-                  title="Copy session ID"
-                >
+                <button class="quiet" title="Copy session ID" @click="copySession('id')">
                   <Icon name="copy" :size="13" />Copy ID
                 </button>
-                <button class="quiet" @click="copySession('link')">
-                  Copy link
-                </button>
+                <button class="quiet" @click="copySession('link')">Copy link</button>
                 <button class="quiet" @click="copySession('terminal')">
                   <Icon name="terminal" :size="13" />Continue in terminal
                 </button>
               </div>
-              <span
-                v-if="copiedSession"
-                class="session-copy-notice"
-                role="status"
-                >{{ copiedSession }}</span
-              >
+              <span v-if="copiedSession" class="session-copy-notice" role="status">{{
+                copiedSession
+              }}</span>
             </div>
             <div v-if="task?.attachments.length" class="request-attachments">
               <a
@@ -923,11 +823,7 @@ async function designApplied() {
               !!(run && ['running', 'pausing'].includes(run.status))
             "
           />
-          <div
-            v-if="task?.error && task.runId"
-            class="inline-error"
-            role="alert"
-          >
+          <div v-if="task?.error && task.runId" class="inline-error" role="alert">
             {{ task.error }}
           </div>
           <TaskPlanning
@@ -947,10 +843,7 @@ async function designApplied() {
               <p>{{ task.rationale }}</p>
             </div>
           </div>
-          <details
-            v-if="task?.suggestedBlocks.length && run"
-            class="suggested-blocks"
-          >
+          <details v-if="task?.suggestedBlocks.length && run" class="suggested-blocks">
             <summary>
               {{ task.suggestedBlocks.length }} new block{{
                 task.suggestedBlocks.length === 1 ? "" : "s"
@@ -960,17 +853,12 @@ async function designApplied() {
             <article v-for="item in task.suggestedBlocks" :key="item.id">
               <h3>
                 {{
-                  (run.program?.catalog[item.id] ?? run.blocks[item.id])
-                    ?.definition.name ?? item.id
+                  (run.program?.catalog[item.id] ?? run.blocks[item.id])?.definition.name ?? item.id
                 }}
               </h3>
               <p>{{ item.rationale }}</p>
               <pre>{{
-                JSON.stringify(
-                  run.program?.catalog[item.id] ?? run.blocks[item.id],
-                  null,
-                  2,
-                )
+                JSON.stringify(run.program?.catalog[item.id] ?? run.blocks[item.id], null, 2)
               }}</pre>
             </article>
             <button :disabled="busy" @click="saveSuggestedBlocks">
@@ -995,26 +883,15 @@ async function designApplied() {
             @save="savePlan"
             @refine="refine"
           />
-          <div
-            v-else-if="!task || task.runId"
-            class="panel-empty"
-            role="status"
-          >
+          <div v-else-if="!task || task.runId" class="panel-empty" role="status">
             <span class="spinner" />
             <p>Loading workflow…</p>
           </div>
         </div>
       </main>
     </div>
-    <div
-      v-if="latestNotice && !notificationsOpen"
-      class="notification-toast"
-      role="status"
-    >
-      <Icon name="bell" /><button
-        class="quiet"
-        @click="openNotice(latestNotice.runId)"
-      >
+    <div v-if="latestNotice && !notificationsOpen" class="notification-toast" role="status">
+      <Icon name="bell" /><button class="quiet" @click="openNotice(latestNotice.runId)">
         <strong>{{ latestNotice.title }}</strong
         ><span>{{ latestNotice.message }}</span>
       </button>
@@ -1030,9 +907,7 @@ async function designApplied() {
       :requested="designRequest"
       :page-context="{
         page: view,
-        ...(view === 'task'
-          ? { taskId: task?.id, runId: run?.id }
-          : settingsContext),
+        ...(view === 'task' ? { taskId: task?.id, runId: run?.id } : settingsContext),
       }"
       :has-unsaved-settings="settingsDirty"
       :on-applied="designApplied"

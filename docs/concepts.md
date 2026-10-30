@@ -12,17 +12,17 @@ This is useful for repeatable development work, bounded implementation/review cy
 
 ## The vocabulary
 
-| Term | Meaning | Example |
-| --- | --- | --- |
-| **Task** | Your request, attachments, and any follow-up answers. | “Fix the empty-input bug.” |
-| **Task case** | An editable description of a kind of work and instructions for handling it. | A bug case asks for reproduction and independent verification. |
-| **Model profile** | A provider/model choice with a description of when to use it. | “Careful reviewer for consequential changes.” |
-| **Block** | A reusable TypeScript function that performs a unit of work. | Implement, review, run tests, or push existing commits. |
-| **Step** | A named use of a block in a workflow, with inputs, model options, and limits. | `step("review", reviewer, { maxVisits: 3 })`. |
-| **Workflow** | The executable composition of those steps. | Implement → test → review, repeating until approved. |
-| **Run** | A persisted draft or execution of a workflow with its saved configuration. | The graph and history shown for one task. |
-| **Visit / attempt** | One invocation of a step. Loops and explicit retries create more visits. | The review step's second attempt. |
-| **Artifact** | A named text result retained for inspection or handoff. | Test diagnostics or `review.md`. |
+| Term                | Meaning                                                                       | Example                                                        |
+| ------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| **Task**            | Your request, attachments, and any follow-up answers.                         | “Fix the empty-input bug.”                                     |
+| **Task case**       | An editable description of a kind of work and instructions for handling it.   | A bug case asks for reproduction and independent verification. |
+| **Model profile**   | A provider/model choice with a description of when to use it.                 | “Careful reviewer for consequential changes.”                  |
+| **Block**           | A reusable TypeScript function that performs a unit of work.                  | Implement, review, run tests, or push existing commits.        |
+| **Step**            | A named use of a block in a workflow, with inputs, model options, and limits. | `step("review", reviewer, { maxVisits: 3 })`.                  |
+| **Workflow**        | The executable composition of those steps.                                    | Implement → test → review, repeating until approved.           |
+| **Run**             | A persisted draft or execution of a workflow with its saved configuration.    | The graph and history shown for one task.                      |
+| **Visit / attempt** | One invocation of a step. Loops and explicit retries create more visits.      | The review step's second attempt.                              |
+| **Artifact**        | A named text result retained for inspection or handoff.                       | Test diagnostics or `review.md`.                               |
 
 Reusing a block does not reuse its conversation. Each AI call creates a fresh model session. Pass the information it needs through explicit inputs, prompts, and returned data.
 
@@ -64,13 +64,13 @@ Durability is not a promise of exactly-once external effects. An interrupted com
 
 ## Why these components
 
-| Component | Responsibility |
-| --- | --- |
-| **Workflow** | The product: task planning, settings, approval, block composition, local tools, results, and the browser workspace. |
-| **Pi** | Embedded model/session, authentication, and optional terminal UI integration. Users configure it through Workflow. |
-| **Temporal** | Persisted execution history, activity boundaries, signals, and replay. The application manages a local service by default. |
-| **Vue and Vue Flow** | Reactive forms, task state, and the workflow graph. |
-| **Bun and TypeScript** | The application runtime and the authoring language for blocks and workflows. |
+| Component              | Responsibility                                                                                                             |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| **Workflow**           | The product: task planning, settings, approval, block composition, local tools, results, and the browser workspace.        |
+| **Pi**                 | Embedded model/session, authentication, and optional terminal UI integration. Users configure it through Workflow.         |
+| **Temporal**           | Persisted execution history, activity boundaries, signals, and replay. The application manages a local service by default. |
+| **Vue and Vue Flow**   | Reactive forms, task state, and the workflow graph.                                                                        |
+| **Bun and TypeScript** | The application runtime and the authoring language for blocks and workflows.                                               |
 
 Workflow uses its own credential storage and explicit project resources. It does not load ambient Pi extensions, credentials, or previous conversations. See [Architecture](architecture.md) for how these pieces connect in code.
 

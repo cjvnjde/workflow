@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
-import { loadLibrary } from "../src/library.js";
+import { loadLibrary } from "../src/core/library/library.js";
 import { fixture } from "./helpers.js";
 
 test("directory libraries receive the same resource validation as published libraries", async (t) => {

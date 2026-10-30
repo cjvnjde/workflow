@@ -1,5 +1,5 @@
-import type { BlockRunner } from "../block-runner.js";
-import { runProcess } from "../process.js";
+import type { BlockRunner } from "../core/execution/block-runner.js";
+import { runProcess } from "../infrastructure/process.js";
 
 /** Compatibility for approved snapshots created before editable script blocks. */
 export const runFunctionBlock: BlockRunner = async (execution) => {

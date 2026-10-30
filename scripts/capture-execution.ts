@@ -7,7 +7,7 @@ import {
   type OperationRecord,
   type RunEvent,
   type WorkflowRun,
-} from "../src/contracts.js";
+} from "../src/contracts/index.js";
 
 // Reproducible README captures of the actual built UI. Timings and tool payloads
 // are deterministic demonstration records, not live model measurements.
@@ -21,9 +21,7 @@ if (
     () => false,
   )
 ) {
-  throw new Error(
-    "Port 4311 is already in use; stop the browser fixture server first.",
-  );
+  throw new Error("Port 4311 is already in use; stop the browser fixture server first.");
 }
 const server = Bun.spawn([process.execPath, "tests/e2e/server.ts"], {
   cwd: root,
@@ -39,10 +37,8 @@ try {
       () => false,
     ))
   ) {
-    if (server.exitCode !== null)
-      throw new Error(`Fixture server exited with ${server.exitCode}`);
-    if (Date.now() > deadline)
-      throw new Error("Fixture server did not become ready");
+    if (server.exitCode !== null) throw new Error(`Fixture server exited with ${server.exitCode}`);
+    if (Date.now() > deadline) throw new Error("Fixture server did not become ready");
     await Bun.sleep(200);
   }
   browser = await chromium.launch({
@@ -77,30 +73,17 @@ export default workflow({name:"Demo · checkout total regression",flow:sequence(
   if (!created.ok()) throw new Error(await created.text());
   const draft = (await created.json()) as WorkflowRun;
   await page.goto(`/#run=${draft.id}`);
-  await page
-    .getByRole("button", { name: "Approve & start", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Approve & start", exact: true }).click();
   await expect(page.locator(".status-pill")).toHaveText("Completed", {
     timeout: 30_000,
   });
-  const run = (await (
-    await context.request.get(`/api/runs/${draft.id}`)
-  ).json()) as WorkflowRun;
+  const run = (await (await context.request.get(`/api/runs/${draft.id}`)).json()) as WorkflowRun;
   const base = Date.UTC(2026, 9, 30, 10, 0, 0);
-  const time = (milliseconds: number) =>
-    new Date(base + milliseconds).toISOString();
+  const time = (milliseconds: number) => new Date(base + milliseconds).toISOString();
   run.attempts = run.attempts.map((attempt) => ({
     ...attempt,
-    startedAt: time(
-      attempt.nodeId === "verify" ? 26_000 : attempt.visit === 1 ? 0 : 13_000,
-    ),
-    finishedAt: time(
-      attempt.nodeId === "verify"
-        ? 33_000
-        : attempt.visit === 1
-          ? 12_000
-          : 25_000,
-    ),
+    startedAt: time(attempt.nodeId === "verify" ? 26_000 : attempt.visit === 1 ? 0 : 13_000),
+    finishedAt: time(attempt.nodeId === "verify" ? 33_000 : attempt.visit === 1 ? 12_000 : 25_000),
   }));
   const events: RunEvent[] = [];
   function span(
@@ -138,15 +121,7 @@ export default workflow({name:"Demo · checkout total regression",flow:sequence(
   for (const visit of [1, 2]) {
     const offset = visit === 1 ? 0 : 13_000;
     const parentId = `implement-${visit}`;
-    span(
-      "implement",
-      visit,
-      parentId,
-      "Implement checkout fix",
-      "ai",
-      offset,
-      offset + 12_000,
-    );
+    span("implement", visit, parentId, "Implement checkout fix", "ai", offset, offset + 12_000);
     span(
       "implement",
       visit,
@@ -163,8 +138,7 @@ export default workflow({name:"Demo · checkout total regression",flow:sequence(
           outputTokens: 184,
           timingSource: "client",
         },
-        output:
-          "Use integer cents while accumulating line items, then convert the result once.",
+        output: "Use integer cents while accumulating line items, then convert the result once.",
       },
     );
     if (visit === 2) {
@@ -235,34 +209,23 @@ export default workflow({name:"Demo · checkout total regression",flow:sequence(
       },
     );
   }
-  span(
-    "verify",
-    1,
-    "verify/test",
-    "Run full test suite",
-    "exec",
-    26_500,
-    31_500,
-    {
-      input: { command: "bun test" },
-      output: {
-        exitCode: 0,
-        output: "48 passed · 0 failed\nAcceptance checks completed.",
-      },
-      presentation: {
-        card: "command",
-        command: "bun test",
-        cwd: "project",
-        exitCode: 0,
-      },
+  span("verify", 1, "verify/test", "Run full test suite", "exec", 26_500, 31_500, {
+    input: { command: "bun test" },
+    output: {
+      exitCode: 0,
+      output: "48 passed · 0 failed\nAcceptance checks completed.",
     },
-  );
+    presentation: {
+      card: "command",
+      command: "bun test",
+      cwd: "project",
+      exitCode: 0,
+    },
+  });
   events.sort((a, b) => a.time.localeCompare(b.time));
   const operations = projectOperations(events, true);
   const details = projectOperations(events);
-  await page.route(`**/api/runs/${run.id}`, (route) =>
-    route.fulfill({ json: run }),
-  );
+  await page.route(`**/api/runs/${run.id}`, (route) => route.fulfill({ json: run }));
   await page.route(`**/api/runs/${run.id}/execution`, (route) =>
     route.fulfill({
       json: {
@@ -289,9 +252,7 @@ export default workflow({name:"Demo · checkout total regression",flow:sequence(
     .getByRole("navigation", { name: "Workflow views" })
     .getByRole("button", { name: "Timeline", exact: true })
     .click();
-  await page
-    .getByRole("button", { name: "Expand workspace", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Expand workspace", exact: true }).click();
   const dialog = page.getByRole("dialog", {
     name: "Expanded workflow workspace",
     exact: true,
@@ -300,9 +261,7 @@ export default workflow({name:"Demo · checkout total regression",flow:sequence(
     name: "Execution inspector",
     exact: true,
   });
-  await expect(inspector).toContainText(
-    `${operations.length} recorded operation attempts`,
-  );
+  await expect(inspector).toContainText(`${operations.length} recorded operation attempts`);
   for (const notification of await page
     .getByRole("button", { name: "Dismiss notification", exact: true })
     .all())
@@ -328,15 +287,9 @@ export default workflow({name:"Demo · checkout total regression",flow:sequence(
     .getByRole("navigation", { name: "Workflow views" })
     .getByRole("button", { name: "Activity", exact: true })
     .click();
-  await dialog
-    .getByRole("button", { name: "Grouped calls", exact: true })
-    .click();
-  await inspector
-    .getByRole("combobox", { name: "Step", exact: true })
-    .selectOption("implement");
-  await inspector
-    .getByRole("combobox", { name: "Visit", exact: true })
-    .selectOption("2");
+  await dialog.getByRole("button", { name: "Grouped calls", exact: true }).click();
+  await inspector.getByRole("combobox", { name: "Step", exact: true }).selectOption("implement");
+  await inspector.getByRole("combobox", { name: "Visit", exact: true }).selectOption("2");
   await inspector
     .locator(".call-select")
     .filter({ hasText: "Update currency calculation" })

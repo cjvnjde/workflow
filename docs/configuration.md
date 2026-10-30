@@ -6,15 +6,15 @@ All routine setup is available under **Settings**. Changes apply to future propo
 
 ## Settings sections
 
-| Section | Use it for |
-| --- | --- |
-| **Providers & models** | ChatGPT sign-in, provider API keys, connection status, and project defaults. |
-| **Model profiles** | Described model choices for planning and execution roles. |
-| **Task instructions** | Shared planning guidance and editable cases such as bug, feature, or investigation. |
-| **Blocks** | Reusable TypeScript functions, prompts, model calls, checks, and outputs. |
-| **Skills & MCP** | Explicit instruction resources and enabled tool servers. |
-| **Execution** | Approval mode, project instructions, total steps, spending limits, and named commands. |
-| **Memory** | Enable optional project memory and manage preferences, notes, observations and remembered approaches. [Memory controls](memory.md). |
+| Section                | Use it for                                                                                                                          |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **Providers & models** | ChatGPT sign-in, provider API keys, connection status, and project defaults.                                                        |
+| **Model profiles**     | Described model choices for planning and execution roles.                                                                           |
+| **Task instructions**  | Shared planning guidance and editable cases such as bug, feature, or investigation.                                                 |
+| **Blocks**             | Reusable TypeScript functions, prompts, model calls, checks, and outputs.                                                           |
+| **Skills & MCP**       | Explicit instruction resources and enabled tool servers.                                                                            |
+| **Execution**          | Approval mode, project instructions, total steps, spending limits, and named commands.                                              |
+| **Memory**             | Enable optional project memory and manage preferences, notes, observations and remembered approaches. [Memory controls](memory.md). |
 
 Unsaved forms have discard/cancel controls. Saves carry revisions, so a stale browser cannot silently overwrite newer settings. Save or discard form changes before applying an AI proposal.
 
@@ -32,11 +32,11 @@ For precedence through profiles, steps, and explicit `ctx.ai` calls, see [Model 
 
 A profile has an ID, name, description, provider, model, thinking level, and enabled flag. Its description tells the coordinator when to choose it, for example:
 
-| Profile role | Useful description |
-| --- | --- |
-| Implementer | “Use for routine changes in this TypeScript project; follow existing patterns and write focused tests.” |
-| Reviewer | “Use for independent review of consequential changes, concurrency, and persistence.” |
-| Summarizer | “Use for short reports and mechanical text work.” |
+| Profile role | Useful description                                                                                      |
+| ------------ | ------------------------------------------------------------------------------------------------------- |
+| Implementer  | “Use for routine changes in this TypeScript project; follow existing patterns and write focused tests.” |
+| Reviewer     | “Use for independent review of consequential changes, concurrency, and persistence.”                    |
+| Summarizer   | “Use for short reports and mechanical text work.”                                                       |
 
 Several profiles can use the same model with different roles or thinking levels. A planning profile can be selected in Settings; users do not choose a coordinator for every task. Profiles available to execution are captured as `ctx.models[profileId]` when a workflow is created.
 
@@ -100,11 +100,11 @@ The usage panel shows reported planning, setup, settings design, refinement, and
 
 Three optional limits are available in **Execution**:
 
-| Configuration field | Coverage |
-| --- | --- |
-| `budget.maxCostUsd` | Execution only for each run; existing frozen run limits keep this meaning. |
-| `budget.maxTaskCostUsd` | Planning, clarification, refinement, execution, and retries for a task or direct workflow. |
-| `budget.maxSetupCostUsd` | All stages of one setup generation. |
+| Configuration field      | Coverage                                                                                   |
+| ------------------------ | ------------------------------------------------------------------------------------------ |
+| `budget.maxCostUsd`      | Execution only for each run; existing frozen run limits keep this meaning.                 |
+| `budget.maxTaskCostUsd`  | Planning, clarification, refinement, execution, and retries for a task or direct workflow. |
+| `budget.maxSetupCostUsd` | All stages of one setup generation.                                                        |
 
 Limits are captured when work starts. `workflow task "Request" --max-task-cost 2` and `workflow setup --max-setup-cost 1` override the corresponding project default for new work. Retrying or answering a task does not reset its total. Settings design and standalone library generation are accounted for in the project total but do not inherit a task or setup limit.
 
@@ -135,17 +135,17 @@ Named commands use argument arrays without shell interpolation. Code blocks inte
 
 ## Where settings live
 
-| Location | Contents |
-| --- | --- |
-| `.workflow/config.json` | Project instructions, model/coordinator defaults, commands, limits, recovery. |
-| `.workflow/orchestration.json` | Profiles, task cases, shared planning instructions, skills/MCP, approval preferences. |
-| `.workflow/blocks/<id>/block.ts` | Editable TypeScript block source; generated setup and UI-applied code are written here. |
-| `.workflow/library.json` | Active block metadata, source-file references, and a recoverable inline snapshot. |
-| `.workflow/setup.json` | Completed bootstrap marker and the model used for setup. |
-| `.workflow/server.json` | Private running-host discovery receipt; not reusable project configuration. |
-| `.workflow/libraries/` | Prior library snapshots. |
-| `.workflow/design-chats/` | Private settings conversations and proposals. |
-| `.workflow/usage/` | Private durable model-session usage, pricing, and task/setup ownership; retained when history entries are removed. |
+| Location                         | Contents                                                                                                           |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `.workflow/config.json`          | Project instructions, model/coordinator defaults, commands, limits, recovery.                                      |
+| `.workflow/orchestration.json`   | Profiles, task cases, shared planning instructions, skills/MCP, approval preferences.                              |
+| `.workflow/blocks/<id>/block.ts` | Editable TypeScript block source; generated setup and UI-applied code are written here.                            |
+| `.workflow/library.json`         | Active block metadata, source-file references, and a recoverable inline snapshot.                                  |
+| `.workflow/setup.json`           | Completed bootstrap marker and the model used for setup.                                                           |
+| `.workflow/server.json`          | Private running-host discovery receipt; not reusable project configuration.                                        |
+| `.workflow/libraries/`           | Prior library snapshots.                                                                                           |
+| `.workflow/design-chats/`        | Private settings conversations and proposals.                                                                      |
+| `.workflow/usage/`               | Private durable model-session usage, pricing, and task/setup ownership; retained when history entries are removed. |
 
 Reusable project configuration can be version controlled. Generated runs, tasks, attachments, conversations, journals, and Temporal state are private runtime data; initialization adds ignore rules for them. [Operations](operations.md#persistence-and-backups) lists what to back up.
 
@@ -153,13 +153,13 @@ For libraries with `sourceFiles` in the manifest, `block.ts` is authoritative: e
 
 User settings live outside projects in `$XDG_CONFIG_HOME/workflow` when the XDG path is absolute, otherwise `~/.config/workflow`. `WORKFLOW_HOME` overrides this location:
 
-| File | Purpose |
-| --- | --- |
-| `auth.json` | API keys/OAuth credentials managed by the embedded SDK. |
-| `settings.json` | Shared defaults and device identity. |
-| `models.json` | Optional advanced custom-provider configuration. |
-| `model-catalog.json` | Cached model catalog. |
-| `cache/temporal/` | Managed Temporal executable. |
+| File                 | Purpose                                                 |
+| -------------------- | ------------------------------------------------------- |
+| `auth.json`          | API keys/OAuth credentials managed by the embedded SDK. |
+| `settings.json`      | Shared defaults and device identity.                    |
+| `models.json`        | Optional advanced custom-provider configuration.        |
+| `model-catalog.json` | Cached model catalog.                                   |
+| `cache/temporal/`    | Managed Temporal executable.                            |
 
 Credential files use private filesystem permissions, not an OS keychain. API auth responses expose connection status and prompts, not credential objects. Disconnect removes saved local credentials; it does not revoke them at the provider. Workflow does not import Pi's credentials or ambient project/global extensions.
 

@@ -1,16 +1,14 @@
 <script setup lang="ts">
 import { computed, onScopeDispose, ref, watch } from "vue";
 import { z } from "zod";
-import type { McpServer } from "../../src/contracts.js";
-import { request } from "../api.js";
-import { inputValue } from "../form-events.js";
-import Field from "../components/Field.vue";
-import Icon from "../components/Icon.vue";
+import type { McpServer } from "../../src/contracts/index.js";
+import { request } from "../shared/api.js";
+import { inputValue } from "../shared/form-events.js";
+import Field from "../shared/Field.vue";
+import Icon from "../shared/Icon.vue";
 const server = defineModel<McpServer>({ required: true });
 const emit = defineEmits<{ remove: [] }>();
-const catalog = ref<{ name: string; description: string; readOnly: boolean }[]>(
-  [],
-);
+const catalog = ref<{ name: string; description: string; readOnly: boolean }[]>([]);
 const busy = ref(false);
 const error = ref("");
 let controller: AbortController | undefined;
@@ -68,8 +66,7 @@ async function inspect() {
     server.value.planningTools = [];
   } catch (failure) {
     if (!active.signal.aborted)
-      error.value =
-        failure instanceof Error ? failure.message : String(failure);
+      error.value = failure instanceof Error ? failure.message : String(failure);
   } finally {
     busy.value = false;
     if (controller === active) controller = undefined;
@@ -88,11 +85,7 @@ async function inspect() {
             type="checkbox"
             :aria-label="`Enable ${server.name}`"
           />Enabled</label
-        ><button
-          class="icon-button"
-          :aria-label="`Remove ${server.name}`"
-          @click="emit('remove')"
-        >
+        ><button class="icon-button" :aria-label="`Remove ${server.name}`" @click="emit('remove')">
           <Icon name="close" />
         </button>
       </div>
@@ -106,30 +99,19 @@ async function inspect() {
           </select></Field
         >
       </div>
-      <Field
-        v-if="server.transport === 'http'"
-        v-slot="{ id }"
-        label="MCP endpoint"
+      <Field v-if="server.transport === 'http'" v-slot="{ id }" label="MCP endpoint"
         ><input :id="id" v-model="server.url"
       /></Field>
       <template v-else
         ><Field v-slot="{ id }" label="MCP executable"
           ><input :id="id" v-model="server.command" placeholder="npx" /></Field
-        ><Field
-          v-slot="{ id }"
-          label="MCP arguments"
-          help="One argument per line."
-        >
+        ><Field v-slot="{ id }" label="MCP arguments" help="One argument per line.">
           <textarea
-            v-autosize
             :id="id"
+            v-autosize
             :value="server.args.join('\n')"
             :rows="3"
-            @input="
-              server.args = inputValue($event)
-                ? inputValue($event).split('\n')
-                : []
-            "
+            @input="server.args = inputValue($event) ? inputValue($event).split('\n') : []"
           /></Field
       ></template>
       <Field
@@ -149,9 +131,8 @@ async function inspect() {
     <button v-if="busy" @click="cancel">Cancel discovery</button>
     <p v-if="error" class="inline-error" role="alert">{{ error }}</p>
     <p class="muted">
-      All tools from an enabled server are available to execution blocks. The
-      coordinator does not call MCP tools while planning. Local servers inherit
-      the application’s environment.
+      All tools from an enabled server are available to execution blocks. The coordinator does not
+      call MCP tools while planning. Local servers inherit the application’s environment.
     </p>
     <div v-if="tools.length" class="mcp-tools">
       <div v-for="tool in tools" :key="tool.name">

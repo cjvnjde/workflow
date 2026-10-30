@@ -3,18 +3,13 @@ import test from "node:test";
 import path from "node:path";
 import { writeFile, readFile, rm } from "node:fs/promises";
 import { fixture } from "./helpers.js";
-import { runProcess } from "../src/process.js";
-import { executionWorkspace } from "../src/execution-workspace.js";
-import { WorkflowEngine } from "../src/engine.js";
-import { Workspace } from "../src/workspace.js";
+import { runProcess } from "../src/infrastructure/process.js";
+import { executionWorkspace } from "../src/core/execution/execution-workspace.js";
+import { WorkflowEngine } from "../src/core/engine.js";
+import { Workspace } from "../src/core/storage/workspace.js";
 
 const git = async (cwd: string, ...args: string[]) => {
-  const r = await runProcess(
-    cwd,
-    ["git", ...args],
-    AbortSignal.timeout(10000),
-    10000,
-  );
+  const r = await runProcess(cwd, ["git", ...args], AbortSignal.timeout(10000), 10000);
   assert.equal(r.exitCode, 0, r.output);
   return r.stdout.trim();
 };
@@ -28,15 +23,11 @@ test("independent writers overlap in real worktrees, join, and integrate with co
   await git(project, "add", "base.txt");
   await git(project, "commit", "-m", "baseline");
   const paths = [`${project}-writer-a`, `${project}-writer-b`];
-  for (const dir of paths)
-    await git(project, "worktree", "add", "--detach", dir, "HEAD");
+  for (const dir of paths) await git(project, "worktree", "add", "--detach", dir, "HEAD");
   t.after(async () => {
     for (const dir of paths) await rm(dir, { recursive: true, force: true });
   });
-  assert.equal(
-    await executionWorkspace(project, paths[0], AbortSignal.timeout(10000)),
-    paths[0],
-  );
+  assert.equal(await executionWorkspace(project, paths[0], AbortSignal.timeout(10000)), paths[0]);
   await assert.rejects(
     executionWorkspace(project, "/tmp", AbortSignal.timeout(10000)),
     /Git worktree/,
@@ -60,10 +51,7 @@ test("independent writers overlap in real worktrees, join, and integrate with co
         absoluteJournalPaths: execution.absoluteJournalPaths,
       });
       await workspace.write(`${name}.txt`, `${name} result`);
-      assert.equal(
-        await readFile(path.join(project, "base.txt"), "utf8"),
-        "unchanged baseline",
-      );
+      assert.equal(await readFile(path.join(project, "base.txt"), "utf8"), "unchanged baseline");
       await git(execution.project, "add", `${name}.txt`);
       await git(execution.project, "commit", "-m", `Add ${name}`);
       const commit = await git(execution.project, "rev-parse", "HEAD");
@@ -85,7 +73,7 @@ test("independent writers overlap in real worktrees, join, and integrate with co
  const integrate=step("integrate",block({input:z.object({a:z.object({commit:z.string()}),b:z.object({commit:z.string()})}),async run(ctx){
  const r=await ctx.exec("git cherry-pick "+ctx.input.a.commit+" "+ctx.input.b.commit);
  if(r.exitCode!==0)throw new Error(r.output);
- const check=await ctx.exec("test -f a.txt && test -f b.txt && test \\\"$(cat base.txt)\\\" = \\\"unchanged baseline\\\"");
+ const check=await ctx.exec("test -f a.txt && test -f b.txt && test \\"$(cat base.txt)\\" = \\"unchanged baseline\\"");
  if(check.exitCode!==0)throw new Error(check.output);ctx.summary("Combined checks passed");return {passed:true};
  }}),{inputs:ctx=>({a:ctx.output(a),b:ctx.output(b)})});
  export default workflow({name:"Parallel isolated implementation",flow:sequence(parallel([a,b],{label:"Independent writers"}),integrate)});`;
@@ -133,26 +121,15 @@ test("integration conflicts stop combined acceptance and preserve both worktrees
  const integration=step("integrate",block({async run(ctx){const r=await ctx.exec(${JSON.stringify("git cherry-pick " + commits.join(" "))});ctx.artifact("integration",r.output);ctx.summary(r.output||"Integrated");if(r.exitCode!==0)ctx.disposition("changes-requested");return {passed:r.exitCode===0};}}));
  const check=step("acceptance",block({async run(ctx){await ctx.writeFile("accepted.txt","must not happen");return true;}}));
  export default workflow({name:"Conflicting writers",flow:sequence(integration,check)});`;
-  const draft = await engine.createProgram(
-    "Conflict",
-    "Integrate changes",
-    { source },
-    library,
-  );
+  const draft = await engine.createProgram("Conflict", "Integrate changes", { source }, library);
   await engine.approve(draft.id);
   await engine.waitForIdle();
   assert.equal(engine.get(draft.id).status, "failed");
   assert.equal(engine.get(draft.id).attempts.length, 1);
   await assert.rejects(readFile(path.join(project, "accepted.txt")), /ENOENT/);
   for (const [index, dir] of paths.entries())
-    assert.equal(
-      await readFile(path.join(dir, "shared.txt"), "utf8"),
-      `writer ${index}\n`,
-    );
-  assert.match(
-    engine.get(draft.id).artifacts.integrate!.integration!,
-    /CONFLICT/,
-  );
+    assert.equal(await readFile(path.join(dir, "shared.txt"), "utf8"), `writer ${index}\n`);
+  assert.match(engine.get(draft.id).artifacts.integrate!.integration!, /CONFLICT/);
 });
 
 test("failed isolated edits restore their own worktree without touching the project", async (t) => {
@@ -185,23 +162,12 @@ test("failed isolated edits restore their own worktree without touching the proj
   const source = `import {workflow,block} from "workflow";
     const work=block({async run(ctx){await ctx.ai({prompt:"Change owned file",workspace:${JSON.stringify(isolated)}});}});
     export default workflow({name:"Isolated rollback",async run(ctx){await ctx.step("work",work);}});`;
-  const draft = await engine.createProgram(
-    "Rollback",
-    "Check rollback",
-    { source },
-    library,
-  );
+  const draft = await engine.createProgram("Rollback", "Check rollback", { source }, library);
   await engine.approve(draft.id);
   await engine.waitForIdle();
   assert.equal(engine.get(draft.id).status, "failed");
-  assert.equal(
-    await readFile(path.join(isolated, "owned.txt"), "utf8"),
-    "baseline",
-  );
-  assert.equal(
-    await readFile(path.join(project, "owned.txt"), "utf8"),
-    "unrelated main edits",
-  );
+  assert.equal(await readFile(path.join(isolated, "owned.txt"), "utf8"), "baseline");
+  assert.equal(await readFile(path.join(project, "owned.txt"), "utf8"), "unrelated main edits");
 });
 
 test("concurrent calls cannot claim the same isolated worktree", async (t) => {
@@ -227,10 +193,7 @@ test("concurrent calls cannot claim the same isolated worktree", async (t) => {
   });
   const events: string[] = [];
   const unsubscribe = engine.subscribe((event) => {
-    if (
-      event.kind === "operation_error" &&
-      event.message.includes("Another AI call owns")
-    ) {
+    if (event.kind === "operation_error" && event.message.includes("Another AI call owns")) {
       events.push(event.message);
       release();
     }
@@ -270,10 +233,7 @@ test("dynamic guarded writers cannot overlap in the primary checkout", async (t)
     return { outcome: "pass", summary: "One writer", artifacts: {} };
   });
   const unsubscribe = engine.subscribe((event) => {
-    if (
-      event.kind === "operation_error" &&
-      event.message.includes("Another AI call owns")
-    )
+    if (event.kind === "operation_error" && event.message.includes("Another AI call owns"))
       release();
   });
   cleanup(async () => {
@@ -285,12 +245,7 @@ test("dynamic guarded writers cannot overlap in the primary checkout", async (t)
   const source = `import {workflow,block,step,parallel} from "workflow";
     const work=block({async run(ctx){return ctx.ai({prompt:"Work",workspace:undefined,writablePaths:["src/**"]});}});
     export default workflow({name:"Dynamic writers",flow:parallel([step("a",work),step("b",work)])});`;
-  const draft = await engine.createProgram(
-    "Dynamic writers",
-    "Work",
-    { source },
-    library,
-  );
+  const draft = await engine.createProgram("Dynamic writers", "Work", { source }, library);
   await engine.approve(draft.id);
   await engine.waitForIdle();
   assert.equal(engine.get(draft.id).status, "failed");

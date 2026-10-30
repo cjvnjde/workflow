@@ -5,19 +5,23 @@ import { promisify } from "node:util";
 import { mkdir, writeFile, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fixture, passingResult } from "./helpers.js";
-import { runScriptBlock } from "../src/script-runner.js";
+import { runScriptBlock } from "../src/core/execution/script-runner.js";
 import { runFunctionBlock } from "../src/legacy/git-push-v1.js";
-import { pushScript } from "../src/script-examples.js";
-import { budgetSchema, bundleSchema, nodeSchema, validatePlan } from "../src/domain.js";
-import { validatePlanModels } from "../src/library-proposals.js";
-import { validateLibraryResources } from "../src/library.js";
-import { emptyUsage, estimateBudget } from "../src/budget.js";
-import { WorkflowEngine } from "../src/engine.js";
-import type { BlockExecution } from "../src/block-runner.js";
+import { pushScript } from "../src/core/library/script-examples.js";
+import { budgetSchema, bundleSchema, nodeSchema, validatePlan } from "../src/contracts/domain.js";
+import { validatePlanModels } from "../src/core/library/library-proposals.js";
+import { validateLibraryResources } from "../src/core/library/library.js";
+import { emptyUsage, estimateBudget } from "../src/core/execution/budget.js";
+import { WorkflowEngine } from "../src/core/engine.js";
+import type { BlockExecution } from "../src/core/execution/block-runner.js";
 
 const exec = promisify(execFile);
 async function git(project: string, ...args: string[]) {
-  return (await exec("git", ["-C", project, ...args], { env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } })).stdout.trim();
+  return (
+    await exec("git", ["-C", project, ...args], {
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    })
+  ).stdout.trim();
 }
 async function repository(project: string) {
   await git(project, "init", "-b", "feature/publish");
@@ -37,13 +41,28 @@ async function commit(project: string, content = "first") {
   await git(project, "commit", "-m", content);
   return await git(project, "rev-parse", "HEAD");
 }
-function execution(project: string, library: Awaited<ReturnType<typeof fixture>>["library"]): BlockExecution {
+function execution(
+  project: string,
+  library: Awaited<ReturnType<typeof fixture>>["library"],
+): BlockExecution {
   return {
-    project, config: library.config, bundle: library.blocks.push!,
-    node: nodeSchema.parse({ id: "push", block: "push", label: "Publish commits", goal: "Push current branch",
-      maxVisits: 1, on: { pass: "$complete", retry: "$failed", fail: "$failed" } }),
-    task: "Push current branch", settings: library.config.agent,
-    inputs: {}, visit: 1, signal: new AbortController().signal, emit: () => {},
+    project,
+    config: library.config,
+    bundle: library.blocks.push!,
+    node: nodeSchema.parse({
+      id: "push",
+      block: "push",
+      label: "Publish commits",
+      goal: "Push current branch",
+      maxVisits: 1,
+      on: { pass: "$complete", retry: "$failed", fail: "$failed" },
+    }),
+    task: "Push current branch",
+    settings: library.config.agent,
+    inputs: {},
+    visit: 1,
+    signal: new AbortController().signal,
+    emit: () => {},
   };
 }
 
@@ -54,20 +73,29 @@ test("editable push script creates a remote branch/upstream, updates it, and nev
   await writeFile(path.join(project, "private-untracked.txt"), "leave alone");
   const step = execution(project, library);
   validateLibraryResources(library.blocks, {});
-  const plan = validatePlan({ title: "Push", task: step.task, entry: "push", nodes: [step.node] }, library);
+  const plan = validatePlan(
+    { title: "Push", task: step.task, entry: "push", nodes: [step.node] },
+    library,
+  );
   validatePlanModels(plan, library, []);
   assert.equal(estimateBudget(plan, library, "live").expectedCostUsd, 0);
   const created = await runScriptBlock(step);
   assert.equal(created.outcome, "pass", created.summary);
   assert.equal(await git(remote, "rev-parse", "refs/heads/feature/publish"), first);
-  assert.equal(await git(project, "rev-parse", "--abbrev-ref", "@{upstream}"), "origin/feature/publish");
+  assert.equal(
+    await git(project, "rev-parse", "--abbrev-ref", "@{upstream}"),
+    "origin/feature/publish",
+  );
   const second = await commit(project, "second");
   await git(project, "config", "remote.origin.mirror", "true");
   await git(project, "branch", "unrelated");
   const updated = await runScriptBlock(step);
   assert.equal(updated.outcome, "pass", updated.summary);
   assert.equal(await git(remote, "rev-parse", "refs/heads/feature/publish"), second);
-  assert.equal(await git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/"), "refs/heads/feature/publish");
+  assert.equal(
+    await git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/"),
+    "refs/heads/feature/publish",
+  );
   assert.equal(await git(project, "diff", "--cached", "--name-only"), "");
   assert.equal(await git(project, "rev-list", "--count", "HEAD"), "2");
   assert.equal(await readFile(path.join(project, "private-untracked.txt"), "utf8"), "leave alone");
@@ -75,8 +103,11 @@ test("editable push script creates a remote branch/upstream, updates it, and nev
   assert.equal((await runScriptBlock(step)).outcome, "pass", "Repeating a push is safe");
   const legacy = structuredClone(step.bundle);
   legacy.definition.executor = { kind: "function", function: "git-push" };
-  assert.equal((await runFunctionBlock({ ...step, bundle: legacy })).outcome, "pass",
-    "Already approved function snapshots retain their original executor");
+  assert.equal(
+    (await runFunctionBlock({ ...step, bundle: legacy })).outcome,
+    "pass",
+    "Already approved function snapshots retain their original executor",
+  );
 });
 
 test("editable push script publishes by branch name despite a different fetch upstream and rejects divergence", async (t) => {
@@ -110,7 +141,10 @@ test("a feature branch created from origin/main cannot publish its commits to ma
   assert.equal(result.outcome, "pass", result.summary);
   assert.equal(await git(remote, "rev-parse", "refs/heads/main"), base);
   assert.equal(await git(remote, "rev-parse", "refs/heads/codex/issue-4-practice"), feature);
-  assert.equal(await git(project, "rev-parse", "--abbrev-ref", "@{upstream}"), "origin/codex/issue-4-practice");
+  assert.equal(
+    await git(project, "rev-parse", "--abbrev-ref", "@{upstream}"),
+    "origin/codex/issue-4-practice",
+  );
 });
 
 test("editable push script uses an explicit configured remote and reports missing commits/remotes/detached HEAD", async (t) => {
@@ -119,8 +153,10 @@ test("editable push script uses an explicit configured remote and reports missin
   const step = execution(project, library);
   assert.equal((await runScriptBlock(step)).outcome, "retry", "Unborn HEAD cannot be pushed");
   const head = await commit(project);
-  step.bundle = bundleSchema.parse({ ...step.bundle, definition: { ...step.bundle.definition,
-    executor: pushScript("absent") } });
+  step.bundle = bundleSchema.parse({
+    ...step.bundle,
+    definition: { ...step.bundle.definition, executor: pushScript("absent") },
+  });
   assert.match((await runScriptBlock(step)).summary, /not configured/);
   await git(project, "remote", "rename", "origin", "published");
   step.bundle.definition.executor = pushScript("published");
@@ -128,7 +164,10 @@ test("editable push script uses an explicit configured remote and reports missin
   assert.equal(await git(remote, "rev-parse", "refs/heads/feature/publish"), head);
   await git(project, "checkout", "--detach");
   assert.match((await runScriptBlock(step)).summary, /detached/);
-  await assert.rejects(runScriptBlock({ ...step, signal: AbortSignal.abort(new Error("Stop")) }), /Stop/);
+  await assert.rejects(
+    runScriptBlock({ ...step, signal: AbortSignal.abort(new Error("Stop")) }),
+    /Stop/,
+  );
 });
 
 test("cancelling a push terminates the Git process group before its hook can publish late effects", async (t) => {
@@ -136,21 +175,27 @@ test("cancelling a push terminates the Git process group before its hook can pub
   const remote = await repository(project);
   await commit(project);
   await mkdir(path.join(project, ".hooks"));
-  await writeFile(path.join(project, ".hooks/pre-push"),
-    "#!/bin/sh\nprintf ready > hook-ready\nsleep 2\nprintf late > hook-late\n", { mode: 0o755 });
+  await writeFile(
+    path.join(project, ".hooks/pre-push"),
+    "#!/bin/sh\nprintf ready > hook-ready\nsleep 2\nprintf late > hook-late\n",
+    { mode: 0o755 },
+  );
   await git(project, "config", "core.hooksPath", ".hooks");
   const controller = new AbortController();
   const operation = runScriptBlock({ ...execution(project, library), signal: controller.signal });
   const stopped = assert.rejects(operation, /Cancelled push/);
   let ready = false;
   for (let i = 0; i < 100 && !ready; i++) {
-    ready = await stat(path.join(project, "hook-ready")).then(() => true, () => false);
-    if (!ready) await new Promise(resolve => setTimeout(resolve, 10));
+    ready = await stat(path.join(project, "hook-ready")).then(
+      () => true,
+      () => false,
+    );
+    if (!ready) await new Promise((resolve) => setTimeout(resolve, 10));
   }
   controller.abort(new Error("Cancelled push"));
   await stopped;
   assert.equal(ready, true);
-  await new Promise(resolve => setTimeout(resolve, 2100));
+  await new Promise((resolve) => setTimeout(resolve, 2100));
   await assert.rejects(stat(path.join(project, "hook-late")), /ENOENT/);
   assert.equal(await git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/"), "");
 });
@@ -188,7 +233,10 @@ test("editable push script follows explicit, branch and project remote preferenc
     assert.equal(result.outcome, "pass", result.summary);
     const destination = "feature/publish";
     assert.equal(await git(remotes[selected]!, "rev-parse", `refs/heads/${destination}`), head);
-    assert.equal(await git(remotes[selected]!, "for-each-ref", "--format=%(refname)", "refs/heads/"), `refs/heads/${destination}`);
+    assert.equal(
+      await git(remotes[selected]!, "for-each-ref", "--format=%(refname)", "refs/heads/"),
+      `refs/heads/${destination}`,
+    );
   }
   await git(project, "config", "--unset", "branch.feature/publish.remote");
   await git(project, "config", "--unset", "branch.feature/publish.merge");
@@ -202,11 +250,16 @@ test("an approved script workflow publishes using no AI runner or provider crede
   const { project, library, cleanup } = await fixture(t);
   const remote = await repository(project);
   const head = await commit(project);
-  const engine = new WorkflowEngine(project, "live", async () => { throw new Error("A script must never call AI"); });
+  const engine = new WorkflowEngine(project, "live", async () => {
+    throw new Error("A script must never call AI");
+  });
   cleanup(() => engine.shutdown());
   await engine.initialize();
   const step = execution(project, library);
-  const plan = validatePlan({ title: "Publish", task: step.task, entry: "push", nodes: [step.node] }, library);
+  const plan = validatePlan(
+    { title: "Publish", task: step.task, entry: "push", nodes: [step.node] },
+    library,
+  );
   const draft = await engine.create(plan, library);
   assert.equal(await git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/"), "");
   await engine.approve(draft.id);
@@ -224,7 +277,10 @@ test("a script can finish publication after the preceding AI step exhausts the m
   const head = await commit(project);
   library.config.agent.provider = "publication-fixture";
   library.config.agent.model = "priced";
-  library.config.budget = budgetSchema.parse({ maxCostUsd: 0.1, prices: { "publication-fixture/priced": { input: 1, output: 1 } } });
+  library.config.budget = budgetSchema.parse({
+    maxCostUsd: 0.1,
+    prices: { "publication-fixture/priced": { input: 1, output: 1 } },
+  });
   const calls: string[] = [];
   const engine = new WorkflowEngine(project, "live", async (step) => {
     calls.push(step.node.id);
@@ -234,9 +290,20 @@ test("a script can finish publication after the preceding AI step exhausts the m
   cleanup(() => engine.shutdown());
   await engine.initialize();
   const push = execution(project, library).node;
-  const review = nodeSchema.parse({ id: "review", block: "review", label: "Review",
-    goal: "Review before publishing", on: { pass: "push", retry: "$failed", fail: "$failed" } });
-  const draft = await engine.create(validatePlan({ title: "Review and push", task: "Review and push", entry: "review", nodes: [review, push] }, library), library);
+  const review = nodeSchema.parse({
+    id: "review",
+    block: "review",
+    label: "Review",
+    goal: "Review before publishing",
+    on: { pass: "push", retry: "$failed", fail: "$failed" },
+  });
+  const draft = await engine.create(
+    validatePlan(
+      { title: "Review and push", task: "Review and push", entry: "review", nodes: [review, push] },
+      library,
+    ),
+    library,
+  );
   await engine.approve(draft.id);
   await engine.waitForIdle();
   const completed = engine.get(draft.id);

@@ -5,18 +5,31 @@ import { promisify } from "node:util";
 import { mkdtemp, mkdir, writeFile, rm, symlink, access } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { inspectGit } from "../src/git-inspection.js";
-import { Workspace } from "../src/workspace.js";
+import { inspectGit } from "../src/infrastructure/git-inspection.js";
+import { Workspace } from "../src/core/storage/workspace.js";
 const execute = promisify(execFile);
 async function repo(t: test.TestContext) {
   const root = await mkdtemp(path.join(os.tmpdir(), "workflow-git-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const git = (...args: string[]) => execute("git", ["-c", "user.name=Workflow Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false", ...args], { cwd: root });
+  const git = (...args: string[]) =>
+    execute(
+      "git",
+      [
+        "-c",
+        "user.name=Workflow Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        ...args,
+      ],
+      { cwd: root },
+    );
   await git("init", "-b", "main");
   const workspace = await Workspace.create(root);
   return { root, git, workspace };
 }
-test("Git inspection explains an unborn branch while file tools can read metadata", async t => {
+test("Git inspection explains an unborn branch while file tools can read metadata", async (t) => {
   const { root, git, workspace } = await repo(t);
   await writeFile(path.join(root, "app.ts"), "export const ready = true;\n");
   await writeFile(path.join(root, ".env"), "SECRET=hidden\n");
@@ -30,24 +43,28 @@ test("Git inspection explains an unborn branch while file tools can read metadat
   assert.ok(!JSON.stringify(result).includes("SECRET"));
   assert.match(await workspace.read(".git/HEAD"), /refs\/heads\/main/);
 });
-test("branch comparison includes tracked dotfiles and deleted files with exact base", async t => {
+test("branch comparison includes tracked dotfiles and deleted files with exact base", async (t) => {
   const { root, git, workspace } = await repo(t);
   await mkdir(path.join(root, "private"));
   await writeFile(path.join(root, "app.ts"), "export const value = 1;\n");
   await writeFile(path.join(root, "deleted.ts"), "old public file\n");
   await writeFile(path.join(root, ".env"), "SECRET_OLD\n");
   await writeFile(path.join(root, "private/key.txt"), "DENIED_OLD\n");
-  await git("add", "."); await git("commit", "-m", "base");
+  await git("add", ".");
+  await git("commit", "-m", "base");
   const base = (await git("rev-parse", "HEAD")).stdout.trim();
   await git("switch", "-c", "feature");
   await writeFile(path.join(root, "app.ts"), "export const value = 2;\n");
   await writeFile(path.join(root, ".env"), "SECRET_NEW\n");
-  await rm(path.join(root, "private/key.txt")); await rm(path.join(root, "deleted.ts"));
-  await git("add", "-A"); await git("commit", "-m", "change");
+  await rm(path.join(root, "private/key.txt"));
+  await rm(path.join(root, "deleted.ts"));
+  await git("add", "-A");
+  await git("commit", "-m", "change");
   await writeFile(path.join(root, "app.ts"), "export const value = 3;\n");
   await writeFile(path.join(root, "new.ts"), "new file\n");
   const result = await inspectGit(workspace);
-  assert.equal(result.base, base); assert.equal(result.mergeBase, base);
+  assert.equal(result.base, base);
+  assert.equal(result.mergeBase, base);
   assert.deepEqual(result.changes?.branch, [".env", "app.ts", "deleted.ts", "private/key.txt"]);
   assert.deepEqual(result.changes?.workingTree, ["app.ts"]);
   assert.deepEqual(result.changes?.untracked, ["new.ts"]);
@@ -60,12 +77,13 @@ test("branch comparison includes tracked dotfiles and deleted files with exact b
   const narrowed = await inspectGit(workspace, { base: "main", path: "deleted.ts" });
   assert.deepEqual(narrowed.changes?.branch, ["deleted.ts"]);
 });
-test("Git summary disables external hooks and filters and reports symlinks as Git changes", async t => {
+test("Git summary disables external hooks and filters and reports symlinks as Git changes", async (t) => {
   const { root, git, workspace } = await repo(t);
   await writeFile(path.join(root, "app.ts"), "old\n");
   await writeFile(path.join(root, "linked.txt"), "old link file\n");
   await writeFile(path.join(root, ".gitattributes"), "*.ts diff=unsafe filter=unsafe\n");
-  await git("add", "."); await git("commit", "-m", "base");
+  await git("add", ".");
+  await git("commit", "-m", "base");
   await git("config", "diff.unsafe.textconv", "touch should-not-exist");
   await git("config", "diff.external", "touch should-not-exist");
   await git("config", "core.fsmonitor", "touch should-not-exist");
@@ -80,12 +98,12 @@ test("Git summary disables external hooks and filters and reports symlinks as Gi
   assert.match(result.workingTreePatch!, /\+new/);
   assert.match(result.workingTreePatch!, /\+\/etc\/passwd/);
   await assert.rejects(access(path.join(root, "should-not-exist")));
-
 });
-test("patches are bounded and can be narrowed by path", async t => {
+test("patches are bounded and can be narrowed by path", async (t) => {
   const { root, git, workspace } = await repo(t);
   await writeFile(path.join(root, "large.txt"), "before\n");
-  await git("add", "."); await git("commit", "-m", "base");
+  await git("add", ".");
+  await git("commit", "-m", "base");
   await writeFile(path.join(root, "large.txt"), "after\n".repeat(20000));
   const result = await inspectGit(workspace, { base: "HEAD" });
   assert.equal(result.truncated, true);

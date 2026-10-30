@@ -1,0 +1,612 @@
+import { ToolConcurrency } from "../tools/tool-concurrency.js";
+import { SessionTiming } from "../execution/session-timing.js";
+import {
+  createAgentSession,
+  createExtensionRuntime,
+  SessionManager,
+  SettingsManager,
+  type ResourceLoader,
+  type ToolDefinition,
+} from "@earendil-works/pi-coding-agent";
+import {
+  usageSchema,
+  type AgentSettings,
+  type UsageTotals,
+  type priceSchema,
+} from "../../contracts/domain.js";
+import type { ImageContent, Usage } from "@earendil-works/pi-ai";
+import type { z } from "zod";
+import { addUsage, emptyUsage, priceUsage } from "../execution/budget.js";
+import { getModelRuntime } from "./model-runtime.js";
+import {
+  boundedEvidence,
+  toolPresentationSchema,
+  commandOutputRefSchema,
+  type OperationRecorder,
+} from "../../contracts/operation-schema.js";
+import { createAccountingContext, UsageStore } from "../storage/usage-store.js";
+import type { AccountingContext } from "../../contracts/usage-schema.js";
+import { EvidenceStore, type SessionEvidenceIdentity } from "../storage/evidence-store.js";
+
+export type ActivitySink = (kind: string, message: string) => void;
+
+export async function runAgentSession(options: {
+  project: string;
+  settings: AgentSettings;
+  systemPrompt: string;
+  prompt: string;
+  images?: ImageContent[];
+  requireVision?: boolean;
+  tools: ToolDefinition[];
+  signal: AbortSignal;
+  emit: ActivitySink;
+  onUsage?: (usage: UsageTotals) => Promise<void>;
+  maxCostUsd?: number;
+  price?: z.infer<typeof priceSchema>;
+  accounting?: AccountingContext;
+  contextMode?: "workflow" | "none";
+  operation?: { parentId: string; record: OperationRecorder };
+  /** Continue a prematurely ended response in the same session and budgets. */
+  completion?: { isComplete: () => boolean; prompt: () => string };
+}) {
+  const { project, settings, signal, emit } = options;
+  signal.throwIfAborted();
+  const modelRuntime = await getModelRuntime();
+  const available = await modelRuntime.getAvailable(undefined, { signal });
+  const model =
+    settings.model && settings.provider
+      ? modelRuntime.getModel(settings.provider, settings.model)
+      : available.find(
+          (candidate) => !settings.provider || candidate.provider === settings.provider,
+        );
+  if (settings.model && !settings.provider) {
+    throw new Error("A model override requires a provider");
+  }
+  if (!model) {
+    throw new Error(
+      "No matching model available. Open Settings → Providers & models to connect ChatGPT or add an API key, then choose a model.",
+    );
+  }
+  if (options.images?.length && !model.input.includes("image") && options.requireVision !== false) {
+    throw new Error(
+      "This model cannot read images. Select an image-capable coordinator/model profile in Settings.",
+    );
+  }
+  if (options.maxCostUsd !== undefined && options.maxCostUsd <= 0) {
+    throw new Error("Workflow spending limit reached");
+  }
+  if (
+    options.maxCostUsd !== undefined &&
+    !options.price &&
+    ![model.cost.input, model.cost.output, model.cost.cacheRead, model.cost.cacheWrite].some(
+      (rate) => rate > 0,
+    )
+  ) {
+    throw new Error("Cannot enforce a dollar budget without model pricing");
+  }
+  const accounting = options.accounting ?? (await createAccountingContext(project, "execution"));
+  const catalogPriced = [
+    model.cost.input,
+    model.cost.output,
+    model.cost.cacheRead,
+    model.cost.cacheWrite,
+  ].some((rate) => rate > 0);
+  const tracked = await new UsageStore(accounting.project).beginSession(
+    accounting,
+    {
+      provider: model.provider,
+      model: model.id,
+      thinking: settings.thinking,
+      pricing: {
+        source: options.price ? "override" : catalogPriced ? "catalog" : "unknown",
+        rates:
+          options.price ??
+          (catalogPriced
+            ? {
+                input: model.cost.input,
+                output: model.cost.output,
+                cacheRead: model.cost.cacheRead,
+                cacheWrite: model.cost.cacheWrite,
+                tiers: model.cost.tiers,
+              }
+            : null),
+      },
+    },
+    signal,
+  );
+  const limits = [options.maxCostUsd, tracked.remainingCostUsd].filter(
+    (value): value is number => value !== undefined,
+  );
+  const maxCostUsd = limits.length ? Math.min(...limits) : undefined;
+  const resourceLoader: ResourceLoader = {
+    getExtensions: () => ({
+      extensions: [],
+      errors: [],
+      runtime: createExtensionRuntime(),
+    }),
+    getSkills: () => ({ skills: [], diagnostics: [] }),
+    getPrompts: () => ({ prompts: [], diagnostics: [] }),
+    getThemes: () => ({ themes: [], diagnostics: [] }),
+    getAgentsFiles: () => ({ agentsFiles: [] }),
+    getSystemPrompt: () => options.systemPrompt,
+    getSystemPromptSource: () => undefined,
+    getAppendSystemPrompt: () => [],
+    getAppendSystemPromptSources: () => [],
+    extendResources: () => {},
+    reload: async () => {},
+  };
+  const budget = new AbortController();
+  const combinedSignal = AbortSignal.any([signal, budget.signal]);
+  let calls = 0;
+  let usage = emptyUsage();
+  let modelFailure: Error | undefined;
+  let usageWrites = Promise.resolve();
+  let operationWrites = Promise.resolve();
+  let evidenceWrites = Promise.resolve();
+  const evidenceStore = new EvidenceStore(accounting.project);
+  const evidenceIdentity: SessionEvidenceIdentity | undefined =
+    accounting.runId && accounting.nodeId && accounting.visit
+      ? {
+          runId: accounting.runId,
+          nodeId: accounting.nodeId,
+          visit: accounting.visit,
+          sessionId: tracked.id,
+          operationId: accounting.operationId,
+          activityAttempt: accounting.activityAttempt,
+        }
+      : undefined;
+  const captureEvidence = (write: Promise<void>) => {
+    void write.catch((error) => {
+      budget.abort(error);
+    });
+    evidenceWrites = Promise.allSettled([evidenceWrites, write]).then((results) => {
+      const failed = results.find((result) => result.status === "rejected");
+      if (failed?.status === "rejected") throw failed.reason;
+    });
+    // Await all already-started writes, including when an earlier one failed.
+    void evidenceWrites.catch(() => {});
+  };
+  const queueOperation = (value: Parameters<OperationRecorder>[0]) => {
+    if (!options.operation) return;
+    operationWrites = operationWrites.then(() =>
+      options.operation!.record({
+        visit: accounting.visit,
+        attempt: accounting.activityAttempt,
+        parentAttempt: accounting.activityAttempt,
+        sessionId: tracked.id,
+        ...value,
+      }),
+    );
+    void operationWrites.catch((error) => budget.abort(error));
+  };
+  const timing = new SessionTiming(
+    options.operation?.parentId ?? accounting.operationId,
+    tracked.id,
+    queueOperation,
+  );
+  const recordedCalls = new Set<string>();
+  const requestedInputs = new Map<string, unknown>();
+  const recordedTools = options.tools.map((tool) => ({
+    ...tool,
+    executionMode: "sequential" as const,
+    execute: async (...args: Parameters<ToolDefinition["execute"]>) => {
+      await usageWrites;
+      combinedSignal.throwIfAborted();
+      calls += 1;
+      if (calls > settings.maxToolCalls) {
+        const error = new Error(`Tool-call budget exhausted (${settings.maxToolCalls})`);
+        budget.abort(error);
+        throw error;
+      }
+
+      if (!options.operation) return await tool.execute(...args);
+      const record: OperationRecorder = (value) =>
+        options.operation!.record({
+          visit: accounting.visit,
+          attempt: accounting.activityAttempt,
+          parentAttempt: accounting.activityAttempt,
+          sessionId: tracked.id,
+          ...value,
+        });
+      const identity = {
+        id: `${options.operation.parentId}/${args[0]}`,
+        parentId: options.operation.parentId,
+        name: tool.name,
+        kind: "tool" as const,
+      };
+      const evidence = boundedEvidence(args[1]);
+      const started = performance.now();
+      recordedCalls.add(args[0]);
+      await record({
+        ...identity,
+        state: "started",
+        input: evidence.value,
+        truncated: evidence.truncated,
+      });
+      try {
+        const result = await tool.execute(...args);
+        combinedSignal.throwIfAborted();
+        const output = boundedEvidence(result.content),
+          details = boundedEvidence(result.details);
+        const metadata = result.details as Record<string, unknown> | undefined;
+        const presentation = toolPresentationSchema.safeParse(metadata?.toolPresentation);
+        const outputRef = commandOutputRefSchema.safeParse(metadata?.outputRef);
+        await record({
+          ...identity,
+          state: (result as { isError?: boolean }).isError ? "failed" : "completed",
+          environmentId:
+            typeof metadata?.environmentId === "string" ? metadata.environmentId : undefined,
+          presentation: presentation.success ? presentation.data : undefined,
+          outputRef: outputRef.success ? outputRef.data : undefined,
+          output: output.value,
+          details: details.value,
+          truncated: output.truncated || details.truncated,
+          durationMs: performance.now() - started,
+        });
+        return result;
+      } catch (error) {
+        await record({
+          ...identity,
+          state: combinedSignal.aborted ? "interrupted" : "failed",
+          summary: String(error).slice(0, 16_000),
+          durationMs: performance.now() - started,
+        });
+        throw error;
+      }
+    },
+  }));
+  const parallelLimit = settings.maxParallelTools ?? 1;
+  const concurrency = new ToolConcurrency(parallelLimit);
+  const tools = recordedTools.map((tool, index) => ({
+    ...tool,
+    // Only owning built-ins explicitly declare safe parallel execution. Unknown,
+    // shared and MCP tools remain exclusive; Pi serializes any mixed batch.
+    executionMode:
+      parallelLimit > 1 && options.tools[index]?.executionMode === "parallel"
+        ? ("parallel" as const)
+        : ("sequential" as const),
+    execute: (...args: Parameters<ToolDefinition["execute"]>) =>
+      concurrency.run(() => tool.execute(...args), combinedSignal),
+  }));
+  const { session } = await createAgentSession({
+    cwd: project,
+    modelRuntime,
+    model,
+    thinkingLevel: settings.thinking,
+    tools: tools.map((tool) => tool.name),
+    customTools: tools,
+    resourceLoader,
+    sessionManager: SessionManager.inMemory(project),
+    settingsManager: SettingsManager.inMemory({
+      retry: { enabled: true, maxRetries: 2 },
+      compaction: { enabled: maxCostUsd === undefined },
+    }),
+  }).catch(async (error) => {
+    try {
+      await tracked.finish(signal.aborted ? "cancelled" : "failed", String(error));
+    } finally {
+      tracked.release();
+    }
+    throw error;
+  });
+  const stream = session.agent.streamFunction;
+  session.agent.streamFunction = async (...args) => {
+    timing.endWait("Provider retry backoff");
+    timing.start(args[0].provider, args[0].id);
+    await operationWrites;
+    try {
+      return timing.observe(await stream(...args));
+    } catch (error) {
+      timing.finish(combinedSignal.aborted ? "interrupted" : "failed");
+      throw error;
+    }
+  };
+  let abortPromise: Promise<void> | undefined;
+  const abort = () => {
+    // Retry-start listeners run before Pi installs its backoff controller.
+    // Let that transition finish so cancellation also interrupts the new wait.
+    abortPromise ??= Promise.resolve().then(() => session.abort());
+    // Retain the promise for cleanup while handling its rejection immediately.
+    void abortPromise.catch(() => {});
+  };
+  const recordUsage = (reported: Usage) => {
+    const price = options.price;
+    const catalogHasPrice = [
+      model.cost.input,
+      model.cost.output,
+      model.cost.cacheRead,
+      model.cost.cacheWrite,
+    ].some((rate) => rate > 0);
+    const costUsd = price
+      ? priceUsage(
+          price,
+          reported.input,
+          reported.output,
+          reported.cacheRead,
+          reported.cacheWrite,
+          reported.cacheWrite1h,
+        )
+      : reported.cost.total;
+    const next = usageSchema.parse({
+      inputTokens: reported.input,
+      outputTokens: reported.output,
+      cacheReadTokens: reported.cacheRead,
+      cacheWriteTokens: reported.cacheWrite,
+      costUsd,
+      requests: 1,
+      unpricedRequests: price || catalogHasPrice ? 0 : 1,
+    });
+    usage = addUsage(usage, next);
+    const snapshot = { ...usage };
+    usageWrites = usageWrites.then(async () => {
+      await tracked.update(snapshot);
+      await options.onUsage?.(snapshot);
+    });
+    void usageWrites.catch((error: unknown) => {
+      budget.abort(error);
+    });
+    emit("usage", JSON.stringify(snapshot));
+    if (maxCostUsd !== undefined && (usage.unpricedRequests > 0 || usage.costUsd >= maxCostUsd)) {
+      budget.abort(
+        new Error(
+          usage.unpricedRequests > 0
+            ? "Cannot enforce a dollar budget without model pricing"
+            : "Workflow spending limit reached",
+        ),
+      );
+    }
+  };
+  const unsubscribe = session.subscribe((event) => {
+    if (event.type === "auto_retry_start")
+      timing.wait("Provider retry backoff", { attempt: event.attempt, delayMs: event.delayMs });
+    if (event.type === "auto_retry_end")
+      timing.endWait("Provider retry backoff", event.success ? "completed" : "failed");
+    if (event.type === "compaction_start")
+      timing.wait("Context compaction", { reason: event.reason });
+    if (event.type === "compaction_end")
+      timing.endWait(
+        "Context compaction",
+        event.aborted ? "interrupted" : event.errorMessage ? "failed" : "completed",
+        {
+          reason: event.reason,
+          willRetry: event.willRetry,
+          ...(event.result ? { tokensBefore: event.result.tokensBefore } : {}),
+          ...(event.result?.estimatedTokensAfter === undefined
+            ? {}
+            : { estimatedTokensAfter: event.result.estimatedTokensAfter }),
+        },
+      );
+    // Capture the SDK's requested arguments and final feedback, including calls
+    // rejected before our tool wrapper runs. Compact activity logs are separate.
+    if (evidenceIdentity && event.type === "tool_execution_start") {
+      captureEvidence(
+        evidenceStore.captureSessionTool(evidenceIdentity, {
+          callId: event.toolCallId,
+          name: event.toolName,
+          state: "started",
+          input: event.args,
+        }),
+      );
+    } else if (evidenceIdentity && event.type === "tool_execution_end") {
+      captureEvidence(
+        evidenceStore.captureSessionTool(evidenceIdentity, {
+          callId: event.toolCallId,
+          name: event.toolName,
+          state: event.isError ? "failed" : "completed",
+          output: event.result?.content,
+          details: event.result?.details,
+        }),
+      );
+    }
+    if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
+      emit("text_delta", event.assistantMessageEvent.delta);
+    } else if (event.type === "message_end" && event.message.role === "assistant") {
+      const reported = event.message.usage;
+      if (combinedSignal.aborted && reported.totalTokens === 0) {
+        return;
+      }
+      recordUsage(reported);
+      const text = event.message.content
+        .filter((part) => part.type === "text")
+        .map((part) => part.text)
+        .join("\n");
+      if (text) {
+        emit("agent_message", text);
+      }
+      // Pi retries transient provider failures in the same conversation. Aborting
+      // at message_end would cancel that retry before it can even be scheduled.
+      modelFailure =
+        event.message.stopReason === "error"
+          ? new Error(event.message.errorMessage ?? "Model request failed")
+          : undefined;
+    } else if (event.type === "auto_retry_start") {
+      emit(
+        "agent_retry",
+        `Provider request interrupted. Retrying ${event.attempt}/${event.maxAttempts} in ${event.delayMs / 1000}s: ${event.errorMessage.slice(0, 2000)}`,
+      );
+    } else if (event.type === "auto_retry_end") {
+      emit(
+        "agent_retry",
+        event.success
+          ? "Provider connection recovered; continuing the same step."
+          : `Provider retry stopped: ${event.finalError ?? "Request failed"}`,
+      );
+    } else if (event.type === "compaction_end" && event.result?.usage) {
+      recordUsage(event.result.usage);
+    } else if (event.type === "tool_execution_start" && options.operation) {
+      requestedInputs.set(event.toolCallId, event.args);
+    } else if (event.type === "tool_execution_end" && options.operation) {
+      // Pi can reject malformed arguments or unknown tools before execute() runs.
+      // These attempts still need visible evidence, without inventing a host effect.
+      if (!recordedCalls.has(event.toolCallId)) {
+        const input = boundedEvidence(requestedInputs.get(event.toolCallId));
+        const output = boundedEvidence(event.result?.content);
+        const operation = options.operation;
+        queueOperation({
+          id: `${operation.parentId}/${event.toolCallId}`,
+          parentId: operation.parentId,
+          name: event.toolName,
+          kind: "tool",
+          state: event.isError ? "failed" : "completed",
+          input: input.value,
+          output: output.value,
+          truncated: input.truncated || output.truncated,
+        });
+      }
+      requestedInputs.delete(event.toolCallId);
+    } else if (event.type === "tool_execution_start" && !options.operation) {
+      emit("tool_start", `${event.toolName} ${JSON.stringify(event.args).slice(0, 2000)}`);
+    } else if (event.type === "tool_execution_end" && !options.operation) {
+      const content: unknown = event.result?.content;
+      const details =
+        (event.isError || event.toolName === "bash") && Array.isArray(content)
+          ? content
+              .flatMap((part: unknown) =>
+                part &&
+                typeof part === "object" &&
+                "type" in part &&
+                part.type === "text" &&
+                "text" in part &&
+                typeof part.text === "string"
+                  ? [part.text]
+                  : [],
+              )
+              .join("\n")
+              .slice(-8000)
+          : undefined;
+      emit(
+        "tool_end",
+        `${event.toolName}: ${event.isError ? "error" : "finished"}${details ? `\n${details}` : ""}`,
+      );
+    }
+  });
+  const sessionStartedAt = Date.now();
+  let sessionError: unknown;
+  combinedSignal.addEventListener("abort", abort, { once: true });
+  try {
+    combinedSignal.throwIfAborted();
+    if (evidenceIdentity) {
+      await evidenceStore.captureSessionContext(evidenceIdentity, {
+        systemPrompt: session.systemPrompt,
+        settings: {
+          ...settings,
+          provider: model.provider,
+          model: model.id,
+          thinking: session.thinkingLevel,
+        },
+        contextMode: options.contextMode,
+        tools: session.getActiveToolNames().map((name) => {
+          const definition = session.getToolDefinition(name);
+          if (!definition) throw new Error(`Active tool definition unavailable: ${name}`);
+          return { name, description: definition.description, parameters: definition.parameters };
+        }),
+      });
+    }
+    emit("agent_start", `${model.provider}/${model.id} · thinking ${session.thinkingLevel}`);
+    queueOperation({
+      id: options.operation?.parentId ?? accounting.operationId,
+      name: "AI session",
+      kind: "ai",
+      state: "progress",
+      sessionId: tracked.id,
+      details: { provider: model.provider, model: model.id, thinking: session.thinkingLevel },
+    });
+    emit(
+      "model_session",
+      JSON.stringify({
+        sessionId: tracked.id,
+        operationId: accounting.operationId,
+        scopeId: accounting.scopeId,
+        nodeId: accounting.nodeId,
+        visit: accounting.visit,
+        provider: model.provider,
+        model: model.id,
+        thinking: session.thinkingLevel,
+        tools: options.tools.map((tool) => tool.name),
+      }),
+    );
+    let promptIndex = 0;
+    const prompt = async (message: string, images?: ImageContent[]) => {
+      modelFailure = undefined;
+      if (evidenceIdentity) {
+        await evidenceStore.captureSessionPrompt(evidenceIdentity, {
+          index: promptIndex,
+          kind: promptIndex === 0 ? "initial" : "continuation",
+          text: message,
+          images,
+        });
+      }
+      promptIndex += 1;
+      combinedSignal.throwIfAborted();
+      await session.prompt(message, { images });
+      await usageWrites;
+      await operationWrites;
+      await evidenceWrites;
+      combinedSignal.throwIfAborted();
+      // prompt resolves after Pi has exhausted retries or recovered. Surface a
+      // final error before asking for a structured submission or another turn.
+      if (modelFailure) {
+        throw modelFailure;
+      }
+    };
+    await prompt(options.prompt, model.input.includes("image") ? options.images : undefined);
+    for (
+      let continuation = 0;
+      options.completion && !options.completion.isComplete() && continuation < 2;
+      continuation++
+    ) {
+      await usageWrites;
+      combinedSignal.throwIfAborted();
+      if (calls >= settings.maxToolCalls) {
+        throw new Error(
+          `Tool-call budget exhausted (${settings.maxToolCalls}) before a valid submission`,
+        );
+      }
+      emit("agent_continuation", `Requesting a completed submission (${continuation + 1}/2).`);
+      await prompt(options.completion.prompt());
+    }
+    combinedSignal.throwIfAborted();
+  } catch (error) {
+    sessionError = error;
+    throw error;
+  } finally {
+    combinedSignal.removeEventListener("abort", abort);
+    unsubscribe();
+    timing.close();
+    try {
+      const writes = await Promise.allSettled([
+        abortPromise,
+        usageWrites,
+        operationWrites,
+        evidenceWrites,
+      ]);
+      const failed = writes.find((write) => write.status === "rejected");
+      // eslint-disable-next-line no-unsafe-finally -- Cleanup integrity failures must propagate even when the operation itself failed.
+      if (failed?.status === "rejected") throw failed.reason;
+    } finally {
+      try {
+        await tracked.finish(
+          signal.aborted
+            ? "cancelled"
+            : sessionError || combinedSignal.aborted
+              ? "failed"
+              : "completed",
+          sessionError ? String(sessionError) : undefined,
+        );
+        emit(
+          "model_session_end",
+          JSON.stringify({
+            sessionId: tracked.id,
+            operationId: accounting.operationId,
+            scopeId: accounting.scopeId,
+            durationMs: Date.now() - sessionStartedAt,
+            usage,
+          }),
+        );
+      } finally {
+        tracked.release();
+        session.dispose();
+      }
+    }
+  }
+}

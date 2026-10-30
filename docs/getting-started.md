@@ -102,11 +102,11 @@ The outcome appears above the graph. **Results** contains rendered summaries, ch
 
 You can select files, drag them into the composer, or paste screenshots:
 
-| Type | Limit |
-| --- | --- |
-| PNG, JPEG, WebP, GIF | 6 MB each |
-| UTF-8 text/code files | 256 KB each |
-| Whole request | Up to 8 attachments and 20 MB total |
+| Type                  | Limit                               |
+| --------------------- | ----------------------------------- |
+| PNG, JPEG, WebP, GIF  | 6 MB each                           |
+| UTF-8 text/code files | 256 KB each                         |
+| Whole request         | Up to 8 attachments and 20 MB total |
 
 PDF and general binary document extraction are not implemented. Image requests need an image-capable planning model. Uploaded content is supplied to the selected model providers; request attachments are stored privately under `.workflow/attachments/`.
 

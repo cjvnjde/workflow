@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile, writeFile, symlink } from "node:fs/promises";
 import path from "node:path";
-import { WorkflowEngine } from "../src/engine.js";
+import { WorkflowEngine } from "../src/core/engine.js";
 import { fixture } from "./helpers.js";
 import {
   block,
@@ -12,15 +12,14 @@ import {
   when,
   repeatUntil,
   describeFlow,
-} from "../src/workflow-sdk.js";
-import { executeFlow } from "../src/composition-runtime.js";
-import { FileClaims, FileJournal } from "../src/recovery.js";
-import { Workspace } from "../src/workspace.js";
-import { budgetSchema } from "../src/domain.js";
-import { compositionLayout } from "../web/graph-layout.js";
+} from "../src/sdk/workflow-sdk.js";
+import { executeFlow } from "../src/core/execution/composition-runtime.js";
+import { FileClaims, FileJournal } from "../src/core/storage/recovery.js";
+import { Workspace } from "../src/core/storage/workspace.js";
+import { budgetSchema } from "../src/contracts/domain.js";
+import { compositionLayout } from "../web/features/graph/graph-layout.js";
 
-const header =
-  'import {workflow,block,step,sequence,parallel,when,repeatUntil,z} from "workflow";';
+const header = 'import {workflow,block,step,sequence,parallel,when,repeatUntil,z} from "workflow";';
 function deferred() {
   let release!: () => void;
   const promise = new Promise<void>((resolve) => {
@@ -45,11 +44,7 @@ test("composition validates structure, typed predicates, explicit outcomes and b
   const flow = repeatUntil("revisions", {
     body: sequence(
       review,
-      when(
-        "approved",
-        (c) => c.output(review)?.approved === true,
-        step("publish", producer),
-      ),
+      when("approved", (c) => c.output(review)?.approved === true, step("publish", producer)),
     ),
     until: (c) => c.output(review)?.approved === true,
     maxIterations: 3,
@@ -75,10 +70,7 @@ test("composition validates structure, typed predicates, explicit outcomes and b
   });
   assert.deepEqual(calls, ["review", "review", "publish"]);
   assert.throws(() => describeFlow(sequence(review, review)), /unique/);
-  assert.throws(
-    () => describeFlow(parallel([review], { concurrency: 0 })),
-    /concurrency/,
-  );
+  assert.throws(() => describeFlow(parallel([review], { concurrency: 0 })), /concurrency/);
   const impossible = repeatUntil("exhausted", {
     body: review,
     until: () => false,
@@ -97,11 +89,7 @@ test("composition validates structure, typed predicates, explicit outcomes and b
     /did not satisfy/,
   );
   const layout = compositionLayout(structure);
-  assert.ok(
-    layout.nodes.some(
-      (node) => node.id === "revisions" && node.kind === "group",
-    ),
-  );
+  assert.ok(layout.nodes.some((node) => node.id === "revisions" && node.kind === "group"));
   assert.ok(layout.edges.some((edge) => edge.repeat));
 });
 
@@ -123,31 +111,20 @@ test("structured workflows preview before approval, execute typed feedback loops
     const publish=step("publish",block({async run(ctx){await ctx.writeFile("published.txt","yes");return "Published";}}));
     const unused=step("unused",block({run(){throw new Error("Wrong branch");}}));
     export default workflow({name:"Reviewed",flow:sequence(repeatUntil("revision",{body:sequence(implement,review),until:ctx=>ctx.output(review)?.approved===true,maxIterations:3}),when("publish-check",ctx=>ctx.output(review)?.approved===true,publish,unused))});`;
-  const draft = await engine.createProgram(
-    "Reviewed",
-    "Implement",
-    { source },
-    library,
-  );
+  const draft = await engine.createProgram("Reviewed", "Implement", { source }, library);
   assert.equal(draft.program?.composition, "structured");
   assert.deepEqual(
     draft.plan.nodes.map((n) => n.id),
     ["implement", "review", "publish", "unused"],
   );
-  await assert.rejects(
-    readFile(path.join(project, "implemented.txt")),
-    /ENOENT/,
-  );
+  await assert.rejects(readFile(path.join(project, "implemented.txt")), /ENOENT/);
   await engine.approve(draft.id);
   await engine.waitForIdle();
   const run = engine.get(draft.id);
   assert.equal(run.status, "completed", run.error);
   assert.deepEqual(run.visits, { implement: 2, review: 2, publish: 1 });
   assert.equal(run.groups?.revision?.iteration, 2);
-  assert.equal(
-    await readFile(path.join(project, "published.txt"), "utf8"),
-    "yes",
-  );
+  assert.equal(await readFile(path.join(project, "published.txt"), "utf8"), "yes");
   assert.equal(run.output, "Published");
 });
 
@@ -186,26 +163,16 @@ test("parallel calls overlap, retain identities and merge outputs only after the
     const a=step("a",job,{inputs:{tag:"a"},model:"model-a"});const b=step("b",job,{inputs:{tag:"b"},model:"model-b"});
     const report=step("report",block({input:z.object({a:z.string(),b:z.string()}),run(ctx){return ctx.input.a+ctx.input.b;}}),{inputs:ctx=>({a:ctx.output(a)!,b:ctx.output(b)!})});
     export default workflow({name:"Parallel",flow:sequence(parallel([a,b],{concurrency:2}),report)});`;
-  const draft = await engine.createProgram(
-    "Parallel",
-    "Independent work",
-    { source },
-    library,
-  );
+  const draft = await engine.createProgram("Parallel", "Independent work", { source }, library);
   await engine.approve(draft.id);
   await until(() => calls.length === 2);
-  assert.deepEqual(
-    new Set(engine.get(draft.id).activeNodes),
-    new Set(["a", "b"]),
-  );
+  assert.deepEqual(new Set(engine.get(draft.id).activeNodes), new Set(["a", "b"]));
   assert.deepEqual(calls.map((c) => [c.id, c.model, c.input]).sort(), [
     ["a", "model-a", "a"],
     ["b", "model-b", "b"],
   ]);
   gates.b.release();
-  await until(() =>
-    engine.get(draft.id).attempts.some((a) => a.nodeId === "b" && a.finishedAt),
-  );
+  await until(() => engine.get(draft.id).attempts.some((a) => a.nodeId === "b" && a.finishedAt));
   assert.ok(!engine.get(draft.id).visits.report);
   gates.a.release();
   await engine.waitForIdle();
@@ -236,19 +203,12 @@ test("pause drains active parallel steps and keeps queued branches waiting until
   const source =
     header +
     `const job=block({run:ctx=>ctx.ai({prompt:ctx.prompt})});export default workflow({name:"Pause",flow:parallel([step("a",job),step("b",job),step("c",job)],{concurrency:2})});`;
-  const draft = await engine.createProgram(
-    "Pause",
-    "Task",
-    { source },
-    library,
-  );
+  const draft = await engine.createProgram("Pause", "Task", { source }, library);
   await engine.approve(draft.id);
   await until(() => calls.length === 2);
   await engine.pause(draft.id);
   gates.a.release();
-  await until(() =>
-    engine.get(draft.id).attempts.some((a) => a.nodeId === "a" && a.finishedAt),
-  );
+  await until(() => engine.get(draft.id).attempts.some((a) => a.nodeId === "a" && a.finishedAt));
   assert.equal((await engine.refresh(draft.id)).status, "pausing");
   assert.deepEqual([...calls].sort(), ["a", "b"]);
   gates.b.release();
@@ -273,32 +233,20 @@ test("managed parallel writes reject overlapping physical paths and retain claim
   const wa = await Workspace.create(project, { journal: a }),
     wb = await Workspace.create(project, { journal: b });
   await wa.write("shared.txt", "identical");
-  await assert.rejects(
-    wb.write("alias.txt", "identical"),
-    /Parallel file conflict/,
-  );
-  await assert.rejects(
-    wb.edit("shared.txt", "identical", "other"),
-    /Parallel file conflict/,
-  );
+  await assert.rejects(wb.write("alias.txt", "identical"), /Parallel file conflict/);
+  await assert.rejects(wb.edit("shared.txt", "identical", "other"), /Parallel file conflict/);
   claims = new FileClaims(project);
   const recovered = await FileJournal.open(first, claims);
   const later = await FileJournal.open(second, claims);
   await assert.rejects(
-    (await Workspace.create(project, { journal: later })).write(
-      "shared.txt",
-      "identical",
-    ),
+    (await Workspace.create(project, { journal: later })).write("shared.txt", "identical"),
     /Parallel file conflict/,
   );
   await recovered.settle(await Workspace.create(project), true);
   const resumed = await Workspace.create(project, { journal: later });
   await resumed.edit("shared.txt", "identical", "next");
   await later.settle(resumed, false);
-  assert.equal(
-    await readFile(path.join(project, "shared.txt"), "utf8"),
-    "identical",
-  );
+  assert.equal(await readFile(path.join(project, "shared.txt"), "utf8"), "identical");
 });
 
 test("parallel AI sessions share the dollar budget without double-counting failed or completed calls", async (t) => {
@@ -333,12 +281,7 @@ test("parallel AI sessions share the dollar budget without double-counting faile
   const source =
     header +
     `const job=block({run:ctx=>ctx.ai({prompt:ctx.prompt})});export default workflow({name:"Budget",flow:parallel([step("a",job),step("b",job)])});`;
-  const draft = await engine.createProgram(
-    "Budget",
-    "Task",
-    { source },
-    library,
-  );
+  const draft = await engine.createProgram("Budget", "Task", { source }, library);
   await engine.approve(draft.id);
   await until(() => amounts.length === 1);
   assert.equal(amounts.length, 1);
@@ -348,9 +291,20 @@ test("parallel AI sessions share the dollar budget without double-counting faile
   assert.equal(run.status, "completed", run.error);
   assert.deepEqual(amounts, [1, 0.8]);
   assert.equal(run.usage?.costUsd, 0.4);
-  const waits = (await engine.execution(draft.id)).operations.filter(operation => operation.name === "Budget queue");
+  const waits = (await engine.execution(draft.id)).operations.filter(
+    (operation) => operation.name === "Budget queue",
+  );
   assert.equal(waits.length, 2);
-  assert.ok(waits.every(operation => operation.state === "completed" && operation.startedAt && operation.finishedAt && operation.durationMs !== undefined && operation.parentKey));
+  assert.ok(
+    waits.every(
+      (operation) =>
+        operation.state === "completed" &&
+        operation.startedAt &&
+        operation.finishedAt &&
+        operation.durationMs !== undefined &&
+        operation.parentKey,
+    ),
+  );
 });
 
 test("loop summaries follow the final visit, explicit repeat skips the rest of a body, and sibling output stays private", async () => {
@@ -418,8 +372,7 @@ test("loop summaries follow the final visit, explicit repeat skips the rest of a
     models: {},
     group: async () => {},
     step: async (node, options) => {
-      if (node.id === "sibling")
-        assert.deepEqual(options.inputs, { other: null });
+      if (node.id === "sibling") assert.deepEqual(options.inputs, { other: null });
       return {
         outcome: "pass",
         summary: node.id,
@@ -435,11 +388,7 @@ test("nested parallel failure stops outer dispatch immediately and drains starte
     failed = deferred();
   const job = block({ run: () => "ok" });
   const flow = parallel(
-    [
-      parallel([step("fail", job), step("drain", job)]),
-      step("outer", job),
-      step("queued", job),
-    ],
+    [parallel([step("fail", job), step("drain", job)]), step("outer", job), step("queued", job)],
     { concurrency: 2 },
   );
   const calls: string[] = [];
@@ -482,19 +431,14 @@ test("historical overlapping claims load but cannot commit or overwrite another 
   await writeFile(path.join(project, "shared.txt"), "manual");
   assert.equal((await old.settle(wa, false)).status, "conflict");
   const newer = await FileJournal.open(path.join(project, "new"));
-  await (
-    await Workspace.create(project, { journal: newer })
-  ).write("shared.txt", "same");
+  await (await Workspace.create(project, { journal: newer })).write("shared.txt", "same");
   const claims = new FileClaims(project);
   const a = await FileJournal.open(path.join(project, "old"), claims),
     b = await FileJournal.open(path.join(project, "new"), claims);
   assert.equal((await a.settle(wa, false)).status, "conflict");
   assert.equal((await b.settle(wa, true)).status, "conflict");
   assert.equal((await a.settle(wa, false)).status, "conflict");
-  assert.equal(
-    await readFile(path.join(project, "shared.txt"), "utf8"),
-    "same",
-  );
+  assert.equal(await readFile(path.join(project, "shared.txt"), "utf8"), "same");
   await writeFile(path.join(project, "shared.txt"), "original");
   assert.equal((await a.settle(wa, false)).status, "restored");
 });
@@ -577,15 +521,22 @@ test("parallel composition treats an undefined thrown value as a failure", async
   assert.deepEqual(calls, []);
 });
 
-test("failure diagnosis routes test repairs and production repairs to different owners before rechecking", async t => {
+test("failure diagnosis routes test repairs and production repairs to different owners before rechecking", async (t) => {
   const { project, library, cleanup } = await fixture(t);
-  const engine = new WorkflowEngine(project, "live", async () => { throw new Error("This ownership fixture needs no model"); });
-  cleanup(() => engine.shutdown()); await engine.initialize();
+  const engine = new WorkflowEngine(project, "live", async () => {
+    throw new Error("This ownership fixture needs no model");
+  });
+  cleanup(() => engine.shutdown());
+  await engine.initialize();
   for (const broken of ["test", "production"] as const) {
-    const testText = broken === "test" ? 'export const expected = ;' : 'export const expected = 2;';
+    const testText = broken === "test" ? "export const expected = ;" : "export const expected = 2;";
     await writeFile(path.join(project, "fixture-test.mjs"), testText);
-    await writeFile(path.join(project, "fixture-production.mjs"), `export const actual = ${broken === "production" ? 1 : 2};`);
-    const checkCommand = "node --input-type=module -e 'try { const t=await import(\"./fixture-test.mjs\"); const p=await import(\"./fixture-production.mjs\"); console.log(t.expected===p.actual?\"pass\":\"production\"); } catch(e) { console.log(e instanceof SyntaxError?\"test\":\"blocked\"); }'";
+    await writeFile(
+      path.join(project, "fixture-production.mjs"),
+      `export const actual = ${broken === "production" ? 1 : 2};`,
+    );
+    const checkCommand =
+      'node --input-type=module -e \'try { const t=await import("./fixture-test.mjs"); const p=await import("./fixture-production.mjs"); console.log(t.expected===p.actual?"pass":"production"); } catch(e) { console.log(e instanceof SyntaxError?"test":"blocked"); }\'';
     const source = `${header}
       const gateBlock=block({async run(ctx){
         const checked=await ctx.exec(${JSON.stringify(checkCommand)});
@@ -597,11 +548,26 @@ test("failure diagnosis routes test repairs and production repairs to different 
       const gate=step("final-gate",gateBlock);
       const acceptance=step("acceptance",block({async run(ctx){if(ctx.input.owner!=="pass")throw new Error("Checks still fail");return "Accepted";}}),{inputs:c=>({owner:c.output(gate)?.owner})});
       export default workflow({name:"Repair ownership",flow:sequence(assess,when("invalid-test",c=>c.output(assess)?.owner==="test",tests),when("production-defect",c=>c.output(assess)?.owner==="production",fix),gate,acceptance)});`;
-    const draft = await engine.createProgram("Ownership fixture", "Repair the failing check", {source}, library);
-    await engine.approve(draft.id); await engine.waitForIdle();
+    const draft = await engine.createProgram(
+      "Ownership fixture",
+      "Repair the failing check",
+      { source },
+      library,
+    );
+    await engine.approve(draft.id);
+    await engine.waitForIdle();
     const run = engine.get(draft.id);
-    assert.equal(run.status,"completed",run.error);
-    assert.deepEqual(run.attempts.map(a=>a.nodeId),["assess",broken === "test" ? "test-author" : "production-owner","final-gate","acceptance"]);
-    if (broken === "production") assert.equal(await readFile(path.join(project,"fixture-test.mjs"),"utf8"),testText);
+    assert.equal(run.status, "completed", run.error);
+    assert.deepEqual(
+      run.attempts.map((a) => a.nodeId),
+      [
+        "assess",
+        broken === "test" ? "test-author" : "production-owner",
+        "final-gate",
+        "acceptance",
+      ],
+    );
+    if (broken === "production")
+      assert.equal(await readFile(path.join(project, "fixture-test.mjs"), "utf8"), testText);
   }
 });

@@ -3,7 +3,7 @@ import {
   usageReportSchema,
   type UsageReport,
   type UsageTotals,
-} from "../../src/contracts.js";
+} from "../../src/contracts/index.js";
 
 const zero: UsageTotals = {
   inputTokens: 0,
@@ -111,9 +111,7 @@ test("task totals include planning and execution once, with model and failed-ses
       },
     ],
   });
-  await page.route(/\/api\/(tasks|runs)\/[^/]+\/usage$/, (route) =>
-    route.fulfill({ json: value }),
-  );
+  await page.route(/\/api\/(tasks|runs)\/[^/]+\/usage$/, (route) => route.fulfill({ json: value }));
   const created = await request.post("/api/tasks", {
     headers: { "x-workflow-client": "1" },
     data: { prompt: "Review usage display fixture", attachments: [] },
@@ -123,31 +121,21 @@ test("task totals include planning and execution once, with model and failed-ses
   await page.goto(`/#task=${task.id}`);
   const usage = page.getByRole("region", { name: "Task cost", exact: true });
   await expect(usage.locator(".usage-total")).toHaveText("$0.1250");
-  await expect(usage.getByLabel("Cost by phase")).toContainText(
-    "Planning$0.0250",
-  );
-  await expect(usage.getByLabel("Cost by phase")).toContainText(
-    "Execution$0.1000",
-  );
+  await expect(usage.getByLabel("Cost by phase")).toContainText("Planning$0.0250");
+  await expect(usage.getByLabel("Cost by phase")).toContainText("Execution$0.1000");
   await expect(usage).toContainText("Remaining $0.8750");
   await usage.getByText(/Usage details ·/).click();
-  await expect(
-    usage.getByRole("table", { name: "Cost by model" }),
-  ).toContainText("careful-planner");
-  await expect(usage).toContainText(
-    "$0.0200 is already included in this total",
+  await expect(usage.getByRole("table", { name: "Cost by model" })).toContainText(
+    "careful-planner",
   );
-  await usage
-    .getByText("Model sessions · latest 1 of 2", { exact: true })
-    .click();
+  await expect(usage).toContainText("$0.0200 is already included in this total");
+  await usage.getByText("Model sessions · latest 1 of 2", { exact: true }).click();
   await expect(usage).toContainText("Totals include all retained sessions");
   await expect(usage.locator(".usage-session")).toContainText(
     "Execution · failed · implementation · visit 2",
   );
   await expect(usage.locator(".usage-session")).toContainText("$0.0800");
-  await expect(usage).toContainText(
-    "The check failed after model work completed.",
-  );
+  await expect(usage).toContainText("The check failed after model work completed.");
   await usage.screenshot({ path: "/tmp/workflow-feature2-usage.png" });
 });
 
@@ -177,29 +165,19 @@ test("project setup and design usage keep missing prices visible on narrow scree
     exact: true,
   });
   await expect(usage.locator(".usage-total")).toHaveText("Unknown");
-  await expect(usage.getByLabel("Cost by phase")).toContainText(
-    "Project setupUnknown",
-  );
-  await expect(usage.getByLabel("Cost by phase")).toContainText(
-    "Settings design",
-  );
-  await expect(usage).toContainText(
-    "Missing usage or pricing is not counted as free",
-  );
+  await expect(usage.getByLabel("Cost by phase")).toContainText("Project setupUnknown");
+  await expect(usage.getByLabel("Cost by phase")).toContainText("Settings design");
+  await expect(usage).toContainText("Missing usage or pricing is not counted as free");
   await usage.getByText(/Usage details ·/).click();
   await expect(usage).toContainText("2 model requests have no recorded price");
   await expect(usage).toContainText("Older planning activity was not recorded");
   expect(
-    await usage.evaluate(
-      (element) => element.getBoundingClientRect().right <= innerWidth,
-    ),
+    await usage.evaluate((element) => element.getBoundingClientRect().right <= innerWidth),
   ).toBe(true);
   await usage.screenshot({ path: "/tmp/workflow-feature2-usage-mobile.png" });
 });
 
-test("usage load failures keep the last total and offer refresh", async ({
-  page,
-}) => {
+test("usage load failures keep the last total and offer refresh", async ({ page }) => {
   let fail = false;
   await page.route("**/api/usage", (route) =>
     fail
@@ -218,15 +196,11 @@ test("usage load failures keep the last total and offer refresh", async ({
   });
   await expect(usage.locator(".usage-total")).toHaveText("$0.5000");
   fail = true;
-  await usage
-    .getByRole("button", { name: "Refresh project ai usage", exact: true })
-    .click();
+  await usage.getByRole("button", { name: "Refresh project ai usage", exact: true }).click();
   await expect(usage).toContainText("Showing the last loaded usage");
   await expect(usage.locator(".usage-total")).toHaveText("$0.5000");
   fail = false;
-  await usage
-    .getByRole("button", { name: "Refresh project ai usage", exact: true })
-    .click();
+  await usage.getByRole("button", { name: "Refresh project ai usage", exact: true }).click();
   await expect(usage.getByRole("status")).toHaveCount(0);
 });
 
@@ -241,45 +215,25 @@ test("task, setup and execution spending defaults save independently and can be 
       .getByRole("navigation", { name: "Settings sections" })
       .getByRole("button", { name: "Execution", exact: true })
       .click();
-    await page
-      .getByLabel("Total task spending limit (USD)", { exact: true })
-      .fill("1.25");
-    await page
-      .getByLabel("Project setup spending limit (USD)", { exact: true })
-      .fill("2.5");
-    await page
-      .getByLabel("Execution spending limit (USD)", { exact: true })
-      .fill("0.75");
-    await page
-      .getByRole("button", { name: "Save settings", exact: true })
-      .click();
-    await expect(
-      page.getByText("Execution settings saved.", { exact: true }),
-    ).toBeVisible();
-    expect(
-      (await (await request.get("/api/settings/execution")).json()).budget,
-    ).toMatchObject({
+    await page.getByLabel("Total task spending limit (USD)", { exact: true }).fill("1.25");
+    await page.getByLabel("Project setup spending limit (USD)", { exact: true }).fill("2.5");
+    await page.getByLabel("Execution spending limit (USD)", { exact: true }).fill("0.75");
+    await page.getByRole("button", { name: "Save settings", exact: true }).click();
+    await expect(page.getByText("Execution settings saved.", { exact: true })).toBeVisible();
+    expect((await (await request.get("/api/settings/execution")).json()).budget).toMatchObject({
       maxTaskCostUsd: 1.25,
       maxSetupCostUsd: 2.5,
       maxCostUsd: 0.75,
     });
-    await page
-      .getByLabel("Total task spending limit (USD)", { exact: true })
-      .fill("");
+    await page.getByLabel("Total task spending limit (USD)", { exact: true }).fill("");
     const cleared = page.waitForResponse(
       (response) =>
-        response.url().endsWith("/api/settings/execution") &&
-        response.request().method() === "PUT",
+        response.url().endsWith("/api/settings/execution") && response.request().method() === "PUT",
     );
-    await page
-      .getByRole("button", { name: "Save settings", exact: true })
-      .click();
+    await page.getByRole("button", { name: "Save settings", exact: true }).click();
     expect((await cleared).ok()).toBe(true);
-    await expect(
-      page.getByRole("button", { name: "Save settings", exact: true }),
-    ).toBeDisabled();
-    const budget = (await (await request.get("/api/settings/execution")).json())
-      .budget;
+    await expect(page.getByRole("button", { name: "Save settings", exact: true })).toBeDisabled();
+    const budget = (await (await request.get("/api/settings/execution")).json()).budget;
     expect(budget.maxTaskCostUsd).toBeUndefined();
     expect(budget.maxSetupCostUsd).toBe(2.5);
     expect(budget.maxCostUsd).toBe(0.75);

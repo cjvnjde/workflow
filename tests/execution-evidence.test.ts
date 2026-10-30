@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { executionEvidence } from "../web/execution-evidence.js";
+import { executionEvidence } from "../web/features/execution/execution-evidence.js";
 
 test("execution evidence measures actual attempt overlap and does not count the join as concurrent", () => {
   const run: Parameters<typeof executionEvidence>[0] = {

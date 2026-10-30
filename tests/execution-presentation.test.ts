@@ -1,12 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { operationBody } from "../web/operation-presentation.js";
-import { executionTimeline } from "../web/execution-timeline.js";
-import {
-  projectOperations,
-  type RunEvent,
-  type WorkflowRun,
-} from "../src/contracts.js";
+import { operationBody } from "../web/features/execution/operation-presentation.js";
+import { executionTimeline } from "../web/features/execution/execution-timeline.js";
+import { projectOperations, type RunEvent, type WorkflowRun } from "../src/contracts/index.js";
 
 test("operation cards use captured diffs and preserve nonzero exit as a result", () => {
   const diff = operationBody({

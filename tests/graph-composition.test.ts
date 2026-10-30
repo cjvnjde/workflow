@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { bundleSchema, validatePlan } from "../src/domain.js";
+import { bundleSchema, validatePlan } from "../src/contracts/domain.js";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import { WorkflowEngine } from "../src/engine.js";
+import { WorkflowEngine } from "../src/core/engine.js";
 import { fixture } from "./helpers.js";
-import { validatePlanModels } from "../src/library-proposals.js";
-import type { AvailableModel } from "../src/library-editor-schema.js";
+import { validatePlanModels } from "../src/core/library/library-proposals.js";
+import type { AvailableModel } from "../src/contracts/library-editor-schema.js";
 const models: AvailableModel[] = ["careful", "quick"].map((id) => ({
   provider: "test",
   id,
@@ -58,18 +58,12 @@ test("generated code graphs preview all routes, preserve edited model defaults a
     ctx.outcome(approved ? "pass" : "retry");ctx.summary(approved ? "Reviewed and passed" : "Try again");return {approved};
   }})`,
   );
-  await writeFile(
-    path.join(project, "helper.ts"),
-    'export const marker = "frozen";',
-  );
+  await writeFile(path.join(project, "helper.ts"), 'export const marker = "frozen";');
   const produce = library.blocks.produce.definition.executor;
   if (produce?.kind === "code")
     produce.source =
       'import {marker} from "../../../helper.ts";' +
-      produce.source.replace(
-        "prompt:ctx.prompt",
-        'prompt:ctx.prompt+" "+marker',
-      );
+      produce.source.replace("prompt:ctx.prompt", 'prompt:ctx.prompt+" "+marker');
   const plan = validatePlan(
     {
       title: "Graph",
@@ -130,10 +124,7 @@ test("generated code graphs preview all routes, preserve edited model defaults a
   assert.ok(draft.blocks.produce && draft.blocks.inspect);
   assert.equal(draft.cursor, "implement");
   assert.equal(calls.length, 0);
-  await writeFile(
-    path.join(project, "helper.ts"),
-    'export const marker = "changed";',
-  );
+  await writeFile(path.join(project, "helper.ts"), 'export const marker = "changed";');
   const edited = structuredClone(plan);
   edited.nodes[0]!.agent = {
     provider: "test",
@@ -144,10 +135,7 @@ test("generated code graphs preview all routes, preserve edited model defaults a
   validatePlanModels(edited, library, models);
   const invalid = structuredClone(edited);
   invalid.nodes[0]!.agent!.model = "invented";
-  assert.throws(
-    () => validatePlanModels(invalid, library, models),
-    /not available/,
-  );
+  assert.throws(() => validatePlanModels(invalid, library, models), /not available/);
   const saved = await engine.update(draft.id, edited, draft.revision);
   assert.equal(
     saved.executionVersion,
@@ -155,27 +143,16 @@ test("generated code graphs preview all routes, preserve edited model defaults a
     "Graph edits keep frozen block imports",
   );
   assert.deepEqual(saved.program!.input.plan, edited);
+  await assert.rejects(engine.update(draft.id, plan, draft.revision), /changed/);
   await assert.rejects(
-    engine.update(draft.id, plan, draft.revision),
-    /changed/,
-  );
-  await assert.rejects(
-    engine.updateProgram(
-      draft.id,
-      { source: draft.program!.source },
-      saved.revision,
-    ),
+    engine.updateProgram(draft.id, { source: draft.program!.source }, saved.revision),
     /Edit the workflow graph/,
   );
   await engine.approve(draft.id, saved.revision);
   await engine.waitForIdle();
   const run = engine.get(draft.id);
   assert.equal(run.status, "completed", run.error);
-  assert.deepEqual(
-    run.plan,
-    edited,
-    "Execution must preserve all reviewed connections and goals",
-  );
+  assert.deepEqual(run.plan, edited, "Execution must preserve all reviewed connections and goals");
   assert.equal(run.output, "Reviewed and passed");
   assert.deepEqual(
     run.attempts.map((a) => [a.nodeId, a.result?.outcome]),
@@ -200,10 +177,7 @@ test("generated code graphs preview all routes, preserve edited model defaults a
 
 test("a code graph follows its fail route after a block throws instead of discarding the recovery branch", async (t) => {
   const { project, library, cleanup } = await fixture(t);
-  library.blocks.broken = code(
-    "broken",
-    'block({async run(){throw new Error("Invalid input");}})',
-  );
+  library.blocks.broken = code("broken", 'block({async run(){throw new Error("Invalid input");}})');
   library.blocks.recover = code(
     "recover",
     'block({async run(ctx){return "Handled: "+ctx.input.error;}})',
@@ -229,9 +203,7 @@ test("a code graph follows its fail route after a block throws instead of discar
           label: "Recover",
           goal: "Report",
           maxVisits: 1,
-          inputs: [
-            { node: "first", artifact: "summary", as: "error", required: true },
-          ],
+          inputs: [{ node: "first", artifact: "summary", as: "error", required: true }],
           on: { pass: "$complete", retry: "$failed", fail: "$failed" },
         },
       ],

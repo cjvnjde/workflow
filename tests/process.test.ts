@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { runProcess } from "../src/process.js";
+import { runProcess } from "../src/infrastructure/process.js";
 import { fixture } from "./helpers.js";
 
 for (const reason of ["cancellation", "timeout"] as const) {
@@ -36,9 +36,7 @@ for (const reason of ["cancellation", "timeout"] as const) {
       reason === "timeout" ? 500 : 10_000,
     );
     const stopped =
-      reason === "cancellation"
-        ? assert.rejects(operation, /Cancelled check/)
-        : operation;
+      reason === "cancellation" ? assert.rejects(operation, /Cancelled check/) : operation;
     let childPid: number | undefined;
     t.after(() => {
       if (childPid) {
@@ -57,8 +55,7 @@ for (const reason of ["cancellation", "timeout"] as const) {
       if (childPid) break;
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    if (reason === "cancellation")
-      controller.abort(new Error("Cancelled check"));
+    if (reason === "cancellation") controller.abort(new Error("Cancelled check"));
     await stopped;
     if (reason === "timeout") assert.equal((await operation).timedOut, true);
     assert.ok(childPid, "Child must be running before cancellation");

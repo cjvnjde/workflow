@@ -2,22 +2,35 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { access } from "node:fs/promises";
 import path from "node:path";
-import { createApplication } from "../src/application.js";
-import { MemoryStore } from "../src/memory-store.js";
+import { createApplication } from "../src/core/application.js";
+import { MemoryStore } from "../src/core/memory/memory-store.js";
 import { fixture } from "./helpers.js";
 
-test("ordinary execution collects only when enabled and deletion stays effective after a host restart", async t => {
+test("ordinary execution collects only when enabled and deletion stays effective after a host restart", async (t) => {
   const { project, cleanup } = await fixture(t);
   let modelCalls = 0;
-  const options = { project, mode: "live" as const, startTriggers: false,
-    runner: async () => { modelCalls++; throw new Error("No AI request expected"); },
-    providers: async () => [], catalog: async () => ({ models: [], warnings: [] }),
+  const options = {
+    project,
+    mode: "live" as const,
+    startTriggers: false,
+    runner: async () => {
+      modelCalls++;
+      throw new Error("No AI request expected");
+    },
+    providers: async () => [],
+    catalog: async () => ({ models: [], warnings: [] }),
   };
-  let app = await createApplication(options); cleanup(() => app.close());
+  let app = await createApplication(options);
+  cleanup(() => app.close());
   const memory = new MemoryStore(project);
-  const source = 'import {workflow,step,block} from "workflow"; export default workflow({name:"Pure code report",flow:step("report",block({run(){return {checks:3};}}))});';
+  const source =
+    'import {workflow,step,block} from "workflow"; export default workflow({name:"Pure code report",flow:step("report",block({run(){return {checks:3};}}))});';
   const execute = async () => {
-    const draft = await app.createProgram({ title: "Pure code report", task: "Produce a small report without a model", source });
+    const draft = await app.createProgram({
+      title: "Pure code report",
+      task: "Produce a small report without a model",
+      source,
+    });
     await app.approve(draft.id, draft.revision);
     for (let i = 0; i < 750; i++) {
       const run = app.getRun(draft.id);
@@ -53,15 +66,28 @@ test("ordinary execution collects only when enabled and deletion stays effective
   assert.equal(entry.observation!.sources[0]!.runId, run.id);
   assert.ok(!entry.details.includes(source));
   await app.engine.remove(run.id);
-  assert.equal((await memory.get(entry.id)).observation!.runs, 1, "Hiding run history must preserve compact memory and its receipt");
+  assert.equal(
+    (await memory.get(entry.id)).observation!.runs,
+    1,
+    "Hiding run history must preserve compact memory and its receipt",
+  );
   await memory.remove(entry.id, { revision: state.revision });
-  await app.close(); app = await createApplication(options);
-  assert.deepEqual((await memory.state()).entries, [], "Restart must not resurrect deleted observations from retained runs");
+  await app.close();
+  app = await createApplication(options);
+  assert.deepEqual(
+    (await memory.state()).entries,
+    [],
+    "Restart must not resurrect deleted observations from retained runs",
+  );
   const later = await execute();
   const next = await observed();
   const laterEntry = await memory.get(next.entries[0]!.id);
   assert.notEqual(laterEntry.id, entry.id);
-  assert.equal(laterEntry.observation!.runs, 1, "New facts must not reimport deleted historical counts");
+  assert.equal(
+    laterEntry.observation!.runs,
+    1,
+    "New facts must not reimport deleted historical counts",
+  );
   assert.equal(laterEntry.observation!.sources[0]!.runId, later.id);
   await memory.setEnabled({ revision: next.revision, enabled: false });
   await execute();

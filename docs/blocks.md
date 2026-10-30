@@ -34,26 +34,26 @@ This block returns diagnostics and lets its workflow route feedback to implement
 
 ## Block context
 
-| Property | Meaning |
-| --- | --- |
-| `ctx.input` | The explicit step inputs; defaults to an empty object before optional schema validation. |
-| `ctx.request` | Original task request. |
-| `ctx.prompt` | This step's goal, falling back to the original request. |
-| `ctx.model` | Resolved model defaults for this step. |
-| `ctx.models` | Frozen enabled model profiles, indexed by profile ID. |
-| `ctx.visit` | One-based invocation count for this step. |
+| Property      | Meaning                                                                                  |
+| ------------- | ---------------------------------------------------------------------------------------- |
+| `ctx.input`   | The explicit step inputs; defaults to an empty object before optional schema validation. |
+| `ctx.request` | Original task request.                                                                   |
+| `ctx.prompt`  | This step's goal, falling back to the original request.                                  |
+| `ctx.model`   | Resolved model defaults for this step.                                                   |
+| `ctx.models`  | Frozen enabled model profiles, indexed by profile ID.                                    |
+| `ctx.visit`   | One-based invocation count for this step.                                                |
 
-| Operation | Behavior |
-| --- | --- |
-| `await ctx.ai({ prompt, instructions?, model?, output? })` | A fresh model/tool session; returns Markdown or schema-validated data. |
-| `await ctx.call(tool, input)` | Invokes a frozen `defineTool()` operation with typed input and output. See [shared tools](tools.md). |
-| `await ctx.exec(command, { timeoutMs?, env? })` | Bash in the project directory. Returns command status and output. |
-| `await ctx.readFile(path)` | Reads text through the host file tools. |
-| `await ctx.writeFile(path, text)` | Writes text through managed file recovery. |
-| `await ctx.log(message)` | Adds a durable activity message. |
-| `ctx.summary(markdown)` | Sets the visible result summary. |
-| `ctx.artifact(name, text)` | Adds a named text artifact. |
-| `ctx.outcome(value)` | Sets the attempt's outcome to `pass`, `retry`, or `fail`; default is `pass`. |
+| Operation                                                  | Behavior                                                                                             |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `await ctx.ai({ prompt, instructions?, model?, output? })` | A fresh model/tool session; returns Markdown or schema-validated data.                               |
+| `await ctx.call(tool, input)`                              | Invokes a frozen `defineTool()` operation with typed input and output. See [shared tools](tools.md). |
+| `await ctx.exec(command, { timeoutMs?, env? })`            | Bash in the project directory. Returns command status and output.                                    |
+| `await ctx.readFile(path)`                                 | Reads text through the host file tools.                                                              |
+| `await ctx.writeFile(path, text)`                          | Writes text through managed file recovery.                                                           |
+| `await ctx.log(message)`                                   | Adds a durable activity message.                                                                     |
+| `ctx.summary(markdown)`                                    | Sets the visible result summary.                                                                     |
+| `ctx.artifact(name, text)`                                 | Adds a named text artifact.                                                                          |
+| `ctx.outcome(value)`                                       | Sets the attempt's outcome to `pass`, `retry`, or `fail`; default is `pass`.                         |
 
 Await every context operation before starting another. A block cannot use `Promise.all` to run its effects concurrently; split independent work into steps and compose them with `parallel()`.
 
@@ -186,11 +186,11 @@ Read-only AI calls use `protectedPaths: ["**/*"]` with the same documented exclu
 
 The modules in `examples/blocks/` can be saved individually in a project's block library:
 
-| Block | Input | Output | Effects |
-| --- | --- | --- | --- |
-| `collect-commit-diff` | `{source: "staged" \| "unstaged"}` | `{diff, context}` | Reads one tracked Git diff; no model. |
-| `draft-commit-message` | `{diff, context?}` | `{message}` | Luna (`gpt-6-luna`, low reasoning), with no file, shell or MCP tools. |
-| `validate-commit-message` | `{message}` | `{message, subject}` | Deterministic syntax/style validation; no model. |
+| Block                     | Input                              | Output               | Effects                                                               |
+| ------------------------- | ---------------------------------- | -------------------- | --------------------------------------------------------------------- |
+| `collect-commit-diff`     | `{source: "staged" \| "unstaged"}` | `{diff, context}`    | Reads one tracked Git diff; no model.                                 |
+| `draft-commit-message`    | `{diff, context?}`                 | `{message}`          | Luna (`gpt-6-luna`, low reasoning), with no file, shell or MCP tools. |
+| `validate-commit-message` | `{message}`                        | `{message, subject}` | Deterministic syntax/style validation; no model.                      |
 
 `examples/commit-message.ts` composes all three. The writer can also consume a supplied diff without collecting repository state. The validator emits the `commit-message` artifact. These blocks never stage, commit or push, and a validation pass is not implementation acceptance. Keep publication in a separate authorized block.
 

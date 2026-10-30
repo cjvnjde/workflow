@@ -56,29 +56,29 @@ Sequences, parallel groups, branches, and loop limits appear in the graph. Step 
 
 Type `/` to see commands, use **↑/↓** to select, and **Tab** to complete. Session, model, and settings pickers support typing to filter and **Enter** to select.
 
-| Command | Action |
-| --- | --- |
-| `/new`, `/sessions` | Start another conversation or reopen task/run history. |
-| `/open <id>`, `/id`, `/web` | Open a saved task/run, show its ID, or show its browser link. |
-| `/graph`, `/source`, `/step [id]` | Inspect composition, code, or a step's instructions and results. |
-| `/approve`, `/reject` | Accept the current draft revision or decline it. |
-| `/auto [on\|off]` | Set approval for new tasks in this workspace; omit the argument to toggle. |
-| `/pause`, `/resume`, `/cancel` | Pause after active steps, resume/retry interrupted execution, or stop work. |
-| `/retry` | Retry failed or cancelled task planning. |
-| `/recover` | Retry managed-file recovery after resolving conflicts. |
-| `/settings` | Open model, thinking, approval, and connection settings; inspect project configuration. |
-| `/models [search]`, `/thinking` | Set the project's default model or its supported thinking level. |
-| `/login [provider]`, `/logout` | Connect or disconnect a model provider. |
-| `/help`, `/quit` | Show help or close the workspace. |
+| Command                           | Action                                                                                  |
+| --------------------------------- | --------------------------------------------------------------------------------------- |
+| `/new`, `/sessions`               | Start another conversation or reopen task/run history.                                  |
+| `/open <id>`, `/id`, `/web`       | Open a saved task/run, show its ID, or show its browser link.                           |
+| `/graph`, `/source`, `/step [id]` | Inspect composition, code, or a step's instructions and results.                        |
+| `/approve`, `/reject`             | Accept the current draft revision or decline it.                                        |
+| `/auto [on\|off]`                 | Set approval for new tasks in this workspace; omit the argument to toggle.              |
+| `/pause`, `/resume`, `/cancel`    | Pause after active steps, resume/retry interrupted execution, or stop work.             |
+| `/retry`                          | Retry failed or cancelled task planning.                                                |
+| `/recover`                        | Retry managed-file recovery after resolving conflicts.                                  |
+| `/settings`                       | Open model, thinking, approval, and connection settings; inspect project configuration. |
+| `/models [search]`, `/thinking`   | Set the project's default model or its supported thinking level.                        |
+| `/login [provider]`, `/logout`    | Connect or disconnect a model provider.                                                 |
+| `/help`, `/quit`                  | Show help or close the workspace.                                                       |
 
-| Shortcut | Action |
-| --- | --- |
-| **Ctrl+N** | New session. |
-| **Ctrl+P** | Session history. |
-| **Ctrl+G** | Toggle full graph view. |
+| Shortcut        | Action                                                      |
+| --------------- | ----------------------------------------------------------- |
+| **Ctrl+N**      | New session.                                                |
+| **Ctrl+P**      | Session history.                                            |
+| **Ctrl+G**      | Toggle full graph view.                                     |
 | **PgUp / PgDn** | Scroll conversation or details; mouse scrolling also works. |
-| **Esc** | Return to the conversation; cancel pending sign-in. |
-| **Ctrl+C** | Close the workspace and restore the terminal. |
+| **Esc**         | Return to the conversation; cancel pending sign-in.         |
+| **Ctrl+C**      | Close the workspace and restore the terminal.               |
 
 ## Connect a model
 

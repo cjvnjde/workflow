@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { chmod, mkdir, readFile, stat, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
-import { Workspace } from "../src/workspace.js";
-import { FileJournal } from "../src/recovery.js";
-import { atomicWrite } from "../src/atomic-file.js";
+import { Workspace } from "../src/core/storage/workspace.js";
+import { FileJournal } from "../src/core/storage/recovery.js";
+import { atomicWrite } from "../src/infrastructure/atomic-file.js";
 import { fixture } from "./helpers.js";
 
 async function recoveryFixture(t: import("node:test").TestContext) {
@@ -35,7 +35,11 @@ test("recovery survives restart after a later write intent was saved but never p
   const { project, journal, workspace, recovery } = await recoveryFixture(t);
   await writeFile(path.join(project, "source.ts"), "original");
   await workspace.write("source.ts", "first change");
-  await journal.prepare("source.ts", await recovery.snapshot("source.ts"), Buffer.from("second change"));
+  await journal.prepare(
+    "source.ts",
+    await recovery.snapshot("source.ts"),
+    Buffer.from("second change"),
+  );
   const restarted = await FileJournal.open(path.join(project, ".workflow", "recovery-test"));
   assert.equal((await restarted.settle(recovery, false)).status, "restored");
   assert.equal(await readFile(path.join(project, "source.ts"), "utf8"), "original");
@@ -67,18 +71,28 @@ test("atomic writes preserve the original when publication fails", async (t) => 
   const { project } = await fixture(t);
   const filename = path.join(project, "atomic.ts");
   await writeFile(filename, "original");
-  await assert.rejects(atomicWrite(filename, "replacement", 0o644, () => { throw new Error("Cancelled before publish"); }), /Cancelled/);
+  await assert.rejects(
+    atomicWrite(filename, "replacement", 0o644, () => {
+      throw new Error("Cancelled before publish");
+    }),
+    /Cancelled/,
+  );
   assert.equal(await readFile(filename, "utf8"), "original");
-  await assert.rejects(atomicWrite(filename, "replacement", 0o644, async () => {
-    await Promise.resolve();
-    throw new Error("Async validation failed");
-  }), /Async validation/);
+  await assert.rejects(
+    atomicWrite(filename, "replacement", 0o644, async () => {
+      await Promise.resolve();
+      throw new Error("Async validation failed");
+    }),
+    /Async validation/,
+  );
   assert.equal(await readFile(filename, "utf8"), "original");
 });
 
 test("cancelled file tools cannot publish writes", async (t) => {
   const { project } = await fixture(t);
-  const workspace = await Workspace.create(project, { signal: AbortSignal.abort(new Error("Cancelled")) });
+  const workspace = await Workspace.create(project, {
+    signal: AbortSignal.abort(new Error("Cancelled")),
+  });
   await assert.rejects(workspace.write("cancelled.ts", "content"), /Cancelled/);
   await assert.rejects(stat(path.join(project, "cancelled.ts")), { code: "ENOENT" });
 });

@@ -6,7 +6,7 @@ import test, { type TestContext } from "node:test";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { SecretInput } from "../src/secret-input.js";
+import { SecretInput } from "../src/terminal/secret-input.js";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 
@@ -20,11 +20,20 @@ async function terminalFixture(t: TestContext) {
   const bun = Bun.which("bun");
   assert.ok(bun);
   await symlink(bun, path.join(bin, "bun"));
-  t.after(async () => { await rm(directory, { recursive: true, force: true }); });
+  t.after(async () => {
+    await rm(directory, { recursive: true, force: true });
+  });
 
   return {
-    directory, home,
-    env: { PATH: bin, HOME: directory, WORKFLOW_HOME: home, TERM: "xterm-256color", PI_OFFLINE: "1" },
+    directory,
+    home,
+    env: {
+      PATH: bin,
+      HOME: directory,
+      WORKFLOW_HOME: home,
+      TERM: "xterm-256color",
+      PI_OFFLINE: "1",
+    },
   };
 }
 
@@ -32,19 +41,32 @@ function interactive(args: string[], context: Awaited<ReturnType<typeof terminal
   let output = "";
   const listeners = new Set<() => void>();
   const child = Bun.spawn(["workflow", ...args], {
-    cwd: context.directory, env: context.env,
-    terminal: { cols: 80, rows: 24, data: (_terminal, data) => {
-      output += new TextDecoder().decode(data);
-      for (const listener of listeners) { listener(); }
-    } },
+    cwd: context.directory,
+    env: context.env,
+    terminal: {
+      cols: 80,
+      rows: 24,
+      data: (_terminal, data) => {
+        output += new TextDecoder().decode(data);
+        for (const listener of listeners) {
+          listener();
+        }
+      },
+    },
   });
   assert.ok(child.terminal);
   const terminal = child.terminal;
   const waitFor = async (pattern: RegExp) => {
-    if (pattern.test(output)) { return; }
+    if (pattern.test(output)) {
+      return;
+    }
     await new Promise<void>((resolve, reject) => {
       const listener = () => {
-        if (pattern.test(output)) { clearTimeout(timeout); listeners.delete(listener); resolve(); }
+        if (pattern.test(output)) {
+          clearTimeout(timeout);
+          listeners.delete(listener);
+          resolve();
+        }
       };
       const timeout = setTimeout(() => {
         listeners.delete(listener);
@@ -52,7 +74,10 @@ function interactive(args: string[], context: Awaited<ReturnType<typeof terminal
       }, 10_000);
       listeners.add(listener);
       void child.exited.then((code) => {
-        if (listeners.delete(listener)) { clearTimeout(timeout); reject(new Error(`Terminal exited ${code} before ${pattern}: ${output}`)); }
+        if (listeners.delete(listener)) {
+          clearTimeout(timeout);
+          reject(new Error(`Terminal exited ${code} before ${pattern}: ${output}`));
+        }
       });
     });
   };
@@ -88,19 +113,31 @@ test("workflow login uses a real Pi TUI with no Pi/Node on PATH and stores keys 
     await session.waitFor(/to select/);
     session.terminal.write("\r");
     assert.equal(await session.child.exited, 0);
-    const credentials = z.object({ openai: z.object({ type: z.literal("api_key"), key: z.string() }) }).parse(JSON.parse(await readFile(path.join(context.home, "auth.json"), "utf8")));
+    const credentials = z
+      .object({ openai: z.object({ type: z.literal("api_key"), key: z.string() }) })
+      .parse(JSON.parse(await readFile(path.join(context.home, "auth.json"), "utf8")));
     assert.equal(credentials.openai.key, key);
     assert.equal((await stat(path.join(context.home, "auth.json"))).mode & 0o777, 0o600);
-    const settings = z.object({ agent: z.object({ provider: z.literal("openai"), model: z.string() }) }).parse(JSON.parse(await readFile(path.join(context.home, "settings.json"), "utf8")));
+    const settings = z
+      .object({ agent: z.object({ provider: z.literal("openai"), model: z.string() }) })
+      .parse(JSON.parse(await readFile(path.join(context.home, "settings.json"), "utf8")));
     assert.ok(settings.agent.model);
     assert.ok(!session.output().includes(key), "raw keys must never appear in terminal output");
-    const status = Bun.spawn(["workflow", "auth"], { cwd: context.directory, env: context.env, stdout: "pipe", stderr: "pipe" });
+    const status = Bun.spawn(["workflow", "auth"], {
+      cwd: context.directory,
+      env: context.env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
     const metadata = await new Response(status.stdout).text();
     assert.equal(await status.exited, 0);
     assert.match(metadata, /openai · api_key/);
     assert.ok(!metadata.includes(key));
   } finally {
-    if (session.child.exitCode === null) { session.child.kill(); await session.child.exited; }
+    if (session.child.exitCode === null) {
+      session.child.kill();
+      await session.child.exited;
+    }
     session.terminal.close();
   }
 });
@@ -117,11 +154,16 @@ test("cancelling a hidden API-key prompt does not save the typed secret", async 
     session.terminal.write("\x1b");
     assert.equal(await session.child.exited, 0);
     assert.match(session.output(), /Setup cancelled/);
-    const credentials: unknown = JSON.parse(await readFile(path.join(context.home, "auth.json"), "utf8"));
+    const credentials: unknown = JSON.parse(
+      await readFile(path.join(context.home, "auth.json"), "utf8"),
+    );
     assert.deepEqual(credentials, {});
     assert.ok(!session.output().includes(key));
   } finally {
-    if (session.child.exitCode === null) { session.child.kill(); await session.child.exited; }
+    if (session.child.exitCode === null) {
+      session.child.kill();
+      await session.child.exited;
+    }
     session.terminal.close();
   }
 });
@@ -134,11 +176,16 @@ test("cancelling terminal setup creates no credential and restores the terminal"
     session.terminal.write("\x1b");
     assert.equal(await session.child.exited, 0);
     assert.match(session.output(), /Login cancelled/);
-    const credentials: unknown = JSON.parse(await readFile(path.join(context.home, "auth.json"), "utf8"));
+    const credentials: unknown = JSON.parse(
+      await readFile(path.join(context.home, "auth.json"), "utf8"),
+    );
     assert.deepEqual(credentials, {});
     assert.ok(session.output().includes("\x1b[?1049l"), "alternate screen must be restored");
   } finally {
-    if (session.child.exitCode === null) { session.child.kill(); await session.child.exited; }
+    if (session.child.exitCode === null) {
+      session.child.kill();
+      await session.child.exited;
+    }
     session.terminal.close();
   }
 });

@@ -16,8 +16,8 @@ import test, { type TestContext } from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { z } from "zod";
-import { loadLibrary } from "../src/library.js";
-import { eventSchema, runSchema } from "../src/domain.js";
+import { loadLibrary } from "../src/core/library/library.js";
+import { eventSchema, runSchema } from "../src/contracts/domain.js";
 
 const execute = promisify(execFile);
 const packageDirectory = fileURLToPath(new URL("../", import.meta.url));
@@ -31,10 +31,7 @@ async function commandFixture(t: TestContext) {
   const bin = path.join(directory, "bin");
   await mkdir(project);
   await mkdir(bin);
-  await symlink(
-    path.join(packageDirectory, "dist/cli.js"),
-    path.join(bin, "workflow"),
-  );
+  await symlink(path.join(packageDirectory, "dist/cli.js"), path.join(bin, "workflow"));
   const runtime = Bun.which("bun");
   assert.ok(runtime);
   await symlink(runtime, path.join(bin, "bun"));
@@ -69,25 +66,24 @@ test("workflow init creates policy in the caller's project without installing an
     scripts: { test: "bun test" },
   });
   await writeFile(path.join(project, "package.json"), manifest);
-  const result = await run([
-    "init",
-    "--instructions",
-    "Preserve the project's public API.",
-  ]);
+  const result = await run(["init", "--instructions", "Preserve the project's public API."]);
   assert.match(result.stdout, /with 8 blocks/);
   assert.match(result.stdout, /workflow setup/);
   assert.ok(!result.stdout.includes("Preparing model profiles"));
   const library = await loadLibrary(project);
-  assert.deepEqual(Object.keys(library.blocks).sort(), ["checks", "fix", "implement", "push", "reproduce", "requirements", "review", "verify"]);
-  assert.equal(
-    library.config.instructions,
-    "Preserve the project's public API.",
-  );
+  assert.deepEqual(Object.keys(library.blocks).sort(), [
+    "checks",
+    "fix",
+    "implement",
+    "push",
+    "reproduce",
+    "requirements",
+    "review",
+    "verify",
+  ]);
+  assert.equal(library.config.instructions, "Preserve the project's public API.");
   assert.deepEqual(library.config.commands.test?.argv, ["bun", "run", "test"]);
-  assert.equal(
-    await readFile(path.join(project, "package.json"), "utf8"),
-    manifest,
-  );
+  assert.equal(await readFile(path.join(project, "package.json"), "utf8"), manifest);
   await assert.rejects(access(path.join(project, "node_modules")), {
     code: "ENOENT",
   });
@@ -96,45 +92,33 @@ test("workflow init creates policy in the caller's project without installing an
 test("workflow does not fall back to its installation's configuration", async (t) => {
   const { run } = await commandFixture(t);
   await assert.rejects(run(["serve", "--demo"]), (error: unknown) => {
-    const failure = z
-      .object({ code: z.literal(1), stderr: z.string() })
-      .parse(error);
+    const failure = z.object({ code: z.literal(1), stderr: z.string() }).parse(error);
     assert.match(failure.stderr, /Run workflow init in this folder first/);
 
     return true;
   });
-  await assert.rejects(
-    run(["init", "--project", "/tmp/unused"]),
-    (error: unknown) => {
-      const failure = z
-        .object({ code: z.literal(1), stderr: z.string() })
-        .parse(error);
-      assert.match(failure.stderr, /Unknown option '--project'/);
+  await assert.rejects(run(["init", "--project", "/tmp/unused"]), (error: unknown) => {
+    const failure = z.object({ code: z.literal(1), stderr: z.string() }).parse(error);
+    assert.match(failure.stderr, /Unknown option '--project'/);
 
-      return true;
-    },
-  );
+    return true;
+  });
 });
 
 test("the package ships a Bun executable and UI, not project state or a development runner", async (t) => {
   const manifest = z
     .object({ bin: z.object({ workflow: z.string() }) })
-    .parse(
-      JSON.parse(
-        await readFile(path.join(packageDirectory, "package.json"), "utf8"),
-      ),
-    );
+    .parse(JSON.parse(await readFile(path.join(packageDirectory, "package.json"), "utf8")));
   assert.equal(manifest.bin.workflow, "dist/cli.js");
   const directory = await mkdtemp(path.join(os.tmpdir(), "workflow-pack-"));
   t.after(async () => {
     await rm(directory, { recursive: true, force: true });
   });
   const archive = path.join(directory, "workflow.tgz");
-  await execute(
-    "bun",
-    ["pm", "pack", "--filename", archive, "--ignore-scripts", "--quiet"],
-    { cwd: packageDirectory, timeout: 15_000 },
-  );
+  await execute("bun", ["pm", "pack", "--filename", archive, "--ignore-scripts", "--quiet"], {
+    cwd: packageDirectory,
+    timeout: 15_000,
+  });
   const result = await execute("tar", ["-tzf", archive], { timeout: 15_000 });
   const files = result.stdout
     .trim()
@@ -148,9 +132,9 @@ test("the package ships a Bun executable and UI, not project state or a developm
   assert.ok(files.includes("dist/workflow-bundle.js"));
   assert.ok(files.includes("dist/program-runtime.js"));
   assert.ok(files.includes("dist/tool-worker.js"));
-  assert.ok(files.includes("dist/tool-sdk.d.ts"));
+  assert.ok(files.includes("dist/sdk/tool-sdk.d.ts"));
   assert.ok(files.includes("dist/workflow-sdk.d.ts"));
-  assert.ok(files.includes("dist/composition-sdk.d.ts"));
+  assert.ok(files.includes("dist/sdk/composition-sdk.d.ts"));
   for (const name of ["core", "web", "terminal"]) {
     assert.ok(files.includes(`dist/${name}.js`));
     assert.ok(files.includes(`dist/${name}.d.ts`));
@@ -158,10 +142,15 @@ test("the package ships a Bun executable and UI, not project state or a developm
   assert.ok(files.includes("examples/implement-reviewed.ts"));
   assert.ok(files.includes("dist/web/index.html"));
   assert.ok(files.some((file) => file.startsWith("dist/web/assets/")));
+  assert.ok(!files.some((file) => /^(src|tests|node_modules|\.workflow)\//.test(file)));
   assert.ok(
-    !files.some((file) => /^(src|tests|node_modules|\.workflow)\//.test(file)),
+    !files.some(
+      (file) =>
+        file.endsWith(".ts") &&
+        !(file.startsWith("dist/") && file.endsWith(".d.ts")) &&
+        !file.startsWith("examples/"),
+    ),
   );
-  assert.ok(!files.some((file) => file.endsWith(".ts") && !(file.startsWith("dist/") && file.endsWith(".d.ts")) && !file.startsWith("examples/")));
 });
 
 test("workflow serves the bundled UI from the install location while using the caller's project", async (t) => {
@@ -196,9 +185,7 @@ test("workflow serves the bundled UI from the install location while using the c
     };
     child.stdout.on("data", (chunk: Buffer) => {
       output += chunk.toString();
-      const address = output.match(
-        /Workflow DEMO · (http:\/\/127\.0\.0\.1:\d+)/,
-      )?.[1];
+      const address = output.match(/Workflow DEMO · (http:\/\/127\.0\.0\.1:\d+)/)?.[1];
       if (address) {
         finish(undefined, address);
       }
@@ -218,13 +205,9 @@ test("workflow serves the bundled UI from the install location while using the c
     });
     assert.equal(response.status, 200);
     const data: unknown = await response.json();
-    const loaded = z
-      .object({ project: z.string(), mode: z.literal("demo") })
-      .parse(data);
+    const loaded = z.object({ project: z.string(), mode: z.literal("demo") }).parse(data);
     assert.equal(await realpath(loaded.project), await realpath(project));
-    const html = await (
-      await fetch(address, { signal: AbortSignal.timeout(5000) })
-    ).text();
+    const html = await (await fetch(address, { signal: AbortSignal.timeout(5000) })).text();
     assert.match(html, /<title>Workflow/);
     const script = html.match(/src="([^"]+\.js)"/)?.[1];
     assert.ok(script);
@@ -255,20 +238,33 @@ test("a killed CLI recovers its lease and Temporal server, then resumes without 
     });
     let output = "";
     let errors = "";
-    child.stderr.on("data", (data: Buffer) => { errors += data.toString(); });
+    child.stderr.on("data", (data: Buffer) => {
+      errors += data.toString();
+    });
     const exited = new Promise<number | null>((resolve, reject) => {
       child.once("error", reject);
       child.once("close", resolve);
     });
     const ready = new Promise<string>((resolve, reject) => {
-      const timer = setTimeout(() => { reject(new Error(`Server not ready: ${output}\n${errors}`)); }, 20_000);
+      const timer = setTimeout(() => {
+        reject(new Error(`Server not ready: ${output}\n${errors}`));
+      }, 20_000);
       child.stdout.on("data", (data: Buffer) => {
         output += data.toString();
         const address = output.match(/Workflow DEMO · (http:\/\/127\.0\.0\.1:\d+)/)?.[1];
-        if (address) { clearTimeout(timer); resolve(address); }
+        if (address) {
+          clearTimeout(timer);
+          resolve(address);
+        }
       });
-      child.once("close", (code) => { clearTimeout(timer); reject(new Error(`Server exited ${code}: ${errors}`)); });
-      child.once("error", (error) => { clearTimeout(timer); reject(error); });
+      child.once("close", (code) => {
+        clearTimeout(timer);
+        reject(new Error(`Server exited ${code}: ${errors}`));
+      });
+      child.once("error", (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
     });
     void ready.catch(() => {});
     void exited.catch(() => {});
@@ -281,7 +277,9 @@ test("a killed CLI recovers its lease and Temporal server, then resumes without 
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   try {
     const address = await first.ready;
-    const response = await fetch(`${address}/api/stream`, { signal: AbortSignal.any([streamController.signal, AbortSignal.timeout(15_000)]) });
+    const response = await fetch(`${address}/api/stream`, {
+      signal: AbortSignal.any([streamController.signal, AbortSignal.timeout(15_000)]),
+    });
     assert.ok(response.body);
     reader = response.body.getReader();
     await reader.read();
@@ -289,23 +287,35 @@ test("a killed CLI recovers its lease and Temporal server, then resumes without 
       let buffer = "";
       while (reader) {
         const chunk = await reader.read();
-        if (chunk.done) { throw new Error("Event stream closed before the checkpoint"); }
+        if (chunk.done) {
+          throw new Error("Event stream closed before the checkpoint");
+        }
         buffer += new TextDecoder().decode(chunk.value);
         const frames = buffer.split("\n\n");
         buffer = frames.pop() ?? "";
         for (const frame of frames) {
           const data = frame.split("\n").find((line) => line.startsWith("data: "));
-          if (data && eventSchema.parse(JSON.parse(data.slice(6))).kind === kind) { return; }
+          if (data && eventSchema.parse(JSON.parse(data.slice(6))).kind === kind) {
+            return;
+          }
         }
       }
     };
     const mutate = async (base: string, route: string, body: unknown) => {
-      const result = await fetch(`${base}${route}`, { method: "POST", headers: { "x-workflow-client": "1", "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(10_000) });
+      const result = await fetch(`${base}${route}`, {
+        method: "POST",
+        headers: { "x-workflow-client": "1", "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10_000),
+      });
       assert.equal(result.status, 200, await result.clone().text());
 
       return runSchema.parse(await result.json());
     };
-    const run = await mutate(address, "/api/runs", { task: "Crash-recoverable bug", strategy: "bug" });
+    const run = await mutate(address, "/api/runs", {
+      task: "Crash-recoverable bug",
+      strategy: "bug",
+    });
     const started = readEvent("node_start");
     await mutate(address, `/api/runs/${run.id}/approve`, {});
     await started;
@@ -322,14 +332,18 @@ test("a killed CLI recovers its lease and Temporal server, then resumes without 
     await first.exited;
     second = launch();
     const restoredAddress = await second.ready;
-    const restored = runSchema.parse(await (await fetch(`${restoredAddress}/api/runs/${run.id}`)).json());
+    const restored = runSchema.parse(
+      await (await fetch(`${restoredAddress}/api/runs/${run.id}`)).json(),
+    );
     assert.equal(restored.status, "paused");
     assert.deepEqual(restored.artifacts, before.artifacts);
     const port = new URL(restoredAddress).port;
     const resumed = await context.run(["resume", run.id, "--port", port]);
     assert.match(resumed.stdout, new RegExp(run.id));
     const completedController = new AbortController();
-    const completionStream = await fetch(`${restoredAddress}/api/stream`, { signal: AbortSignal.any([completedController.signal, AbortSignal.timeout(15_000)]) });
+    const completionStream = await fetch(`${restoredAddress}/api/stream`, {
+      signal: AbortSignal.any([completedController.signal, AbortSignal.timeout(15_000)]),
+    });
     assert.ok(completionStream.body);
     reader = completionStream.body.getReader();
     try {
@@ -338,82 +352,139 @@ test("a killed CLI recovers its lease and Temporal server, then resumes without 
       completedController.abort();
       await reader.cancel().catch(() => {});
     }
-    const completed = runSchema.parse(await (await fetch(`${restoredAddress}/api/runs/${run.id}`)).json());
+    const completed = runSchema.parse(
+      await (await fetch(`${restoredAddress}/api/runs/${run.id}`)).json(),
+    );
     assert.equal(completed.status, "completed");
     assert.equal(completed.attempts.filter((attempt) => attempt.nodeId === "prepare").length, 1);
   } finally {
     streamController.abort();
     await reader?.cancel().catch(() => {});
     for (const process of [second, first]) {
-      if (process && process.child.exitCode === null && process.child.signalCode === null) { process.child.kill("SIGTERM"); }
+      if (process && process.child.exitCode === null && process.child.signalCode === null) {
+        process.child.kill("SIGTERM");
+      }
       await process?.exited;
     }
   }
 });
 
-test("workflow exec uses the packaged engine without a web/API server and returns a machine-readable result", async t => {
+test("workflow exec uses the packaged engine without a web/API server and returns a machine-readable result", async (t) => {
   const { project, env, run } = await commandFixture(t);
   await run(["init"]);
-  await writeFile(path.join(project, "standalone.ts"), `import { workflow, block, step } from "workflow";
+  await writeFile(
+    path.join(project, "standalone.ts"),
+    `import { workflow, block, step } from "workflow";
 const check = block({run(ctx) { ctx.summary("Terminal completed"); return {passed:true}; }});
-export default workflow({name:"Terminal",flow:step("check",check)});`);
-  const result = await execute("workflow", ["exec", "standalone.ts", "--demo", "--json"], { cwd: project, env, timeout: 30_000 });
+export default workflow({name:"Terminal",flow:step("check",check)});`,
+  );
+  const result = await execute("workflow", ["exec", "standalone.ts", "--demo", "--json"], {
+    cwd: project,
+    env,
+    timeout: 30_000,
+  });
   const completed = runSchema.parse(JSON.parse(result.stdout));
   assert.equal(completed.status, "completed");
   assert.equal(completed.attempts[0]?.result?.summary, "Terminal completed");
   await assert.rejects(access(path.join(project, ".workflow/lock")), { code: "ENOENT" });
   await access(path.join(project, ".workflow/runs", completed.id, "run.json"));
 
-  await writeFile(path.join(project, "failed.ts"), `import { workflow, block, step } from "workflow";
+  await writeFile(
+    path.join(project, "failed.ts"),
+    `import { workflow, block, step } from "workflow";
 const check = block({run() { throw new Error("Expected terminal failure"); }});
-export default workflow({name:"Failure",flow:step("check",check)});`);
-  await assert.rejects(execute("workflow", ["exec", "failed.ts", "--demo", "--json"], { cwd: project, env, timeout: 30_000 }), error => {
-    const failure = z.object({ code: z.literal(1), stdout: z.string() }).parse(error);
-    assert.equal(runSchema.parse(JSON.parse(failure.stdout)).status, "failed");
-    return true;
-  });
+export default workflow({name:"Failure",flow:step("check",check)});`,
+  );
+  await assert.rejects(
+    execute("workflow", ["exec", "failed.ts", "--demo", "--json"], {
+      cwd: project,
+      env,
+      timeout: 30_000,
+    }),
+    (error) => {
+      const failure = z.object({ code: z.literal(1), stdout: z.string() }).parse(error);
+      assert.equal(runSchema.parse(JSON.parse(failure.stdout)).status, "failed");
+      return true;
+    },
+  );
 });
 
-test("packaged CLI executes frozen shared tools through its worker", async t => {
+test("packaged CLI executes frozen shared tools through its worker", async (t) => {
   const { project, env, run } = await commandFixture(t);
   await run(["init"]);
   await writeFile(path.join(project, "input.txt"), "packaged worker");
-  await writeFile(path.join(project, "tools.ts"), `import { workflow, block, step, defineTool, z } from "workflow";
+  await writeFile(
+    path.join(project, "tools.ts"),
+    `import { workflow, block, step, defineTool, z } from "workflow";
 const inspect = defineTool({name:"inspect", description:"Read text", replay:"safe", input:z.object({path:z.string()}),output:z.string(),
   execute: (input,ctx) => ctx.env.readText(input.path)});
-export default workflow({name:"Tools",flow:step("read",block({async run(ctx){const result=await ctx.call(inspect,{path:"input.txt"});ctx.summary(result);return result;}}))});`);
-  const result = await execute("workflow", ["exec", "tools.ts", "--json"], { cwd: project, env, timeout: 30_000 });
+export default workflow({name:"Tools",flow:step("read",block({async run(ctx){const result=await ctx.call(inspect,{path:"input.txt"});ctx.summary(result);return result;}}))});`,
+  );
+  const result = await execute("workflow", ["exec", "tools.ts", "--json"], {
+    cwd: project,
+    env,
+    timeout: 30_000,
+  });
   const completed = runSchema.parse(JSON.parse(result.stdout));
   assert.equal(completed.status, "completed", completed.error);
   assert.equal(completed.attempts[0]?.result?.summary, "packaged worker");
 });
 
-test("headless CLI server supports a separate terminal client and has no GUI routes", async t => {
+test("headless CLI server supports a separate terminal client and has no GUI routes", async (t) => {
   const { project, env, run } = await commandFixture(t);
   await run(["init"]);
-  const child = spawn("workflow", ["serve", "--no-web", "--demo", "--port", "0"], { cwd: project, env, stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn("workflow", ["serve", "--no-web", "--demo", "--port", "0"], {
+    cwd: project,
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   let output = "";
   let diagnostics = "";
-  child.stderr.on("data", chunk => { diagnostics += String(chunk); });
-  const closed = new Promise<number | null>((resolve, reject) => { child.once("close", resolve); child.once("error", reject); });
+  child.stderr.on("data", (chunk) => {
+    diagnostics += String(chunk);
+  });
+  const closed = new Promise<number | null>((resolve, reject) => {
+    child.once("close", resolve);
+    child.once("error", reject);
+  });
   void closed.catch(() => {});
   try {
     const address = await new Promise<string>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`Headless server did not start: ${diagnostics}`)), 15_000);
-      child.stdout.on("data", chunk => {
+      const timer = setTimeout(
+        () => reject(new Error(`Headless server did not start: ${diagnostics}`)),
+        15_000,
+      );
+      child.stdout.on("data", (chunk) => {
         output += String(chunk);
         const address = output.match(/http:\/\/127\.0\.0\.1:\d+/)?.[0];
-        if (address) { clearTimeout(timer); resolve(address); }
+        if (address) {
+          clearTimeout(timer);
+          resolve(address);
+        }
       });
-      child.once("close", () => { clearTimeout(timer); reject(new Error(diagnostics)); });
+      child.once("close", () => {
+        clearTimeout(timer);
+        reject(new Error(diagnostics));
+      });
       child.once("error", reject);
     });
     assert.equal((await fetch(address)).status, 404);
     const listed = await run(["runs", "--server", address, "--json"]);
     assert.deepEqual(JSON.parse(listed.stdout), []);
-    const taskResult = await run(["task", "Describe a terminal workflow", "--server", address, "--json"]);
-    const task = z.object({ id: z.string(), status: z.string() }).parse(JSON.parse(taskResult.stdout));
+    const taskResult = await run([
+      "task",
+      "Describe a terminal workflow",
+      "--server",
+      address,
+      "--json",
+    ]);
+    const task = z
+      .object({ id: z.string(), status: z.string() })
+      .parse(JSON.parse(taskResult.stdout));
     const shown = await run(["task-show", task.id, "--server", address, "--json"]);
     assert.equal(JSON.parse(shown.stdout).id, task.id);
-  } finally { child.kill("SIGTERM"); assert.equal(await closed, 0); }
+  } finally {
+    child.kill("SIGTERM");
+    assert.equal(await closed, 0);
+  }
 });

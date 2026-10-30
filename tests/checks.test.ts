@@ -1,16 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { runCheck } from "../src/checks.js";
+import { runCheck } from "../src/core/execution/checks.js";
 import { fixture } from "./helpers.js";
 
 test("checks use actual exit status rather than an agent claim", async (t) => {
   const { project, library } = await fixture(t);
   library.config.commands.test = {
-    argv: [
-      process.execPath,
-      "-e",
-      "console.log('regression failed'); process.exit(3)",
-    ],
+    argv: [process.execPath, "-e", "console.log('regression failed'); process.exit(3)"],
     timeoutMs: 2000,
   };
   const failure = await runCheck(

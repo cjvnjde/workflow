@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { ref, onScopeDispose, toRaw } from "vue";
 import { z } from "zod";
-import { request } from "../api.js";
-import type { McpServer } from "../../src/contracts.js";
-import type { OrchestrationSettings } from "../../src/contracts.js";
-import Field from "../components/Field.vue";
-import Icon from "../components/Icon.vue";
+import { request } from "../shared/api.js";
+import type { McpServer } from "../../src/contracts/index.js";
+import type { OrchestrationSettings } from "../../src/contracts/index.js";
+import Field from "../shared/Field.vue";
+import Icon from "../shared/Icon.vue";
 import McpSettings from "./McpSettings.vue";
 const props = defineProps<{
   projectCapabilities?: import("zod").infer<
-    typeof import("../../src/contracts.js").projectCapabilitiesSchema
+    typeof import("../../src/contracts/index.js").projectCapabilitiesSchema
   >;
 }>();
 const capabilities = defineModel<OrchestrationSettings["capabilities"]>({
@@ -21,41 +21,31 @@ const controller = new AbortController();
 onScopeDispose(() => controller.abort());
 function projectName(kind: string, id: string) {
   const key = kind === "skill" ? "skills" : "mcpServers";
-  return (
-    props.projectCapabilities?.capabilities[key].find((item) => item.id === id)
-      ?.name ?? id
-  );
+  return props.projectCapabilities?.capabilities[key].find((item) => item.id === id)?.name ?? id;
 }
 function enabled(kind: string, id: string) {
   const key = kind === "skill" ? "skills" : "mcpServers";
   return (
     capabilities.value[key].find((item) => item.id === id)?.enabled ??
-    props.projectCapabilities?.capabilities[key].find((item) => item.id === id)
-      ?.enabled ??
+    props.projectCapabilities?.capabilities[key].find((item) => item.id === id)?.enabled ??
     false
   );
 }
 function override(kind: string, id: string) {
   if (kind === "skill") {
     if (capabilities.value.skills.some((item) => item.id === id)) return;
-    const item = props.projectCapabilities?.capabilities.skills.find(
-      (item) => item.id === id,
-    );
+    const item = props.projectCapabilities?.capabilities.skills.find((item) => item.id === id);
     if (item) capabilities.value.skills.push(structuredClone(toRaw(item)));
   } else {
     if (capabilities.value.mcpServers.some((item) => item.id === id)) return;
-    const item = props.projectCapabilities?.capabilities.mcpServers.find(
-      (item) => item.id === id,
-    );
+    const item = props.projectCapabilities?.capabilities.mcpServers.find((item) => item.id === id);
     if (item) capabilities.value.mcpServers.push(structuredClone(toRaw(item)));
   }
 }
 async function inspect(id: string) {
   const server: McpServer | undefined =
     capabilities.value.mcpServers.find((item) => item.id === id) ??
-    props.projectCapabilities?.capabilities.mcpServers.find(
-      (item) => item.id === id,
-    );
+    props.projectCapabilities?.capabilities.mcpServers.find((item) => item.id === id);
   if (!server) return;
   inspecting.value = id;
   connectionStatus.value[id] = "Connecting…";
@@ -76,8 +66,7 @@ async function inspect(id: string) {
     connectionStatus.value[id] =
       `Connected · ${result.tools.length} tools: ${result.tools.map((tool) => tool.name).join(", ")}`;
   } catch (error) {
-    connectionStatus.value[id] =
-      error instanceof Error ? error.message : String(error);
+    connectionStatus.value[id] = error instanceof Error ? error.message : String(error);
   } finally {
     inspecting.value = undefined;
   }
@@ -111,35 +100,22 @@ function addServer() {
     <article class="settings-card">
       <h2>From this project</h2>
       <p>
-        Skills are discovered from .agents/skills, .claude/skills, .codex/skills
-        and .pi/skills. MCP servers come from .mcp.json, .codex/config.toml,
-        .vscode/mcp.json and .pi/mcp.json. New runs reload these files; existing
-        runs keep their snapshot.
+        Skills are discovered from .agents/skills, .claude/skills, .codex/skills and .pi/skills. MCP
+        servers come from .mcp.json, .codex/config.toml, .vscode/mcp.json and .pi/mcp.json. New runs
+        reload these files; existing runs keep their snapshot.
       </p>
       <p>
-        Entries below with the same ID override project files, including
-        disabling them. Edit discovered entries in their source files.
+        Entries below with the same ID override project files, including disabling them. Edit
+        discovered entries in their source files.
       </p>
-      <p v-if="!projectCapabilities?.sources.length">
-        No project skills or MCP servers found.
-      </p>
+      <p v-if="!projectCapabilities?.sources.length">No project skills or MCP servers found.</p>
       <ul v-else>
-        <li
-          v-for="source in projectCapabilities.sources"
-          :key="source.kind + source.id"
-        >
+        <li v-for="source in projectCapabilities.sources" :key="source.kind + source.id">
           <strong>{{ projectName(source.kind, source.id) }}</strong> ·
-          {{ enabled(source.kind, source.id) ? "Enabled" : "Disabled" }} ·
-          {{ source.kind }} ·
+          {{ enabled(source.kind, source.id) ? "Enabled" : "Disabled" }} · {{ source.kind }} ·
           {{ source.path }}
-          <button @click="override(source.kind, source.id)">
-            Customize in Workflow
-          </button>
-          <button
-            v-if="source.kind === 'mcp'"
-            :disabled="!!inspecting"
-            @click="inspect(source.id)"
-          >
+          <button @click="override(source.kind, source.id)">Customize in Workflow</button>
+          <button v-if="source.kind === 'mcp'" :disabled="!!inspecting" @click="inspect(source.id)">
             Test connection
           </button>
           <p v-if="connectionStatus[source.id]" role="status">
@@ -147,11 +123,7 @@ function addServer() {
           </p>
         </li>
       </ul>
-      <p
-        v-for="warning in projectCapabilities?.warnings"
-        :key="warning"
-        role="status"
-      >
+      <p v-for="warning in projectCapabilities?.warnings" :key="warning" role="status">
         {{ warning }}
       </p>
     </article>
@@ -159,48 +131,38 @@ function addServer() {
       <div>
         <h2>Skills</h2>
         <p>
-          Explicit instructions available during planning and in execution
-          steps. Enable only what this project needs.
+          Explicit instructions available during planning and in execution steps. Enable only what
+          this project needs.
         </p>
       </div>
       <button @click="addSkill"><Icon name="plus" />Add skill</button>
     </div>
-    <article
-      v-for="skill in capabilities.skills"
-      :key="skill.id"
-      class="settings-card"
-    >
+    <article v-for="skill in capabilities.skills" :key="skill.id" class="settings-card">
       <div class="card-title">
         <strong>{{ skill.name }}</strong
-        ><label class="checkbox"
-          ><input v-model="skill.enabled" type="checkbox" />Enabled</label
+        ><label class="checkbox"><input v-model="skill.enabled" type="checkbox" />Enabled</label
         ><button
           class="icon-button"
           :aria-label="`Remove ${skill.name}`"
-          @click="
-            capabilities.skills = capabilities.skills.filter(
-              (item) => item.id !== skill.id,
-            )
-          "
+          @click="capabilities.skills = capabilities.skills.filter((item) => item.id !== skill.id)"
         >
           <Icon name="close" />
         </button>
       </div>
-      <Field v-slot="{ id }" label="Skill name"
-        ><input :id="id" v-model="skill.name" /></Field
+      <Field v-slot="{ id }" label="Skill name"><input :id="id" v-model="skill.name" /></Field
       ><Field v-slot="{ id }" label="Skill description"
         ><input :id="id" v-model="skill.description" /></Field
       ><Field v-slot="{ id }" label="Skill instructions">
-        <textarea v-autosize :id="id" v-model="skill.content" :rows="6" />
+        <textarea :id="id" v-model="skill.content" v-autosize :rows="6" />
       </Field>
     </article>
     <div class="settings-section-title">
       <div>
         <h2>MCP servers</h2>
         <p>
-          Connect a local process or Streamable HTTP endpoint. All tools from
-          enabled servers are available to execution blocks. The coordinator
-          composes graphs from supplied context without calling MCP tools.
+          Connect a local process or Streamable HTTP endpoint. All tools from enabled servers are
+          available to execution blocks. The coordinator composes graphs from supplied context
+          without calling MCP tools.
         </p>
       </div>
       <button @click="addServer"><Icon name="plus" />Add MCP server</button>
@@ -211,9 +173,7 @@ function addServer() {
       :model-value="server"
       @update:model-value="capabilities.mcpServers[index] = $event"
       @remove="
-        capabilities.mcpServers = capabilities.mcpServers.filter(
-          (item) => item.id !== server.id,
-        )
+        capabilities.mcpServers = capabilities.mcpServers.filter((item) => item.id !== server.id)
       "
     />
   </section>

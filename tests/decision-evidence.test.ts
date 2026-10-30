@@ -1,13 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  block,
-  step,
-  repeatUntil,
-  when,
-  describeFlow,
-} from "../src/workflow-sdk.js";
-import { executeFlow, type GroupState } from "../src/composition-runtime.js";
+import { block, step, repeatUntil, when, describeFlow } from "../src/sdk/workflow-sdk.js";
+import { executeFlow, type GroupState } from "../src/core/execution/composition-runtime.js";
 
 test("loop evidence distinguishes false, early exit, explicit repeat and exhausted limit", async () => {
   for (const mode of ["early", "limit", "explicit"] as const) {
@@ -89,14 +83,7 @@ test("conditional evidence records the selected route and replay compatibility s
       },
     });
     assert.deepEqual(calls, ["no"]);
-    assert.equal(
-      events.filter((e) => e.decision).length,
-      recordDecisions ? 1 : 0,
-    );
-    if (recordDecisions)
-      assert.equal(
-        events.find((e) => e.decision)?.decision?.route,
-        "otherwise",
-      );
+    assert.equal(events.filter((e) => e.decision).length, recordDecisions ? 1 : 0);
+    if (recordDecisions) assert.equal(events.find((e) => e.decision)?.decision?.route, "otherwise");
   }
 });

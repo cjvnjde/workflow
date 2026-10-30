@@ -89,11 +89,11 @@ There is no public multi-user authentication or CORS configuration in this refac
 
 The installed package exports `predictable-workflow/core`, `/web`, and `/terminal`, plus the shared `/client`, `/contracts`, and authoring SDK `/workflow`. The original `/engine` and `/http` exports remain compatible.
 
-| Module | Responsibility |
-| --- | --- |
-| `core` | Application services, model planning, execution, storage, approval, recovery. No HTTP listener or GUI. |
-| `web` | HTTP/SSE adapter and optional static browser GUI. Borrows an application. |
-| `terminal` | Terminal presentation and host attachment. Shares the same HTTP client as the browser. |
+| Module     | Responsibility                                                                                         |
+| ---------- | ------------------------------------------------------------------------------------------------------ |
+| `core`     | Application services, model planning, execution, storage, approval, recovery. No HTTP listener or GUI. |
+| `web`      | HTTP/SSE adapter and optional static browser GUI. Borrows an application.                              |
+| `terminal` | Terminal presentation and host attachment. Shares the same HTTP client as the browser.                 |
 
 They are explicit module entry points within one distributable package, not independently versioned packages. Implementation files remain compatible with existing source imports.
 
@@ -104,15 +104,22 @@ import { waitForRun } from "predictable-workflow/client";
 const app = await createApplication({ project: process.cwd() });
 try {
   const draft = await app.createProgram({
-    title: "Verify", task: "Run the checks", filename: "verify.ts",
-    source: await Bun.file("verify.ts").text(), input: {},
+    title: "Verify",
+    task: "Run the checks",
+    filename: "verify.ts",
+    source: await Bun.file("verify.ts").text(),
+    input: {},
   });
-  const unsubscribe = app.subscribe(event => console.log(event.kind, event.message));
+  const unsubscribe = app.subscribe((event) => console.log(event.kind, event.message));
   try {
     await app.approve(draft.id, draft.revision);
     console.log(await waitForRun(() => app.getRun(draft.id)));
-  } finally { unsubscribe(); }
-} finally { await app.close(); }
+  } finally {
+    unsubscribe();
+  }
+} finally {
+  await app.close();
+}
 ```
 
 Initialize project configuration first with `workflow init`. `createApplication` takes optional model/planner service overrides, a block runner, execution mode, and Temporal options. It owns the project lease and cleans up failed startup. `close()` is idempotent, aborts and drains coordinator work, closes task/design services, and shuts down the engine. Subscribe once per presentation and unsubscribe when it closes. Events are live hints; read runs/tasks and persisted events for authoritative state.
@@ -139,8 +146,10 @@ import { WorkflowClient } from "predictable-workflow/client";
 
 const client = new WorkflowClient({ baseUrl: "http://127.0.0.1:4310" });
 const runs = await client.runs();
-const subscription = client.subscribe(event => console.log(event), {
-  onOpen: () => { void client.runs().then(console.log); },
+const subscription = client.subscribe((event) => console.log(event), {
+  onOpen: () => {
+    void client.runs().then(console.log);
+  },
 });
 // On teardown:
 subscription.close();

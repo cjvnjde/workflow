@@ -6,7 +6,7 @@ import {
   createMemoryEntrySchema,
   updateMemoryEntrySchema,
   type MemoryEntry,
-} from "../../src/memory-schema.js";
+} from "../../src/contracts/memory-schema.js";
 
 const at = "2026-10-30T12:00:00.000Z";
 const note = (title: string, kind: "note" | "preference" = "note") =>
@@ -91,76 +91,69 @@ async function fixture(context: BrowserContext, seeded: MemoryEntry[] = []) {
       revision: String(store.revision),
       limit: 100,
       entries: [...store.entries.values()].map(
-        ({ details, observation, edited, ...entry }) => entry,
+        ({ details: _details, observation: _observation, edited: _edited, ...entry }) => entry,
       ),
     });
-  await context.route(
-    /\/api\/memory(?:\/entries(?:\/[^/?]+)?)?$/,
-    async (route) => {
-      const path = new URL(route.request().url()).pathname;
-      const method = route.request().method();
-      const id = path.startsWith("/api/memory/entries/")
-        ? path.split("/").at(-1)!
-        : undefined;
-      if (method === "GET") {
-        if (store.loadFailure && !id)
-          return route.fulfill({
-            status: 503,
-            json: { error: "Memory storage temporarily unavailable" },
-          });
-        if (id) {
-          store.reads.push(id);
-          return store.entries.has(id)
-            ? route.fulfill({ json: store.entries.get(id) })
-            : route.fulfill({
-                status: 404,
-                json: { error: "Memory entry no longer exists" },
-              });
-        }
-        return route.fulfill({ json: state() });
-      }
-      const body = route.request().postDataJSON();
-      store.writes.push({ method, body });
-      if (body.revision !== String(store.revision))
+  await context.route(/\/api\/memory(?:\/entries(?:\/[^/?]+)?)?$/, async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const method = route.request().method();
+    const id = path.startsWith("/api/memory/entries/") ? path.split("/").at(-1)! : undefined;
+    if (method === "GET") {
+      if (store.loadFailure && !id)
         return route.fulfill({
-          status: 409,
-          json: {
-            error: "Memory changed in another client. Reload before saving.",
-          },
+          status: 503,
+          json: { error: "Memory storage temporarily unavailable" },
         });
-      if (method === "PUT") {
-        store.enabled = body.enabled;
-        store.revision++;
-        return route.fulfill({ json: state() });
+      if (id) {
+        store.reads.push(id);
+        return store.entries.has(id)
+          ? route.fulfill({ json: store.entries.get(id) })
+          : route.fulfill({
+              status: 404,
+              json: { error: "Memory entry no longer exists" },
+            });
       }
-      if (method === "DELETE") {
-        store.entries.delete(id!);
-        store.revision++;
-        return route.fulfill({ json: state() });
-      }
-      const fields =
-        method === "POST"
-          ? createMemoryEntrySchema.parse(body)
-          : updateMemoryEntrySchema.parse(body);
-      const { revision, ...values } = fields;
-      const previous = id ? store.entries.get(id) : undefined;
-      if (id && !previous)
-        return route.fulfill({
-          status: 404,
-          json: { error: "Memory entry no longer exists" },
-        });
-      const entry = memoryEntrySchema.parse({
-        ...previous,
-        ...values,
-        id: id ?? randomUUID(),
-        createdAt: previous?.createdAt ?? at,
-        updatedAt: `2026-10-30T12:00:${String(++store.revision).padStart(2, "0")}.000Z`,
-        edited: true,
+      return route.fulfill({ json: state() });
+    }
+    const body = route.request().postDataJSON();
+    store.writes.push({ method, body });
+    if (body.revision !== String(store.revision))
+      return route.fulfill({
+        status: 409,
+        json: {
+          error: "Memory changed in another client. Reload before saving.",
+        },
       });
-      store.entries.set(entry.id, entry);
-      return route.fulfill({ json: { state: state(), entry } });
-    },
-  );
+    if (method === "PUT") {
+      store.enabled = body.enabled;
+      store.revision++;
+      return route.fulfill({ json: state() });
+    }
+    if (method === "DELETE") {
+      store.entries.delete(id!);
+      store.revision++;
+      return route.fulfill({ json: state() });
+    }
+    const fields =
+      method === "POST" ? createMemoryEntrySchema.parse(body) : updateMemoryEntrySchema.parse(body);
+    const { revision: _revision, ...values } = fields;
+    const previous = id ? store.entries.get(id) : undefined;
+    if (id && !previous)
+      return route.fulfill({
+        status: 404,
+        json: { error: "Memory entry no longer exists" },
+      });
+    const entry = memoryEntrySchema.parse({
+      ...previous,
+      ...values,
+      id: id ?? randomUUID(),
+      createdAt: previous?.createdAt ?? at,
+      updatedAt: `2026-10-30T12:00:${String(++store.revision).padStart(2, "0")}.000Z`,
+      edited: true,
+    });
+    store.entries.set(entry.id, entry);
+    return route.fulfill({ json: { state: state(), entry } });
+  });
   return store;
 }
 async function open(page: Page) {
@@ -180,55 +173,33 @@ test("memory starts off and notes and explicit preferences save independently of
   const panel = await open(page);
   await expect(panel).toContainText("Project memory is off");
   await expect(panel).toContainText("No saved entries yet");
-  await expect(
-    panel.getByRole("button", { name: "Save settings", exact: true }),
-  ).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Save settings", exact: true })).toHaveCount(0);
   await panel.getByRole("button", { name: "New note", exact: true }).click();
-  await panel
-    .getByLabel("Memory title", { exact: true })
-    .fill("Repository checks");
+  await panel.getByLabel("Memory title", { exact: true }).fill("Repository checks");
   await panel
     .getByLabel("Short description", { exact: true })
     .fill("Use before finalizing TypeScript changes.");
   await panel
     .getByLabel("Memory details", { exact: true })
     .fill("Run the focused unit test and the project typecheck.");
-  await panel
-    .getByLabel("Memory tags", { exact: true })
-    .fill("checks, typescript");
-  await panel
-    .getByRole("button", { name: "Save memory entry", exact: true })
-    .click();
-  await expect(panel).toContainText(
-    "Memory entry saved. Project memory remains disabled.",
-  );
+  await panel.getByLabel("Memory tags", { exact: true }).fill("checks, typescript");
+  await panel.getByRole("button", { name: "Save memory entry", exact: true }).click();
+  await expect(panel).toContainText("Memory entry saved. Project memory remains disabled.");
   expect(store.enabled).toBe(false);
   expect([...store.entries.values()][0]?.kind).toBe("note");
-  await panel
-    .getByRole("button", { name: "New preference", exact: true })
-    .click();
+  await panel.getByRole("button", { name: "New preference", exact: true }).click();
   await expect(panel).toContainText("Workflow does not infer preferences");
-  await panel
-    .getByLabel("Memory title", { exact: true })
-    .fill("Review preference");
-  await panel
-    .getByLabel("Short description", { exact: true })
-    .fill("How I want code reviewed.");
+  await panel.getByLabel("Memory title", { exact: true }).fill("Review preference");
+  await panel.getByLabel("Short description", { exact: true }).fill("How I want code reviewed.");
   await panel
     .getByLabel("Memory details", { exact: true })
     .fill("Start with correctness issues, then readability.");
-  await panel
-    .getByRole("button", { name: "Save memory entry", exact: true })
-    .click();
+  await panel.getByRole("button", { name: "Save memory entry", exact: true }).click();
   await expect.poll(() => store.entries.size).toBe(2);
   expect([...store.entries.values()][1]?.kind).toBe("preference");
-  await panel
-    .getByRole("button", { name: "Enable project memory", exact: true })
-    .click();
+  await panel.getByRole("button", { name: "Enable project memory", exact: true }).click();
   await expect(panel).toContainText("Project memory is on");
-  await panel
-    .getByRole("button", { name: "Disable project memory", exact: true })
-    .click();
+  await panel.getByRole("button", { name: "Disable project memory", exact: true }).click();
   await expect(panel).toContainText("Saved entries are retained");
   await page.reload();
   await page
@@ -253,9 +224,7 @@ test("memory loads selected details only and preserves a draft across revision c
   expect(store.reads).toEqual([]);
   await expect(panel).not.toContainText(first.details);
   await panel.getByRole("button", { name: new RegExp(first.title) }).click();
-  await expect(panel.getByLabel("Memory details", { exact: true })).toHaveValue(
-    first.details,
-  );
+  await expect(panel.getByLabel("Memory details", { exact: true })).toHaveValue(first.details);
   expect(store.reads).toEqual([first.id]);
   await panel
     .getByLabel("Memory details", { exact: true })
@@ -267,18 +236,12 @@ test("memory loads selected details only and preserves a draft across revision c
   };
   store.entries.set(first.id, remote);
   store.revision++;
-  await panel
-    .getByRole("button", { name: "Save memory entry", exact: true })
-    .click();
-  await expect(panel.getByRole("alert")).toContainText(
-    "Memory changed in another client",
-  );
+  await panel.getByRole("button", { name: "Save memory entry", exact: true }).click();
+  await expect(panel.getByRole("alert")).toContainText("Memory changed in another client");
   await expect(panel.getByLabel("Memory details", { exact: true })).toHaveValue(
     "My unsaved guidance remains visible.",
   );
-  await panel
-    .getByRole("button", { name: "Review latest saved entry", exact: true })
-    .click();
+  await panel.getByRole("button", { name: "Review latest saved entry", exact: true }).click();
   await expect(panel.locator(".memory-latest")).toContainText(remote.details);
   await expect(panel.getByLabel("Memory details", { exact: true })).toHaveValue(
     "My unsaved guidance remains visible.",
@@ -290,22 +253,14 @@ test("memory loads selected details only and preserves a draft across revision c
     })
     .click();
   await expect(panel).toContainText("Memory entry saved");
-  expect(store.entries.get(first.id)?.details).toBe(
-    "My unsaved guidance remains visible.",
-  );
+  expect(store.entries.get(first.id)?.details).toBe("My unsaved guidance remains visible.");
   expect(store.entries.get(second.id)?.details).toBe(second.details);
-  await panel
-    .getByLabel("Search memory descriptions", { exact: true })
-    .fill("Backend");
+  await panel.getByLabel("Search memory descriptions", { exact: true }).fill("Backend");
   await expect(panel.locator(".memory-entry")).toHaveCount(1);
   await expect(panel.locator(".memory-entry")).toContainText(second.title);
-  await panel
-    .getByLabel("Search memory descriptions", { exact: true })
-    .fill("");
+  await panel.getByLabel("Search memory descriptions", { exact: true }).fill("");
   page.once("dialog", (dialog) => dialog.accept());
-  await panel
-    .getByRole("button", { name: "Delete entry", exact: true })
-    .click();
+  await panel.getByRole("button", { name: "Delete entry", exact: true }).click();
   await expect(panel).toContainText("Memory entry deleted");
   expect(store.entries.has(first.id)).toBe(false);
 });
@@ -315,10 +270,7 @@ test("observation annotations keep recorded facts separate and fit mobile screen
   context,
 }) => {
   const observed = observation();
-  const store = await fixture(context, [
-    observed,
-    note("Preferred review order", "preference"),
-  ]);
+  const store = await fixture(context, [observed, note("Preferred review order", "preference")]);
   store.enabled = true;
   await page.setViewportSize({ width: 1440, height: 1100 });
   const panel = await open(page);
@@ -337,25 +289,15 @@ test("observation annotations keep recorded facts separate and fit mobile screen
   );
   await panel
     .getByLabel("Your annotation", { exact: true })
-    .fill(
-      "This sample is too small to judge quality. Keep independent checks.",
-    );
-  await panel
-    .getByRole("button", { name: "Save memory entry", exact: true })
-    .click();
-  await expect(panel).toContainText(
-    "Your annotation: you can edit this guidance",
-  );
-  expect(store.entries.get(observed.id)?.observation).toEqual(
-    observed.observation,
-  );
+    .fill("This sample is too small to judge quality. Keep independent checks.");
+  await panel.getByRole("button", { name: "Save memory entry", exact: true }).click();
+  await expect(panel).toContainText("Your annotation: you can edit this guidance");
+  expect(store.entries.get(observed.id)?.observation).toEqual(observed.observation);
   expect(store.writes.at(-1)?.body).not.toHaveProperty("observation");
   await panel.screenshot({ path: "/tmp/workflow-feature5-memory.png" });
   await page.setViewportSize({ width: 390, height: 900 });
   expect(
-    await panel.evaluate(
-      (element) => element.getBoundingClientRect().right <= innerWidth,
-    ),
+    await panel.evaluate((element) => element.getBoundingClientRect().right <= innerWidth),
   ).toBe(true);
   await panel.screenshot({ path: "/tmp/workflow-feature5-memory-mobile.png" });
 });
@@ -369,13 +311,9 @@ test("memory loading errors recover and late detail responses cannot replace the
   const store = await fixture(context, [first, second]);
   store.loadFailure = true;
   const panel = await open(page);
-  await expect(panel.getByRole("alert")).toContainText(
-    "Memory storage temporarily unavailable",
-  );
+  await expect(panel.getByRole("alert")).toContainText("Memory storage temporarily unavailable");
   store.loadFailure = false;
-  await panel
-    .getByRole("button", { name: "Retry loading memory", exact: true })
-    .click();
+  await panel.getByRole("button", { name: "Retry loading memory", exact: true }).click();
   await expect(panel).toContainText(first.title);
   let delayed: import("@playwright/test").Route | undefined;
   await page.route(`**/api/memory/entries/${first.id}`, (route) => {
@@ -384,13 +322,9 @@ test("memory loading errors recover and late detail responses cannot replace the
   await panel.getByRole("button", { name: new RegExp(first.title) }).click();
   await expect.poll(() => !!delayed).toBe(true);
   await panel.getByRole("button", { name: new RegExp(second.title) }).click();
-  await expect(panel.getByLabel("Memory details", { exact: true })).toHaveValue(
-    second.details,
-  );
+  await expect(panel.getByLabel("Memory details", { exact: true })).toHaveValue(second.details);
   await delayed!.fulfill({ json: first }).catch(() => {});
-  await expect(panel.getByLabel("Memory title", { exact: true })).toHaveValue(
-    second.title,
-  );
+  await expect(panel.getByLabel("Memory title", { exact: true })).toHaveValue(second.title);
   await panel
     .getByLabel("Memory details", { exact: true })
     .fill("A draft that must survive leaving the section.");

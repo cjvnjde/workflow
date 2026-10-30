@@ -1,6 +1,6 @@
 import { createApp } from "vue";
 import App from "./App.vue";
-import { autosize } from "./autosize.js";
+import { autosize } from "./shared/autosize.js";
 import "./styles.css";
 import "./ui-theme.css";
 

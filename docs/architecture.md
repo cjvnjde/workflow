@@ -38,7 +38,7 @@ Shared `defineTool()` operations can be invoked by code through `ctx.call()` or 
 
 ## Application and presentation boundaries
 
-The public entry points are `src/core/index.ts`, `src/web/index.ts`, and `src/terminal/index.ts`. They expose separate responsibilities while preserving existing source imports and the `/engine` and `/http` package aliases. Core owns all task/run state; switching clients does not create another execution engine.
+The public entry points are `src/core/index.ts`, `src/http/index.ts`, and `src/terminal/index.ts`. They expose separate responsibilities while preserving the published package entry points, including the `/engine` and `/http` aliases. Core owns all task/run state; switching clients does not create another execution engine.
 
 `createApplication` owns initialization, the project lease, tasks, design sessions, provider interactions, planning concurrency/cancellation, and shutdown. `WorkflowEngine` retains execution, approval, and recovery. Neither starts HTTP or loads GUI assets.
 
@@ -46,7 +46,7 @@ The public entry points are `src/core/index.ts`, `src/web/index.ts`, and `src/te
 
 The Vue code imports only the public `contracts` and `client` entry points from the backend tree. The shared client handles validation, revision headers, errors, endpoint selection, and event streaming. Presentation state, graph layout, editors, and rendering remain in `web/`. [Engine and clients](clients.md) documents the integration and lifecycle contract.
 
-The terminal controller also uses only that client and public contracts. `src/tui/view.ts` renders its state with OpenTUI; `presentation.ts` formats activity and composition trees. `src/tui.ts` owns attachment, background-host startup requests, signals, parser resources, and terminal cleanup. `src/host.ts` is the process composition root; `src/host-lifecycle.ts` manages detached startup, readiness, status, and authenticated shutdown. The CLI loads `dist/tui.js` only when requested, keeping native rendering out of server and scripting commands.
+The terminal controller also uses only that client and public contracts. `src/terminal/view.ts` renders its state with OpenTUI; `presentation.ts` formats activity and composition trees. `src/terminal/workspace.ts` owns attachment, background-host startup requests, signals, parser resources, and terminal cleanup. `src/host/host.ts` is the process composition root; `src/host/host-lifecycle.ts` manages detached startup, readiness, status, and authenticated shutdown. The CLI loads `dist/tui.js` only when requested, keeping native rendering out of server and scripting commands.
 
 CLI hosts announce a loopback endpoint and private lifecycle receipt in `.workflow/server.json`. Discovery validates the endpoint's project before connecting. Detached startup uses an IPC readiness/acknowledgment handshake before releasing the starter; concurrent start/stop operations use their own short-lived management lease. `workflow stop` authenticates to the exact host and waits for shutdown cleanup rather than trusting a saved PID.
 
@@ -88,12 +88,12 @@ Each host operation is tied to its exact step and visit rather than a single mut
 
 ## Frozen and live data
 
-| Captured with a draft | Read or used during execution |
-| --- | --- |
-| Workflow source and bundled static imports | Project files inspected by blocks |
-| Reusable block source and explicit resources | Scripts launched through `ctx.exec` |
-| Model profiles and resolved configuration | Credentials/provider access for actual requests |
-| Commands, limits, attachments, and graph structure | Command environment and external service state |
+| Captured with a draft                              | Read or used during execution                   |
+| -------------------------------------------------- | ----------------------------------------------- |
+| Workflow source and bundled static imports         | Project files inspected by blocks               |
+| Reusable block source and explicit resources       | Scripts launched through `ctx.exec`             |
+| Model profiles and resolved configuration          | Credentials/provider access for actual requests |
+| Commands, limits, attachments, and graph structure | Command environment and external service state  |
 
 A saved workflow version contains its bundled deterministic code and SDK manifest. Active executions use that archive across compatible application upgrades. Host activity compatibility still matters; version archives are not arbitrary runtime migration machinery.
 
@@ -111,32 +111,32 @@ These are execution consistency measures. AI and command tools still use the ser
 
 Paths below are relative to the repository checkout. The packaged CLI includes compiled artifacts rather than the source tree.
 
-| Area | Main files |
-| --- | --- |
-| Application and lifecycle | `src/application.ts` |
-| CLI and local HTTP | `src/cli.ts`, `src/terminal-client.ts`, `src/http-server.ts` |
-| Host lifecycle | `src/host.ts`, `src/host-lifecycle.ts`, `src/host-control.ts`, `src/host-discovery.ts` |
-| Terminal workspace | `src/tui.ts`, `src/tui/controller.ts`, `src/tui/view.ts`, `src/tui/presentation.ts` |
-| Client contract and transport | `src/contracts.ts`, `src/client.ts` |
-| Optional GUI serving / compatibility | `src/web-server.ts`, `src/server.ts` |
-| Task persistence and planning | `src/tasks.ts`, `src/task-planner.ts`, `src/task-schema.ts` |
-| Lazy catalogs and optional memory | `src/block-catalog.ts`, `src/planning-memory.ts`, `src/memory-store.ts`, `src/workflow-strategy.ts` |
-| External triggers and queued dispatch | `src/triggers.ts`, `src/trigger-store.ts`, `src/trigger-template.ts`, `src/github-trigger-source.ts`, `src/trigger-schema.ts` |
-| Public authoring API | `src/workflow-sdk.ts`, `src/composition-sdk.ts` |
-| Source validation and preview | `src/program-compiler.ts`, `src/composition-plan.ts`, `src/source-format.ts` |
-| Durable execution | `src/engine.ts`, `src/temporal-workflow.ts`, `src/composition-runtime.ts` |
-| Code blocks and host effects | `src/code-runtime.ts`, `src/code-host.ts`, `src/block-runner.ts` |
-| Shared tools and environments | `src/tool-sdk.ts`, `src/tool-runner.ts`, `src/tool-worker.ts`, `src/execution-environment.ts`, `src/operation-schema.ts` |
-| Models and sessions | `src/agent-session.ts`, `src/model-runtime.ts`, `src/available-models.ts` |
-| Auth and user defaults | `src/browser-auth.ts`, `src/user-settings.ts`, `src/terminal-commands.ts` |
-| Library and settings design | `src/library.ts`, `src/library-proposals.ts`, `src/design-chats.ts`, `src/settings-designer.ts` |
-| Recovery and persistence | `src/recovery.ts`, `src/workspace.ts`, `src/run-store.ts`, `src/attempt-store.ts` |
-| Temporal process/version management | `src/temporal-server.ts`, `src/temporal-runtime.ts`, `src/workflow-versions.ts`, `src/project-lock.ts` |
-| Vue state and navigation | `web/App.vue`, `web/composables/` |
-| Graph, activity, results, editors | `web/components/`, `web/graph-layout.ts` |
-| Settings UI | `web/settings/` |
-| Build, development, live checks | `scripts/` |
-| Unit, integration, recovery, browser tests | `tests/`, `tests/e2e/` |
+| Area                                       | Main files                                                                                                                                                                                     |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Application and lifecycle                  | `src/core/application.ts`                                                                                                                                                                      |
+| CLI and local HTTP                         | `src/cli/index.ts`, `src/cli/terminal-client.ts`, `src/http/http-server.ts`                                                                                                                    |
+| Host lifecycle                             | `src/host/host.ts`, `src/host/host-lifecycle.ts`, `src/host/host-control.ts`, `src/host/host-discovery.ts`                                                                                     |
+| Terminal workspace                         | `src/terminal/workspace.ts`, `src/terminal/controller.ts`, `src/terminal/view.ts`, `src/terminal/presentation.ts`                                                                              |
+| Client contract and transport              | `src/contracts/index.ts`, `src/client/client.ts`                                                                                                                                               |
+| Optional GUI serving / compatibility       | `src/http/web-server.ts`, `src/http/server.ts`                                                                                                                                                 |
+| Task persistence and planning              | `src/core/tasks/tasks.ts`, `src/core/planning/task-planner.ts`, `src/contracts/task-schema.ts`                                                                                                 |
+| Lazy catalogs and optional memory          | `src/core/library/block-catalog.ts`, `src/core/planning/planning-memory.ts`, `src/core/memory/memory-store.ts`, `src/core/planning/workflow-strategy.ts`                                       |
+| External triggers and queued dispatch      | `src/core/triggers/triggers.ts`, `src/core/storage/trigger-store.ts`, `src/core/triggers/trigger-template.ts`, `src/core/triggers/github-trigger-source.ts`, `src/contracts/trigger-schema.ts` |
+| Public authoring API                       | `src/sdk/workflow-sdk.ts`, `src/sdk/composition-sdk.ts`                                                                                                                                        |
+| Source validation and preview              | `src/core/planning/program-compiler.ts`, `src/core/planning/composition-plan.ts`, `src/core/library/source-format.ts`                                                                          |
+| Durable execution                          | `src/core/engine.ts`, `src/core/execution/temporal-workflow.ts`, `src/core/execution/composition-runtime.ts`                                                                                   |
+| Code blocks and host effects               | `src/core/execution/code-runtime.ts`, `src/core/execution/code-host.ts`, `src/core/execution/block-runner.ts`                                                                                  |
+| Shared tools and environments              | `src/sdk/tool-sdk.ts`, `src/core/tools/tool-runner.ts`, `src/core/tools/tool-worker.ts`, `src/core/execution/execution-environment.ts`, `src/contracts/operation-schema.ts`                    |
+| Models and sessions                        | `src/core/models/agent-session.ts`, `src/core/models/model-runtime.ts`, `src/core/models/available-models.ts`                                                                                  |
+| Auth and user defaults                     | `src/core/models/browser-auth.ts`, `src/core/settings/user-settings.ts`, `src/cli/terminal-commands.ts`                                                                                        |
+| Library and settings design                | `src/core/library/library.ts`, `src/core/library/library-proposals.ts`, `src/core/design/design-chats.ts`, `src/core/design/settings-designer.ts`                                              |
+| Recovery and persistence                   | `src/core/storage/recovery.ts`, `src/core/storage/workspace.ts`, `src/core/storage/run-store.ts`, `src/core/storage/attempt-store.ts`                                                          |
+| Temporal process/version management        | `src/infrastructure/temporal-server.ts`, `src/infrastructure/temporal-runtime.ts`, `src/infrastructure/workflow-versions.ts`, `src/infrastructure/project-lock.ts`                             |
+| Vue state and navigation                   | `web/App.vue`, `web/app/`, feature composables                                                                                                                                                 |
+| Graph, activity, results, editors          | `web/features/`, `web/shared/`, `web/features/graph/graph-layout.ts`                                                                                                                           |
+| Settings UI                                | `web/settings/`                                                                                                                                                                                |
+| Build, development, live checks            | `scripts/`                                                                                                                                                                                     |
+| Unit, integration, recovery, browser tests | `tests/`, `tests/e2e/`                                                                                                                                                                         |
 
 The frozen legacy workflow bundle is retained under `src/legacy/` for replay compatibility. New features should not silently rewrite historical execution behavior.
 
@@ -147,3 +147,13 @@ The frozen legacy workflow bundle is retained under `src/legacy/` for replay com
 `execution-history.ts` provides the browser-safe operation projection shared by browser and terminal. It joins lifecycle events by operation, visit, and activity attempt and preserves parent-attempt identity. `RunStore` serves append-order history pages, compact whole-run operation summaries, and selected-operation details. Snapshot watermarks keep historical pagination stable while new events arrive. These read models do not change Temporal scheduling or turn the activity log into an alternative executor.
 
 `session-timing.ts` observes actual provider stream invocations, token timing, retry backoff, and compaction. `command-output.ts` retains bounded private command transcripts separately from inline results. Clients load exact payloads and transcripts on demand. The [inspection guide](execution-inspection.md) describes available controls and historical limits.
+
+## Module ownership
+
+`src/core` contains the application and engine implementations. Its subdirectories own execution, planning, library authoring, settings, setup, design, tasks, memory, triggers, storage, models, and tools. Import a concrete implementation from its owning module inside the repository; `index.ts` files describe the small public package surface rather than substitute for implementation folders.
+
+`src/contracts` contains browser-safe schemas and transport types. `src/sdk` contains the authored workflow, composition, and tool API. `src/client` is the shared Fetch transport. The HTTP adapter lives in `src/http`, terminal rendering in `src/terminal`, CLI commands in `src/cli`, and process ownership in `src/host`. `src/infrastructure` holds operating-system and Temporal services. `src/legacy` retains historical workflow behavior for replay compatibility.
+
+Browser components, presentation helpers and composables live together under `web/features/<feature>`. `web/shared` holds reusable UI primitives and API access; `web/app` coordinates application-wide data. Settings retain their dedicated `web/settings` module. Add feature-specific code to the owning feature instead of growing a generic components or utilities directory.
+
+ESLint prevents browser-safe modules from importing backend implementations or Node APIs, and prevents core modules from importing the HTTP, terminal, CLI, host, or browser adapters. Infrastructure also stays independent of core and presentation modules. Contracts and SDK code must remain usable in a browser. The package build maps public artifact names to concrete implementations in `scripts/entrypoints.ts`. Source paths are internal and have moved; published package imports remain stable. `src/infrastructure/package-paths.ts` resolves runtime assets for both source execution and packaged bundles.

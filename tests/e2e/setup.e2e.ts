@@ -1,9 +1,4 @@
-import {
-  expect,
-  test,
-  type APIRequestContext,
-  type BrowserContext,
-} from "@playwright/test";
+import { expect, test, type APIRequestContext, type BrowserContext } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import {
   setupJobSchema,
@@ -12,7 +7,7 @@ import {
   type SetupJob,
   type Setup,
   type CompletedSetup,
-} from "../../src/contracts.js";
+} from "../../src/contracts/index.js";
 
 const model = {
   provider: "fixture",
@@ -93,9 +88,7 @@ async function fixture(context: BrowserContext, request: APIRequestContext) {
     const response = await route.fetch();
     await route.fulfill({ json: { ...(await response.json()), mode: "live" } });
   });
-  await context.route("**/api/setup", (route) =>
-    route.fulfill({ json: state.setup }),
-  );
+  await context.route("**/api/setup", (route) => route.fulfill({ json: state.setup }));
   await context.route("**/api/models", (route) =>
     route.fulfill({
       json: {
@@ -155,16 +148,10 @@ async function fixture(context: BrowserContext, request: APIRequestContext) {
       });
     } else if (path.endsWith("/latest")) {
       await route.fulfill({ json: { job: state.job } });
-    } else if (
-      path === "/api/setup-jobs" &&
-      route.request().method() === "POST"
-    ) {
+    } else if (path === "/api/setup-jobs" && route.request().method() === "POST") {
       const body = route.request().postDataJSON();
       state.starts.push(body);
-      if (
-        !state.job ||
-        !["queued", "running", "cancelling"].includes(state.job.status)
-      )
+      if (!state.job || !["queued", "running", "cancelling"].includes(state.job.status))
         state.job = job({ instructions: body.instructions ?? "" });
       await route.fulfill({ status: 202, json: state.job });
     } else if (path.endsWith("/resume")) {
@@ -191,9 +178,7 @@ async function fixture(context: BrowserContext, request: APIRequestContext) {
         status: "cancelled",
         actions: { canResume: true, canCancel: false },
         stages: state.job!.stages.map((stage) =>
-          stage.status === "running"
-            ? { ...stage, status: "interrupted" }
-            : stage,
+          stage.status === "running" ? { ...stage, status: "interrupted" } : stage,
         ),
       });
       await route.fulfill({ json: state.job });
@@ -216,16 +201,12 @@ test("shared setup survives navigation and reload, and resumes saved stages only
   await panel
     .getByLabel("Setup preferences optional", { exact: true })
     .fill("Use the existing tests and keep publication manual.");
-  await panel
-    .getByRole("button", { name: "Generate project setup", exact: true })
-    .click();
+  await panel.getByRole("button", { name: "Generate project setup", exact: true }).click();
   await expect(panel).toContainText("2/5 stages complete");
   const id = state.job!.id;
   await expect(panel).toContainText(id);
   await expect(
-    panel
-      .getByRole("region", { name: "Setup cost", exact: true })
-      .locator(".usage-total"),
+    panel.getByRole("region", { name: "Setup cost", exact: true }).locator(".usage-total"),
   ).toContainText("At least $0.0800");
   expect(state.starts).toEqual([
     {
@@ -236,9 +217,9 @@ test("shared setup survives navigation and reload, and resumes saved stages only
   await panel.screenshot({ path: "/tmp/workflow-feature3-setup.png" });
 
   await page.getByRole("button", { name: "New task", exact: true }).click();
-  await expect(
-    page.getByRole("region", { name: "Project setup", exact: true }),
-  ).toContainText("Setup in progress");
+  await expect(page.getByRole("region", { name: "Project setup", exact: true })).toContainText(
+    "Setup in progress",
+  );
   await page.getByRole("button", { name: "View setup", exact: true }).click();
   await page.reload();
   panel = page.getByRole("region", { name: "Project setup", exact: true });
@@ -264,25 +245,13 @@ test("shared setup survives navigation and reload, and resumes saved stages only
       stage.id === "blocks" ? { ...stage, status: "interrupted" } : stage,
     ),
   });
-  await shared
-    .getByRole("button", { name: "Refresh setup", exact: true })
-    .click();
-  await expect(
-    shared.getByRole("button", { name: "Resume setup", exact: true }),
-  ).toBeEnabled();
+  await shared.getByRole("button", { name: "Refresh setup", exact: true }).click();
+  await expect(shared.getByRole("button", { name: "Resume setup", exact: true })).toBeEnabled();
   expect(state.resumes).toHaveLength(0);
-  await shared
-    .getByLabel("Increase setup limit (USD) optional", { exact: true })
-    .fill("0.25");
-  await expect(
-    shared.getByRole("button", { name: "Resume setup", exact: true }),
-  ).toBeDisabled();
-  await shared
-    .getByLabel("Increase setup limit (USD) optional", { exact: true })
-    .fill("1");
-  await shared
-    .getByRole("button", { name: "Resume setup", exact: true })
-    .click();
+  await shared.getByLabel("Increase setup limit (USD) optional", { exact: true }).fill("0.25");
+  await expect(shared.getByRole("button", { name: "Resume setup", exact: true })).toBeDisabled();
+  await shared.getByLabel("Increase setup limit (USD) optional", { exact: true }).fill("1");
+  await shared.getByRole("button", { name: "Resume setup", exact: true }).click();
   await expect(shared).toContainText("attempt 2");
   expect(state.resumes).toEqual([{ revision: 4, maxSetupCostUsd: 1 }]);
   expect(state.job!.id).toBe(id);
@@ -291,9 +260,7 @@ test("shared setup survives navigation and reload, and resumes saved stages only
       .job!.stages.slice(0, 2)
       .every((stage) => stage.status === "completed" && stage.attempt === 1),
   ).toBe(true);
-  await shared
-    .getByRole("button", { name: "Cancel setup", exact: true })
-    .click();
+  await shared.getByRole("button", { name: "Cancel setup", exact: true }).click();
   await expect(shared).toContainText("Setup stopped");
   expect(state.cancels).toBe(1);
 });
@@ -309,7 +276,9 @@ test("failed regeneration retains authoritative last-success metadata on desktop
     status: "failed",
     error: "Block validation failed. Existing project settings were kept.",
     actions: { canResume: true, canCancel: false },
-    stages: job().stages.map(stage => stage.id === "blocks" ? { ...stage, status: "failed" } : stage),
+    stages: job().stages.map((stage) =>
+      stage.id === "blocks" ? { ...stage, status: "failed" } : stage,
+    ),
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/#settings");
@@ -317,26 +286,22 @@ test("failed regeneration retains authoritative last-success metadata on desktop
     name: "Project setup",
     exact: true,
   });
-  await expect(
-    panel.getByLabel("Last successful setup", { exact: true }),
-  ).toContainText("3 model roles · 5 task presets · 8 blocks");
+  await expect(panel.getByLabel("Last successful setup", { exact: true })).toContainText(
+    "3 model roles · 5 task presets · 8 blocks",
+  );
   await expect(panel).toContainText(
     "This saved setup remains available while the new setup is unfinished",
   );
   await expect(panel).toContainText("Block validation failed");
   expect(
-    await panel.evaluate(
-      (element) => element.getBoundingClientRect().right <= innerWidth,
-    ),
+    await panel.evaluate((element) => element.getBoundingClientRect().right <= innerWidth),
   ).toBe(true);
   await panel.screenshot({ path: "/tmp/workflow-feature3-setup-mobile.png" });
-  await page
-    .getByRole("button", { name: "Open navigation", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Open navigation", exact: true }).click();
   await page.getByRole("button", { name: "New task", exact: true }).click();
-  await expect(
-    page.getByRole("region", { name: "Project setup", exact: true }),
-  ).toContainText("Your previous saved setup remains available");
+  await expect(page.getByRole("region", { name: "Project setup", exact: true })).toContainText(
+    "Your previous saved setup remains available",
+  );
 });
 
 test("conflicted setup requires a new generation and final publication cannot be cancelled", async ({
@@ -359,18 +324,10 @@ test("conflicted setup requires a new generation and final publication cannot be
     name: "Project setup",
     exact: true,
   });
-  await expect(panel).toContainText(
-    "Start a new setup to use the current project settings",
-  );
-  await expect(
-    panel.getByRole("button", { name: "Resume setup", exact: true }),
-  ).toHaveCount(0);
-  await panel
-    .getByRole("button", { name: "Start a new setup", exact: true })
-    .click();
-  await panel
-    .getByRole("button", { name: "Generate project setup", exact: true })
-    .click();
+  await expect(panel).toContainText("Start a new setup to use the current project settings");
+  await expect(panel.getByRole("button", { name: "Resume setup", exact: true })).toHaveCount(0);
+  await panel.getByRole("button", { name: "Start a new setup", exact: true }).click();
+  await panel.getByRole("button", { name: "Generate project setup", exact: true }).click();
   await expect(panel).toContainText("Setup in progress");
   expect(state.starts[0]?.regenerate).toBe(true);
   state.job = job({
@@ -384,13 +341,9 @@ test("conflicted setup requires a new generation and final publication cannot be
       attempt: 1,
     })),
   });
-  await panel
-    .getByRole("button", { name: "Refresh setup", exact: true })
-    .click();
+  await panel.getByRole("button", { name: "Refresh setup", exact: true }).click();
   await expect(panel).toContainText("This stage cannot be cancelled");
-  await expect(
-    panel.getByRole("button", { name: "Cancel setup", exact: true }),
-  ).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Cancel setup", exact: true })).toHaveCount(0);
   state.setup.providers = [];
   state.job = job({
     ...state.job!,
@@ -401,23 +354,13 @@ test("conflicted setup requires a new generation and final publication cannot be
       stage.id === "applying" ? { ...stage, status: "interrupted" } : stage,
     ),
   });
-  await panel
-    .getByRole("button", { name: "Refresh setup", exact: true })
-    .click();
+  await panel.getByRole("button", { name: "Refresh setup", exact: true }).click();
   await expect(panel).toContainText("without new model calls");
-  await expect(
-    panel.getByRole("button", { name: "Resume setup", exact: true }),
-  ).toBeEnabled();
-  await panel
-    .getByRole("button", { name: "Resume setup", exact: true })
-    .click();
+  await expect(panel.getByRole("button", { name: "Resume setup", exact: true })).toBeEnabled();
+  await panel.getByRole("button", { name: "Resume setup", exact: true }).click();
   await expect(panel).toContainText("Setup in progress");
   expect(state.resumes).toEqual([{ revision: 8 }]);
-  expect(
-    state
-      .job!.stages.slice(0, 3)
-      .every((stage) => stage.status === "completed"),
-  ).toBe(true);
+  expect(state.job!.stages.slice(0, 3).every((stage) => stage.status === "completed")).toBe(true);
 });
 
 test("setup requires the selected provider and completion preserves unsaved settings", async ({
@@ -442,9 +385,7 @@ test("setup requires the selected provider and completion preserves unsaved sett
   await expect(
     panel.getByRole("button", { name: "Generate project setup", exact: true }),
   ).toBeDisabled();
-  await expect(panel).toContainText(
-    "Connect fixture or save a model from a connected provider",
-  );
+  await expect(panel).toContainText("Connect fixture or save a model from a connected provider");
   state.setup.providers = [
     {
       id: model.provider,
@@ -453,9 +394,7 @@ test("setup requires the selected provider and completion preserves unsaved sett
       source: "stored",
     },
   ];
-  await panel
-    .getByRole("button", { name: "Refresh setup", exact: true })
-    .click();
+  await panel.getByRole("button", { name: "Refresh setup", exact: true }).click();
   await expect(
     panel.getByRole("button", { name: "Generate project setup", exact: true }),
   ).toBeEnabled();
@@ -481,27 +420,17 @@ test("setup requires the selected provider and completion preserves unsaved sett
       attempt: 1,
     })),
   });
-  await panel
-    .getByRole("button", { name: "Refresh setup", exact: true })
-    .click();
+  await panel.getByRole("button", { name: "Refresh setup", exact: true }).click();
   await expect(
     page.getByText(
       "Project settings changed while you were editing. Your unsaved edits are preserved.",
       { exact: false },
     ),
   ).toBeVisible();
-  await expect(page.getByLabel("Thinking level", { exact: true })).toHaveValue(
-    "high",
-  );
-  await page
-    .getByRole("button", { name: "Discard model changes", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Reload saved settings", exact: true })
-    .click();
-  await expect(page.getByLabel("Thinking level", { exact: true })).toHaveValue(
-    "medium",
-  );
+  await expect(page.getByLabel("Thinking level", { exact: true })).toHaveValue("high");
+  await page.getByRole("button", { name: "Discard model changes", exact: true }).click();
+  await page.getByRole("button", { name: "Reload saved settings", exact: true }).click();
+  await expect(page.getByLabel("Thinking level", { exact: true })).toHaveValue("medium");
   await expect(
     page.getByRole("button", { name: "Reload saved settings", exact: true }),
   ).toHaveCount(0);

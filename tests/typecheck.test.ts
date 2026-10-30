@@ -8,9 +8,7 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("../", import.meta.url));
 
 test("Bun typechecking rejects Vue script, template and component prop errors", async (t) => {
-  const directory = await mkdtemp(
-    path.join(os.tmpdir(), "workflow-vue-types-"),
-  );
+  const directory = await mkdtemp(path.join(os.tmpdir(), "workflow-vue-types-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const config = path.join(directory, "tsconfig.json");
   await writeFile(
@@ -37,10 +35,11 @@ test("Bun typechecking rejects Vue script, template and component prop errors", 
   );
   const parent = path.join(directory, "Parent.vue");
   const check = async () => {
-    const child = Bun.spawn(
-      [process.execPath, path.join(root, "scripts/typecheck.ts"), config],
-      { cwd: root, stdout: "pipe", stderr: "pipe" },
-    );
+    const child = Bun.spawn([process.execPath, path.join(root, "scripts/typecheck.ts"), config], {
+      cwd: root,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
     const [code, stdout, stderr] = await Promise.all([
       child.exited,
       new Response(child.stdout).text(),
@@ -48,6 +47,7 @@ test("Bun typechecking rejects Vue script, template and component prop errors", 
     ]);
     return {
       code,
+      // eslint-disable-next-line no-control-regex -- Control bytes must be matched explicitly for validation or terminal escape removal.
       output: `${stdout}${stderr}`.replace(/\x1b\[[0-9;]*m/g, ""),
     };
   };
@@ -61,10 +61,7 @@ const count: number = 'invalid';
   );
   const invalid = await check();
   assert.equal(invalid.code, 1, invalid.output);
-  assert.match(
-    invalid.output,
-    /Type 'string' is not assignable to type 'number'/,
-  );
+  assert.match(invalid.output, /Type 'string' is not assignable to type 'number'/);
   assert.match(invalid.output, /toUpperCase/);
   assert.match(invalid.output, /wrong prop/);
   await writeFile(

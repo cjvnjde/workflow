@@ -9,26 +9,22 @@ import {
   checkProgram,
   validateComposition,
   validateProgram,
-} from "../src/program-compiler.js";
-import { planTask } from "../src/task-planner.js";
-import { taskSchema } from "../src/task-schema.js";
-import { orchestrationSchema } from "../src/orchestration-schema.js";
-import { Attachments } from "../src/attachments.js";
-import type { AvailableModel } from "../src/library-editor-schema.js";
-import type { runAgentSession } from "../src/agent-session.js";
+} from "../src/core/planning/program-compiler.js";
+import { planTask } from "../src/core/planning/task-planner.js";
+import { taskSchema } from "../src/contracts/task-schema.js";
+import { orchestrationSchema } from "../src/contracts/orchestration-schema.js";
+import { Attachments } from "../src/core/tasks/attachments.js";
+import type { AvailableModel } from "../src/contracts/library-editor-schema.js";
+import type { runAgentSession } from "../src/core/models/agent-session.js";
 
-const header =
-  'import {workflow,block,step,sequence,parallel,when,repeatUntil,z} from "workflow";';
+const header = 'import {workflow,block,step,sequence,parallel,when,repeatUntil,z} from "workflow";';
 const declaration = `${header}
 const flow=sequence(step("one",block({run(){return "Done";}})));
 const definition=workflow({name:"Declared flow",flow});`;
 
 test("composition discovery supports shorthand properties, default aliases and imported definitions", async (t) => {
   const { project } = await fixture(t);
-  await writeFile(
-    path.join(project, "declared.ts"),
-    `${declaration}\nexport default definition;`,
-  );
+  await writeFile(path.join(project, "declared.ts"), `${declaration}\nexport default definition;`);
   for (const source of [
     `${declaration}\nexport default definition;`,
     `${declaration}\nexport {definition as default};`,
@@ -59,15 +55,8 @@ const commit=step("commit",action),push=step("push",action);`;
       () => checkProgram(project, { source }),
       /Workflow primitive "publish" is declared but unused\. Attach it to the exported workflow's flow/,
     );
-    const repaired = source.replace(
-      "flow:implement",
-      "flow:sequence(implement,publish)",
-    );
-    const preview = await validateComposition(
-      project,
-      { source: repaired },
-      {},
-    );
+    const repaired = source.replace("flow:implement", "flow:sequence(implement,publish)");
+    const preview = await validateComposition(project, { source: repaired }, {});
     assert.equal(preview.structure.children[0]?.id, "implement");
   }
   assert.throws(
@@ -106,17 +95,10 @@ const publish=sequence(step("commit",block({run(){return "Committed";}})));
 export default workflow({name:"Imported composition",flow:used});`;
   await writeFile(declarationFile, source);
   await assert.rejects(
-    validateComposition(
-      project,
-      { source: 'export {default} from "./definition.ts";' },
-      {},
-    ),
+    validateComposition(project, { source: 'export {default} from "./definition.ts";' }, {}),
     /definition\.ts.*Workflow primitive "publish"/,
   );
-  await writeFile(
-    declarationFile,
-    source.replace("flow:used", "flow:sequence(used,publish)"),
-  );
+  await writeFile(declarationFile, source.replace("flow:used", "flow:sequence(used,publish)"));
   const preview = await validateComposition(
     project,
     { source: 'export {default} from "./definition.ts";' },
@@ -135,10 +117,7 @@ export default workflow({name:"Existing imperative workflow",async run(){
   return metadata.flow;
 }});`;
   const prepared = await validateProgram(project, { source });
-  assert.match(
-    prepared.source,
-    /Imperative initializer must wait for execution/,
-  );
+  assert.match(prepared.source, /Imperative initializer must wait for execution/);
   await assert.rejects(
     validateComposition(project, { source }, {}),
     /declared flow tree|graph before execution/,
@@ -179,7 +158,7 @@ export default workflow({name:"Bounded preview",flow:step("one",block({run(){ret
   await writeFile(
     childFile,
     `
-import {validateComposition} from ${JSON.stringify(fileURLToPath(new URL("../src/program-compiler.ts", import.meta.url)))};
+import {validateComposition} from ${JSON.stringify(fileURLToPath(new URL("../src/core/planning/program-compiler.ts", import.meta.url)))};
 try {
   await validateComposition(${JSON.stringify(project)},{source:${JSON.stringify(source)}},{});
   console.error("Preview unexpectedly accepted an infinite microtask");
@@ -238,20 +217,14 @@ export default workflow({name:"Typed composition",flow:sequence(producer,checked
   assert.throws(
     () =>
       checkProgram(project, {
-        source: source.replace(
-          "count:ctx.output(producer)?.count??0",
-          'count:"wrong"',
-        ),
+        source: source.replace("count:ctx.output(producer)?.count??0", 'count:"wrong"'),
       }),
     /not assignable|No overload/,
   );
   assert.throws(
     () =>
       checkProgram(project, {
-        source: source.replace(
-          "ctx.output(checked)?.approved",
-          "ctx.output(checked)?.missing",
-        ),
+        source: source.replace("ctx.output(checked)?.approved", "ctx.output(checked)?.missing"),
       }),
     /missing/,
   );
@@ -286,13 +259,7 @@ async function call(
 ) {
   const tool = session.tools.find((item) => item.name === name);
   assert.ok(tool, `Missing tool ${name}`);
-  return tool.execute(
-    "test-call",
-    args,
-    session.signal,
-    undefined,
-    {} as never,
-  );
+  return tool.execute("test-call", args, session.signal, undefined, {} as never);
 }
 
 test("coordinator repairs rejected TypeScript compositions and preserves task and screenshot context", async (t) => {
@@ -349,8 +316,9 @@ export default workflow({name:"Review",flow:sequence(review)});`;
       ]);
       assert.ok(
         (
-          session.tools.find((tool) => tool.name === "submit_workflow")!
-            .parameters as { required?: string[] }
+          session.tools.find((tool) => tool.name === "submit_workflow")!.parameters as {
+            required?: string[];
+          }
         ).required?.includes("attachmentSummary"),
       );
       const proposal = {
@@ -379,17 +347,11 @@ export default workflow({name:"Review",flow:sequence(review)});`;
         /Workflow primitive "publish" is declared but unused/,
       );
       assert.equal(session.completion?.isComplete(), false);
-      assert.match(
-        session.completion!.prompt(),
-        /Attach it to the exported workflow/,
-      );
+      assert.match(session.completion!.prompt(), /Attach it to the exported workflow/);
       await assert.rejects(
         call(session, "submit_workflow", {
           ...proposal,
-          source: source.replace(
-            '"review","review"',
-            '"review","missing-block"',
-          ),
+          source: source.replace('"review","review"', '"review","missing-block"'),
         }),
         /Unknown Settings block/,
       );
@@ -417,10 +379,7 @@ export default workflow({name:"Review",flow:sequence(review)});`;
         }),
       });
       assert.equal(session.completion?.isComplete(), true);
-      await assert.rejects(
-        call(session, "submit_workflow", proposal),
-        /already finished/,
-      );
+      await assert.rejects(call(session, "submit_workflow", proposal), /already finished/);
     },
   );
   assert.equal(result.kind, "program");
@@ -430,10 +389,7 @@ export default workflow({name:"Review",flow:sequence(review)});`;
   assert.equal(result.caseId, "investigation");
   assert.match(result.library.config.instructions, /missing result/);
   assert.ok(
-    events.some(
-      (event) =>
-        event.kind === "plan_validation" && /not available/.test(event.message),
-    ),
+    events.some((event) => event.kind === "plan_validation" && /not available/.test(event.message)),
   );
   assert.ok(events.some((event) => event.kind === "plan_ready"));
 });

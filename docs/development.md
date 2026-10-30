@@ -43,20 +43,20 @@ The build typechecks, removes stale `dist` output, runs Vite, emits SDK declarat
 
 Main outputs:
 
-| Output | Purpose |
-| --- | --- |
+| Output                                                                      | Purpose                                                  |
+| --------------------------------------------------------------------------- | -------------------------------------------------------- |
 | `dist/core.js`, `dist/web.js`, `dist/terminal.js` and matching declarations | Public execution, web-host, and terminal module entries. |
-| `dist/application.js` and declarations | Embeddable application and lifecycle. |
-| `dist/http-server.js` and declarations | Optional HTTP adapter. |
-| `dist/client.js`, `dist/contracts.js` and declarations | Portable client and public data contracts. |
-| `dist/cli.js` | Executable Bun CLI. |
-| `dist/tui.js` | Lazily loaded OpenTUI terminal workspace. |
-| `dist/tool-worker.js` | Bounded worker for frozen shared-tool implementations. |
-| `dist/web/` | Browser UI and assets. |
-| `dist/workflow-sdk.js` and declaration files | SDK used to compile authored workflows/blocks. |
-| `dist/program-runtime.js` | Runtime included in compiled user workflow versions. |
-| `dist/workflow-bundle.js` | Current engine workflow bundle. |
-| `dist/workflow-v1-bundle.js` | Frozen compatibility bundle. |
+| `dist/application.js` and declarations                                      | Embeddable application and lifecycle.                    |
+| `dist/http-server.js` and declarations                                      | Optional HTTP adapter.                                   |
+| `dist/client.js`, `dist/contracts.js` and declarations                      | Portable client and public data contracts.               |
+| `dist/cli.js`                                                               | Executable Bun CLI.                                      |
+| `dist/tui.js`                                                               | Lazily loaded OpenTUI terminal workspace.                |
+| `dist/tool-worker.js`                                                       | Bounded worker for frozen shared-tool implementations.   |
+| `dist/web/`                                                                 | Browser UI and assets.                                   |
+| `dist/workflow-sdk.js` and declaration files                                | SDK used to compile authored workflows/blocks.           |
+| `dist/program-runtime.js`                                                   | Runtime included in compiled user workflow versions.     |
+| `dist/workflow-bundle.js`                                                   | Current engine workflow bundle.                          |
+| `dist/workflow-v1-bundle.js`                                                | Frozen compatibility bundle.                             |
 
 Do not rebuild or remove `dist` while tests or live runs are loading it. Build once, then run checks against that stable distribution. Runtime dependencies remain beside the CLI; the package is not a standalone native binary.
 
@@ -122,14 +122,14 @@ WORKFLOW_CHROMIUM_PATH=/usr/bin/chromium bun run test:live
 WORKFLOW_LIVE_SCENARIO=composition WORKFLOW_CHROMIUM_PATH=/usr/bin/chromium bun run test:live
 ```
 
-| Scenario | Check |
-| --- | --- |
+| Scenario        | Check                                                                                                                                                    |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `all` (default) | Review with no commits, settings design, screenshot-driven implementation, tests/review, commit/push, results, parallel composition, and automatic mode. |
-| `publication` | Screenshot request through implementation, verification, commit, and push to the fixture remote. |
-| `composition` | Concurrent real AI calls, model overrides, typed joins, loop conditions, and a conditional result. |
-| `automatic` | Planning and execution without an approval click. |
-| `cancellation` | Stop planning and an active command, retain cancellation after reload, then run another task. |
-| `blocks` | AI-designed TypeScript block applied through Settings and executed without an AI call. |
+| `publication`   | Screenshot request through implementation, verification, commit, and push to the fixture remote.                                                         |
+| `composition`   | Concurrent real AI calls, model overrides, typed joins, loop conditions, and a conditional result.                                                       |
+| `automatic`     | Planning and execution without an approval click.                                                                                                        |
+| `cancellation`  | Stop planning and an active command, retain cancellation after reload, then run another task.                                                            |
+| `blocks`        | AI-designed TypeScript block applied through Settings and executed without an AI call.                                                                   |
 
 `WORKFLOW_LIVE_MODEL` overrides the smoke-test model (currently defaulting to `gpt-6-luna`). The selected model must be available through the connected catalog. Use these opt-in checks when testing provider-dependent behavior; they are not required for prose-only edits.
 
@@ -151,8 +151,16 @@ The package includes `dist/`, examples, README, and docs. It excludes this proje
 
 Keep the root README focused on purpose, first use, and entry points. Put behavior/reference details in the relevant guide and link to them. Current capabilities belong in these guides; unimplemented possibilities should be clearly identified rather than mixed into setup instructions.
 
-When changing the SDK or runtime, update the examples and describe any difference between declared composition and compatibility formats. Check commands against `src/cli.ts`, API bodies against the server/schemas, and defaults against their schemas. Typecheck complete TypeScript examples against the built SDK, validate local links and code-fence syntax, and check that packaged docs are included when changing the package manifest.
+When changing the SDK or runtime, update the examples and describe any difference between declared composition and compatibility formats. Check commands against `src/cli/index.ts`, API bodies against the server/schemas, and defaults against their schemas. Typecheck complete TypeScript examples against the built SDK, validate local links and code-fence syntax, and check that packaged docs are included when changing the package manifest.
 
 Tests and live runs can produce private project data under `.workflow/`. Keep local settings and generated execution history out of unrelated commits. Preserve old execution bundles and compatibility contracts when changing the engine.
 
 The installed CLI and `bun run start` default to a detached host. Use `bun run start serve` for a foreground built host; `bun run dev` already runs its backend in the foreground. Lifecycle tests exercise detached processes and explicitly stop their hosts during cleanup.
+
+## Code quality
+
+Run `bun run check` before submitting changes. It runs ESLint with zero warnings, checks Prettier formatting, typechecks TypeScript and Vue templates, builds the distributable artifacts, and runs the unit and integration tests. CI runs the same command with locked dependencies. Browser journeys are available separately through `bun run test:e2e`.
+
+Use `bun run lint:fix` for safe lint fixes and `bun run format` to format supported repository files. `bun run format:web` limits formatting to the browser application. ESLint uses its flat config with the recommended JavaScript, TypeScript and Vue rules; Prettier owns formatting. Prefer type-only imports, `const`, explicit module ownership, and meaningful error causes. Narrow, documented exceptions cover heterogeneous SDK generics, control-character validation and integrity checks during cleanup. Historical workflow sources are excluded from automated lint and formatting rewrites to preserve replay behavior.
+
+`.editorconfig` and `.prettierrc.json` define shared formatting defaults. `.prettierignore` excludes generated files, local workflow state, dependency directories and lockfiles. Add production code to its owning module and import implementations directly; avoid creating compatibility re-export files for old source paths.

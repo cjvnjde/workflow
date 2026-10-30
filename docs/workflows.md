@@ -13,41 +13,50 @@ This complete workflow passes review feedback into implementation and repeats un
 ```ts
 import { workflow, block, step, sequence, repeatUntil, z } from "workflow";
 
-const implement = step("implement", block({
-  input: z.object({ feedback: z.string() }),
-  async run(ctx) {
-    return ctx.ai({
-      model: ctx.models.coder ?? ctx.model,
-      instructions: "Implement the request and add focused tests. Do not commit or push.",
-      prompt: `${ctx.request}\nAddress this feedback: ${ctx.input.feedback}`,
-    });
-  },
-}), {
-  maxVisits: 3,
-  inputs: ctx => ({
-    feedback: ctx.output<{ approved: boolean; feedback: string }>("review")?.feedback ?? "",
+const implement = step(
+  "implement",
+  block({
+    input: z.object({ feedback: z.string() }),
+    async run(ctx) {
+      return ctx.ai({
+        model: ctx.models.coder ?? ctx.model,
+        instructions: "Implement the request and add focused tests. Do not commit or push.",
+        prompt: `${ctx.request}\nAddress this feedback: ${ctx.input.feedback}`,
+      });
+    },
   }),
-});
-
-const review = step("review", block({
-  async run(ctx) {
-    const result = await ctx.ai({
-      model: ctx.models.reviewer ?? ctx.model,
-      instructions: "Review without editing. Inspect the changes and run relevant tests. Approve only if correct and tested.",
-      prompt: ctx.request,
-      output: z.object({ approved: z.boolean(), feedback: z.string() }),
-    });
-    ctx.summary(result.feedback);
-    ctx.outcome(result.approved ? "pass" : "retry");
-    return result;
+  {
+    maxVisits: 3,
+    inputs: (ctx) => ({
+      feedback: ctx.output<{ approved: boolean; feedback: string }>("review")?.feedback ?? "",
+    }),
   },
-}), { maxVisits: 3, on: { retry: "continue" } });
+);
+
+const review = step(
+  "review",
+  block({
+    async run(ctx) {
+      const result = await ctx.ai({
+        model: ctx.models.reviewer ?? ctx.model,
+        instructions:
+          "Review without editing. Inspect the changes and run relevant tests. Approve only if correct and tested.",
+        prompt: ctx.request,
+        output: z.object({ approved: z.boolean(), feedback: z.string() }),
+      });
+      ctx.summary(result.feedback);
+      ctx.outcome(result.approved ? "pass" : "retry");
+      return result;
+    },
+  }),
+  { maxVisits: 3, on: { retry: "continue" } },
+);
 
 export default workflow({
   name: "Implement and review",
   flow: repeatUntil("revision", {
     body: sequence(implement, review),
-    until: ctx => ctx.output(review)?.approved === true,
+    until: (ctx) => ctx.output(review)?.approved === true,
     maxIterations: 3,
   }),
 });
@@ -59,13 +68,13 @@ For a separate command-based test step, parallel inspection, and a conditional f
 
 ## Composition primitives
 
-| Primitive | Behavior |
-| --- | --- |
-| `step(id, blockOrSavedId, options?)` | Creates a durable invocation of a block. Declaration alone does not schedule it. |
-| `sequence(a, b, c)` | Runs children in order. |
-| `parallel([a, b], { concurrency?, label? })` | Runs independent branches and joins their results. Default concurrency is 4; allowed values are 1–8. |
-| `when(id, condition, thenNode, elseNode?)` | Runs the selected branch. The unselected branch is marked skipped. Without an else branch, false simply continues. |
-| `repeatUntil(id, { body, until, maxIterations })` | Runs the body at least once, then evaluates the condition. An unmet condition at the limit fails the workflow. |
+| Primitive                                         | Behavior                                                                                                           |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `step(id, blockOrSavedId, options?)`              | Creates a durable invocation of a block. Declaration alone does not schedule it.                                   |
+| `sequence(a, b, c)`                               | Runs children in order.                                                                                            |
+| `parallel([a, b], { concurrency?, label? })`      | Runs independent branches and joins their results. Default concurrency is 4; allowed values are 1–8.               |
+| `when(id, condition, thenNode, elseNode?)`        | Runs the selected branch. The unselected branch is marked skipped. Without an else branch, false simply continues. |
+| `repeatUntil(id, { body, until, maxIterations })` | Runs the body at least once, then evaluates the condition. An unmet condition at the limit fails the workflow.     |
 
 Groups can nest. Step and explicit group IDs must be unique lowercase kebab-case, up to 64 characters. A loop reuses its step IDs on each iteration; do not declare the same step twice in the tree to reuse it. Create a new step ID when invoking the same block elsewhere.
 
@@ -73,14 +82,14 @@ A declaration supports at most 200 tree nodes and 20 levels. Empty groups and du
 
 ## Step options
 
-| Option | Meaning |
-| --- | --- |
-| `label` | Human-readable label in the graph. |
-| `prompt` | Step goal; a string or synchronous function of flow context. |
-| `inputs` | Explicit object passed to `block.run`; a literal or synchronous function of flow context. |
-| `model` | Inherited model choice for AI calls in this step; accepts a model ID string or a model settings object. |
-| `maxVisits` | Per-step limit, 1–30; defaults to 30. |
-| `on` | Actions for `pass`, `retry`, and `fail`: `continue`, `stop`, or `repeat`. |
+| Option      | Meaning                                                                                                 |
+| ----------- | ------------------------------------------------------------------------------------------------------- |
+| `label`     | Human-readable label in the graph.                                                                      |
+| `prompt`    | Step goal; a string or synchronous function of flow context.                                            |
+| `inputs`    | Explicit object passed to `block.run`; a literal or synchronous function of flow context.               |
+| `model`     | Inherited model choice for AI calls in this step; accepts a model ID string or a model settings object. |
+| `maxVisits` | Per-step limit, 1–30; defaults to 30.                                                                   |
+| `on`        | Actions for `pass`, `retry`, and `fail`: `continue`, `stop`, or `repeat`.                               |
 
 The run also has a total step limit, configured in **Settings → Execution** (default 30). Loop iterations and step visits are separate limits. A resumed interrupted attempt consumes another visit and another total step. Reaching either bound stops execution even if the loop would otherwise continue.
 
@@ -88,11 +97,11 @@ The run also has a total step limit, configured in **Settings → Execution** (d
 
 Default actions are:
 
-| Block outcome | Default action |
-| --- | --- |
-| `pass` | Continue to the next child. |
-| `retry` | Stop with a failed workflow. |
-| `fail` | Stop with a failed workflow. |
+| Block outcome | Default action               |
+| ------------- | ---------------------------- |
+| `pass`        | Continue to the next child.  |
+| `retry`       | Stop with a failed workflow. |
+| `fail`        | Stop with a failed workflow. |
 
 Use `on: { retry: "continue" }` when the loop's condition should inspect the returned review data. Use `on: { retry: "repeat" }` when a test failure should immediately restart the nearest enclosing loop and skip the remaining body. `repeat` requires an enclosing loop. Hard failures usually keep their default `stop` action.
 
@@ -106,15 +115,15 @@ Conditions must return a synchronous boolean. Use `ctx.output(review)?.approved 
 
 Deferred inputs, prompts, and conditions receive:
 
-| Field or method | Value |
-| --- | --- |
-| `ctx.request` | The original task request. |
-| `ctx.input` | The workflow input object, validated by its optional input schema. |
-| `ctx.models` | Enabled model profiles captured when the workflow was created. |
-| `ctx.output(step)` | The step's latest completed returned data, with its inferred type. |
-| `ctx.output<T>("step-id")` | The same lookup by ID, with an explicit expected type. |
-| `ctx.result(step)` | The result envelope: `{ outcome, summary, artifacts, data }`. |
-| `ctx.iteration("loop-id")` | Current one-based loop iteration, or 0 when absent. |
+| Field or method            | Value                                                              |
+| -------------------------- | ------------------------------------------------------------------ |
+| `ctx.request`              | The original task request.                                         |
+| `ctx.input`                | The workflow input object, validated by its optional input schema. |
+| `ctx.models`               | Enabled model profiles captured when the workflow was created.     |
+| `ctx.output(step)`         | The step's latest completed returned data, with its inferred type. |
+| `ctx.output<T>("step-id")` | The same lookup by ID, with an explicit expected type.             |
+| `ctx.result(step)`         | The result envelope: `{ outcome, summary, artifacts, data }`.      |
+| `ctx.iteration("loop-id")` | Current one-based loop iteration, or 0 when absent.                |
 
 Before the first visit, a step has no result. Optional access and defaults make feedback loops work on their initial iteration. Skipping a step does not manufacture new output; these lookups retain its latest completed output, if any.
 

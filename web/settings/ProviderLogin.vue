@@ -1,21 +1,14 @@
 <script setup lang="ts">
-import {
-  computed,
-  onMounted,
-  onScopeDispose,
-  ref,
-  shallowRef,
-  watch,
-} from "vue";
+import { computed, onMounted, onScopeDispose, ref, shallowRef, watch } from "vue";
 import type { z } from "zod";
 import {
   authOptionsSchema,
   authSessionSchema,
   type AuthSession,
-} from "../../src/contracts.js";
-import { request } from "../api.js";
-import Icon from "../components/Icon.vue";
-import AuthLink from "../components/AuthLink.vue";
+} from "../../src/contracts/index.js";
+import { request } from "../shared/api.js";
+import Icon from "../shared/Icon.vue";
+import AuthLink from "../shared/AuthLink.vue";
 const props = defineProps<{
   onConnected: () => Promise<void>;
   chatgptConnected: boolean;
@@ -34,16 +27,10 @@ const controller = new AbortController();
 async function poll() {
   const version = sequence;
   try {
-    const value = await request(
-      "/api/auth/session",
-      authSessionSchema.nullable(),
-      { signal: controller.signal },
-    );
-    if (
-      controller.signal.aborted ||
-      version !== sequence ||
-      version % 2 === 1
-    ) {
+    const value = await request("/api/auth/session", authSessionSchema.nullable(), {
+      signal: controller.signal,
+    });
+    if (controller.signal.aborted || version !== sequence || version % 2 === 1) {
       return;
     }
     session.value = value;
@@ -148,10 +135,7 @@ function cancel() {
   <div class="provider-login">
     <div v-if="chatgptConnected" class="chatgpt-connected">
       <Icon name="check" :size="22" />
-      <div>
-        <strong>ChatGPT connected</strong
-        ><small>Your account is ready to use.</small>
-      </div>
+      <div><strong>ChatGPT connected</strong><small>Your account is ready to use.</small></div>
     </div>
     <div v-else-if="!loading" class="chatgpt-login">
       <h3>ChatGPT</h3>
@@ -161,9 +145,7 @@ function cancel() {
         :disabled="
           busy ||
           pending ||
-          !options.some(
-            (item) => item.id === 'openai' && item.methods.includes('oauth'),
-          )
+          !options.some((item) => item.id === 'openai' && item.methods.includes('oauth'))
         "
         @click="start('openai', 'oauth')"
       >
@@ -173,25 +155,16 @@ function cancel() {
     <details class="api-key-setup">
       <summary>Use an API key</summary>
       <label for="api-key-provider">API-key provider</label
-      ><select
-        id="api-key-provider"
-        v-model="provider"
-        :disabled="busy || pending"
-      >
+      ><select id="api-key-provider" v-model="provider" :disabled="busy || pending">
         <option value="">Choose a provider</option>
         <option
-          v-for="item in options.filter((item) =>
-            item.methods.includes('api_key'),
-          )"
+          v-for="item in options.filter((item) => item.methods.includes('api_key'))"
           :key="item.id"
           :value="item.id"
         >
           {{ item.name }}
         </option></select
-      ><button
-        :disabled="busy || pending || !provider"
-        @click="start(provider, 'api_key')"
-      >
+      ><button :disabled="busy || pending || !provider" @click="start(provider, 'api_key')">
         Connect with API key
       </button>
     </details>
@@ -211,19 +184,14 @@ function cancel() {
             ><p>
               Enter code <code>{{ event.userCode }}</code>
             </p>
-            <AuthLink :url="event.verificationUri"
-              >Open verification page</AuthLink
-            ></template
+            <AuthLink :url="event.verificationUri">Open verification page</AuthLink></template
           >
           <template v-else
             ><p>{{ event.message }}</p>
             <template v-if="event.type === 'info'"
-              ><AuthLink
-                v-for="link in event.links"
-                :key="link.url"
-                :url="link.url"
-                >{{ link.label ?? "Open provider page" }}</AuthLink
-              ></template
+              ><AuthLink v-for="link in event.links" :key="link.url" :url="link.url">{{
+                link.label ?? "Open provider page"
+              }}</AuthLink></template
             ></template
           >
         </div></template
@@ -238,11 +206,7 @@ function cancel() {
           required
         >
           <option value="">Choose an option</option>
-          <option
-            v-for="option in prompt.options"
-            :key="option.id"
-            :value="option.id"
-          >
+          <option v-for="option in prompt.options" :key="option.id" :value="option.id">
             {{ option.label }}
           </option>
         </select>
@@ -257,15 +221,11 @@ function cancel() {
           :spellcheck="false"
           required
         />
-        <button type="submit" :disabled="busy || !answer">
-          Continue sign-in
-        </button>
+        <button type="submit" :disabled="busy || !answer">Continue sign-in</button>
       </form>
       <template v-if="pending"
         ><p v-if="!prompt" role="status">Waiting for the provider…</p>
-        <button :disabled="busy" @click="cancel">
-          Cancel sign-in
-        </button></template
+        <button :disabled="busy" @click="cancel">Cancel sign-in</button></template
       >
       <p v-else role="status">{{ session.message }}</p>
     </div>

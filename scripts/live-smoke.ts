@@ -7,51 +7,38 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { chromium, expect } from "@playwright/test";
-import { availableModels } from "../src/available-models.js";
-import { providerStatus } from "../src/provider-status.js";
-import { initializeProject } from "../src/library.js";
-import { WorkflowEngine } from "../src/engine.js";
-import { runPiBlock } from "../src/block-runner.js";
-import { createServer } from "../src/server.js";
-import { agentSchema, runSchema, type WorkflowRun } from "../src/domain.js";
-import { taskSchema, type TaskRequest } from "../src/task-schema.js";
+import { availableModels } from "../src/core/models/available-models.js";
+import { providerStatus } from "../src/core/models/provider-status.js";
+import { initializeProject } from "../src/core/library/library.js";
+import { WorkflowEngine } from "../src/core/engine.js";
+import { runPiBlock } from "../src/core/execution/block-runner.js";
+import { createServer } from "../src/http/server.js";
+import { agentSchema, runSchema, type WorkflowRun } from "../src/contracts/domain.js";
+import { taskSchema, type TaskRequest } from "../src/contracts/task-schema.js";
 import {
   loadOrchestration,
   saveOrchestration,
-} from "../src/orchestration-settings.js";
-import { designSessionSchema } from "../src/design-schema.js";
+} from "../src/core/settings/orchestration-settings.js";
+import { designSessionSchema } from "../src/contracts/design-schema.js";
 
 const execute = promisify(execFile);
 const signal = AbortSignal.timeout(15 * 60_000);
 const scenario = process.env.WORKFLOW_LIVE_SCENARIO ?? "all";
 assert.ok(
-  [
-    "all",
-    "publication",
-    "cancellation",
-    "blocks",
-    "automatic",
-    "composition",
-  ].includes(scenario),
+  ["all", "publication", "cancellation", "blocks", "automatic", "composition"].includes(scenario),
   "Use all, publication, cancellation, blocks, automatic or composition for WORKFLOW_LIVE_SCENARIO",
 );
 const providers = await providerStatus(signal);
 assert.ok(
-  providers.some(
-    (provider) => provider.id === "openai" && provider.method === "oauth",
-  ),
+  providers.some((provider) => provider.id === "openai" && provider.method === "oauth"),
   "Connect ChatGPT in Workflow before running test:live. This check does not provision API keys.",
 );
 const catalog = await availableModels(signal);
 const model = catalog.models.find(
   (item) =>
-    item.provider === "openai" &&
-    item.id === (process.env.WORKFLOW_LIVE_MODEL ?? "gpt-6-luna"),
+    item.provider === "openai" && item.id === (process.env.WORKFLOW_LIVE_MODEL ?? "gpt-6-luna"),
 );
-assert.ok(
-  model,
-  "The selected live-test model is not in the connected catalog.",
-);
+assert.ok(model, "The selected live-test model is not in the connected catalog.");
 const agent = agentSchema.parse({
   provider: model.provider,
   model: model.id,
@@ -166,9 +153,7 @@ async function api(route: string, method = "GET", body?: unknown) {
   });
   const text = await response.text();
   if (!response.ok)
-    throw new Error(
-      `${method} ${route}: ${response.status} ${text.slice(0, 1500)}`,
-    );
+    throw new Error(`${method} ${route}: ${response.status} ${text.slice(0, 1500)}`);
   return JSON.parse(text) as unknown;
 }
 async function until<T>(
@@ -184,9 +169,7 @@ async function until<T>(
     const value = await read();
     if (ready(value)) return value;
     if (Date.now() - progress > 20_000) {
-      console.log(
-        `${description}: waiting (${Math.round((Date.now() - started) / 1000)}s)`,
-      );
+      console.log(`${description}: waiting (${Math.round((Date.now() - started) / 1000)}s)`);
       progress = Date.now();
     }
     await Bun.sleep(500);
@@ -196,15 +179,11 @@ async function until<T>(
 async function startTaskFromComposer(prompt: string, attachment?: string) {
   await page.goto(address);
   await page.getByRole("button", { name: "New task", exact: true }).click();
-  await page
-    .getByLabel("What should we work on?", { exact: true })
-    .fill(prompt);
-  if (attachment)
-    await page.locator('input[type="file"]').setInputFiles(attachment);
+  await page.getByLabel("What should we work on?", { exact: true }).fill(prompt);
+  if (attachment) await page.locator('input[type="file"]').setInputFiles(attachment);
   const created = page.waitForResponse(
     (response) =>
-      response.url() === `${address}/api/tasks` &&
-      response.request().method() === "POST",
+      response.url() === `${address}/api/tasks` && response.request().method() === "POST",
   );
   await page.getByRole("button", { name: "Start task", exact: true }).click();
   const task = taskSchema.parse(await (await created).json());
@@ -222,32 +201,21 @@ async function taskFromComposer(prompt: string, attachment?: string) {
     path.join(directory, `${task.id}-planning.json`),
     JSON.stringify(planned, null, 2),
   );
-  assert.equal(
-    planned.status,
-    "ready",
-    planned.error ?? JSON.stringify(planned.question),
-  );
+  assert.equal(planned.status, "ready", planned.error ?? JSON.stringify(planned.question));
   assert.ok(planned.runId);
   const inspection = planned.events.filter(
     (event) =>
       event.kind === "tool_start" &&
-      /^(bash|git_changes|read_file|list_files|edit_file|write_file|mcp_)/.test(
-        event.message,
-      ),
+      /^(bash|git_changes|read_file|list_files|edit_file|write_file|mcp_)/.test(event.message),
   );
-  assert.deepEqual(
-    inspection,
-    [],
-    "Graph composition must not inspect or execute project tools",
-  );
+  assert.deepEqual(inspection, [], "Graph composition must not inspect or execute project tools");
   return planned;
 }
 async function finish(task: TaskRequest, publicationStep?: string) {
   let reachedPublication = false;
   const publicationReached = (run: WorkflowRun) =>
     run.attempts.some((attempt) => {
-      if (publicationStep !== "$program-publication")
-        return attempt.nodeId === publicationStep;
+      if (publicationStep !== "$program-publication") return attempt.nodeId === publicationStep;
       const node = run.plan.nodes.find((node) => node.id === attempt.nodeId);
       return node && /publish|commit|push/i.test(`${node.id} ${node.label}`);
     });
@@ -255,12 +223,9 @@ async function finish(task: TaskRequest, publicationStep?: string) {
     "Execution",
     async () => {
       const run = runSchema.parse(await api(`/api/runs/${task.runId}`));
-      reachedPublication ||=
-        run.cursor === publicationStep || publicationReached(run);
+      reachedPublication ||= run.cursor === publicationStep || publicationReached(run);
       if (publicationStep && !reachedPublication) {
-        const pushed = (
-          await execute("git", ["--git-dir", remote, "rev-list", "--all"])
-        ).stdout;
+        const pushed = (await execute("git", ["--git-dir", remote, "rev-list", "--all"])).stdout;
         const committed = (await git("rev-list", "--all")).stdout;
         if (pushed || committed) {
           // A step can transition while the read-only Git checks are in flight.
@@ -275,79 +240,46 @@ async function finish(task: TaskRequest, publicationStep?: string) {
       }
       return run;
     },
-    (item) =>
-      ["completed", "failed", "interrupted", "cancelled"].includes(item.status),
+    (item) => ["completed", "failed", "interrupted", "cancelled"].includes(item.status),
   );
   reports.push({ task, run });
-  await writeFile(
-    path.join(directory, `${task.id}-run.json`),
-    JSON.stringify(run, null, 2),
-  );
+  await writeFile(path.join(directory, `${task.id}-run.json`), JSON.stringify(run, null, 2));
   await page.screenshot({
     path: path.join(directory, `${task.id}.png`),
     fullPage: true,
   });
-  assert.equal(
-    run.status,
-    "completed",
-    run.error ?? run.attempts.at(-1)?.result?.summary,
-  );
+  assert.equal(run.status, "completed", run.error ?? run.attempts.at(-1)?.result?.summary);
   await expect(page.locator(".status-pill")).toHaveText("Completed");
   return run;
 }
-async function approveAndFinish(
-  task: TaskRequest,
-  checkPublicationOrder = false,
-) {
+async function approveAndFinish(task: TaskRequest, checkPublicationOrder = false) {
   const draft = runSchema.parse(await api(`/api/runs/${task.runId}`));
   assert.equal(draft.status, "draft", "Review mode must wait for approval");
   assert.equal(draft.attempts.length, 0);
-  assert.ok(
-    draft.plan.nodes.length,
-    "Generated workflows must preview all planned steps",
-  );
+  assert.ok(draft.plan.nodes.length, "Generated workflows must preview all planned steps");
   assert.equal(draft.program?.composition, "structured");
-  assert.ok(
-    draft.program.structure,
-    "Generated composition must contain a reviewed structure",
-  );
-  await expect(
-    page.getByRole("button", { name: "Workflow", exact: true }),
-  ).toHaveClass(/active/);
+  assert.ok(draft.program.structure, "Generated composition must contain a reviewed structure");
+  await expect(page.getByRole("button", { name: "Workflow", exact: true })).toHaveClass(/active/);
   for (const node of draft.plan.nodes)
-    await expect(
-      page.locator(`.vue-flow__node[data-id="${node.id}"]`),
-    ).toBeVisible();
+    await expect(page.locator(`.vue-flow__node[data-id="${node.id}"]`)).toBeVisible();
   await page.screenshot({
     path: path.join(directory, `${task.id}-graph.png`),
     fullPage: true,
   });
   const publicationStep =
     checkPublicationOrder && (!draft.program || !!draft.program.composition)
-      ? draft.plan.nodes.find((node) =>
-          /publish|commit|push/i.test(`${node.id} ${node.label}`),
-        )
+      ? draft.plan.nodes.find((node) => /publish|commit|push/i.test(`${node.id} ${node.label}`))
       : undefined;
   if (checkPublicationOrder && (!draft.program || !!draft.program.composition))
-    assert.ok(
-      publicationStep,
-      "The plan must include a dedicated publication step",
-    );
-  await expect(
-    page.getByRole("button", { name: "Approve & start", exact: true }),
-  ).toBeEnabled();
-  await page
-    .getByRole("button", { name: "Approve & start", exact: true })
-    .click();
+    assert.ok(publicationStep, "The plan must include a dedicated publication step");
+  await expect(page.getByRole("button", { name: "Approve & start", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Approve & start", exact: true }).click();
   if (draft.program) {
     assert.ok(
       draft.program.source.includes("workflow"),
       "New plans must contain executable TypeScript",
     );
-    await writeFile(
-      path.join(directory, `${task.id}.ts`),
-      draft.program.source,
-    );
+    await writeFile(path.join(directory, `${task.id}.ts`), draft.program.source);
   }
   return await finish(
     task,
@@ -366,9 +298,7 @@ async function checkCancellation() {
     async () => taskSchema.parse(await api(`/api/tasks/${planning.id}`)),
     (task) => task.events.some((event) => event.kind === "agent_start"),
   );
-  await page
-    .getByRole("button", { name: "Cancel planning", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Cancel planning", exact: true }).click();
   const stoppedPlanning = await until(
     "Planning cancelled",
     async () => taskSchema.parse(await api(`/api/tasks/${planning.id}`)),
@@ -376,21 +306,14 @@ async function checkCancellation() {
   );
   assert.equal(stoppedPlanning.runId, undefined);
   await page.reload();
-  assert.equal(
-    taskSchema.parse(await api(`/api/tasks/${planning.id}`)).status,
-    "cancelled",
-  );
-  console.log(
-    "PASS: real coordinator cancellation persists without creating a workflow.",
-  );
+  assert.equal(taskSchema.parse(await api(`/api/tasks/${planning.id}`)).status, "cancelled");
+  console.log("PASS: real coordinator cancellation persists without creating a workflow.");
 
   const execution = await taskFromComposer(
     "This is an execution-cancellation test. Plan one AI step whose only action during execution is to run this exact Bash command: `printf ready > cancel-started; sleep 8; printf unexpected > cancel-late`. Do not run it during planning. Do not edit source, tests, Git state or configuration. The user will stop execution while the command sleeps. No checks or other steps are needed.",
   );
   await assert.rejects(stat(path.join(project, "cancel-started")), /ENOENT/);
-  await page
-    .getByRole("button", { name: "Approve & start", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Approve & start", exact: true }).click();
   await until(
     "Real Bash command started",
     () =>
@@ -400,9 +323,7 @@ async function checkCancellation() {
       ),
     (started) => started,
   );
-  await page
-    .getByRole("button", { name: "Stop execution", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Stop execution", exact: true }).click();
   const stoppedRun = await until(
     "Execution cancelled",
     async () => runSchema.parse(await api(`/api/runs/${execution.runId}`)),
@@ -445,9 +366,7 @@ async function checkCancellation() {
       2,
     ),
   );
-  console.log(
-    `Live cancellation checks passed. Report and screenshots: ${directory}`,
-  );
+  console.log(`Live cancellation checks passed. Report and screenshots: ${directory}`);
 }
 
 async function checkAutomatic() {
@@ -456,15 +375,9 @@ async function checkAutomatic() {
   await page.goto(address);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("button", { name: "Execution", exact: true }).click();
-  await page
-    .getByLabel("Workflow approval", { exact: true })
-    .selectOption("automatic");
-  await page
-    .getByRole("button", { name: "Save settings", exact: true })
-    .click();
-  await expect(
-    page.getByText("All changes saved", { exact: true }),
-  ).toBeVisible();
+  await page.getByLabel("Workflow approval", { exact: true }).selectOption("automatic");
+  await page.getByRole("button", { name: "Save settings", exact: true }).click();
+  await expect(page.getByText("All changes saved", { exact: true })).toBeVisible();
   const automatic = await taskFromComposer(
     "Use one inspection step to summarize the exported functions in math.ts as a concise Markdown artifact. Do not edit files or make a commit.",
   );
@@ -473,17 +386,11 @@ async function checkAutomatic() {
   assert.equal((await git("rev-list", "--all")).stdout, commits);
   assert.equal(await readFile(path.join(project, "math.ts"), "utf8"), before);
   assert.deepEqual(errors, []);
-  console.log(
-    "PASS: automatic mode plans and executes without an approval click.",
-  );
+  console.log("PASS: automatic mode plans and executes without an approval click.");
   if (scenario === "automatic") {
     await writeFile(
       path.join(directory, "report.json"),
-      JSON.stringify(
-        { scenario, model: agent.model, reports, browserErrors: errors },
-        null,
-        2,
-      ),
+      JSON.stringify({ scenario, model: agent.model, reports, browserErrors: errors }, null, 2),
     );
     console.log(`Live automatic checks passed. Report: ${directory}`);
   }
@@ -522,17 +429,12 @@ export default workflow({name:"Live composed workflow",flow:sequence(repeatUntil
   // This may be a hash-only navigation from a previous task in the same page.
   // Reload to exercise opening the new run's deep link as a fresh document.
   await page.reload();
-  await expect(
-    page.getByRole("button", { name: "Workflow", exact: true }),
-  ).toHaveClass(/active/);
-  await page
-    .getByRole("button", { name: "Approve & start", exact: true })
-    .click();
+  await expect(page.getByRole("button", { name: "Workflow", exact: true })).toHaveClass(/active/);
+  await page.getByRole("button", { name: "Approve & start", exact: true }).click();
   const run = await until(
     "Composed execution",
     async () => engine.get(draft.id),
-    (item) =>
-      ["completed", "failed", "interrupted", "cancelled"].includes(item.status),
+    (item) => ["completed", "failed", "interrupted", "cancelled"].includes(item.status),
   );
   assert.equal(run.status, "completed", run.error);
   assert.deepEqual(run.visits, { first: 2, second: 2, review: 2, report: 1 });
@@ -546,13 +448,8 @@ export default workflow({name:"Live composed workflow",flow:sequence(repeatUntil
     a.startedAt < b.finishedAt! && b.startedAt < a.finishedAt!,
     "Parallel model steps must overlap",
   );
-  await expect(page.locator(".result-banner")).toContainText(
-    "Parallel model calls",
-  );
-  await writeFile(
-    path.join(directory, "composition-run.json"),
-    JSON.stringify(run, null, 2),
-  );
+  await expect(page.locator(".result-banner")).toContainText("Parallel model calls");
+  await writeFile(path.join(directory, "composition-run.json"), JSON.stringify(run, null, 2));
   await page.screenshot({
     path: path.join(directory, "composition.png"),
     fullPage: true,
@@ -566,31 +463,19 @@ export default workflow({name:"Live composed workflow",flow:sequence(repeatUntil
 async function checkWorkflows() {
   if (scenario === "all") {
     // The original failure: an unborn branch should still produce a useful review.
-    const review = await taskFromComposer(
-      "Review changes in the current branch.",
-    );
+    const review = await taskFromComposer("Review changes in the current branch.");
     assert.equal(
       await readFile(path.join(project, "math.ts"), "utf8"),
       "export function add(a: number, b: number) { return a + b; }\n",
     );
     await approveAndFinish(review);
-    assert.equal(
-      (await git("rev-list", "--all")).stdout,
-      "",
-      "Review must not create a commit",
-    );
-    console.log(
-      "PASS: real planning adapts to an unborn branch; review executes after approval.",
-    );
+    assert.equal((await git("rev-list", "--all")).stdout, "", "Review must not create a commit");
+    console.log("PASS: real planning adapts to an unborn branch; review executes after approval.");
 
     // Real conversational settings generation, applied through the browser.
     await page.getByRole("button", { name: "Settings", exact: true }).click();
-    await page
-      .getByRole("button", { name: "Model profiles", exact: true })
-      .click();
-    await page
-      .getByRole("button", { name: "Design with AI", exact: true })
-      .click();
+    await page.getByRole("button", { name: "Model profiles", exact: true }).click();
+    await page.getByRole("button", { name: "Design with AI", exact: true }).click();
     const chat = page.getByRole("dialog", {
       name: "Design model profiles with AI",
       exact: true,
@@ -600,9 +485,7 @@ async function checkWorkflows() {
       .fill(
         `Replace the profiles with one called Project lead. Use openai/${agent.model} with medium thinking for planning and every execution role in this tiny project. Set it as planning model. Explain the proposed change.`,
       );
-    await chat
-      .getByRole("button", { name: "Send to AI designer", exact: true })
-      .click();
+    await chat.getByRole("button", { name: "Send to AI designer", exact: true }).click();
     const design = await until(
       "Settings designer",
       async () => {
@@ -612,8 +495,7 @@ async function checkWorkflows() {
       (item) =>
         !!item &&
         (item.status === "failed" ||
-          (["ready", "idle"].includes(item.status) &&
-            item.messages.at(-1)?.role === "assistant")),
+          (["ready", "idle"].includes(item.status) && item.messages.at(-1)?.role === "assistant")),
     );
     assert.equal(
       design?.status,
@@ -621,22 +503,11 @@ async function checkWorkflows() {
       design?.error ??
         `Expected a reviewable proposal, received: ${design?.messages.at(-1)?.content}`,
     );
-    await chat
-      .getByRole("button", { name: "Apply changes", exact: true })
-      .click();
-    await expect(
-      chat.getByText("Changes applied", { exact: true }),
-    ).toBeVisible();
-    await chat
-      .getByRole("button", { name: "Minimize design chat", exact: true })
-      .click();
-    assert.equal(
-      (await loadOrchestration(project)).settings.profiles[0]?.name,
-      "Project lead",
-    );
-    console.log(
-      "PASS: real settings chat generates and applies a model profile.",
-    );
+    await chat.getByRole("button", { name: "Apply changes", exact: true }).click();
+    await expect(chat.getByText("Changes applied", { exact: true })).toBeVisible();
+    await chat.getByRole("button", { name: "Minimize design chat", exact: true }).click();
+    assert.equal((await loadOrchestration(project)).settings.profiles[0]?.name, "Project lead");
+    console.log("PASS: real settings chat generates and applies a model profile.");
   }
 
   // Attachment, code/test changes, a task-local publication block and real local push.
@@ -658,31 +529,17 @@ async function checkWorkflows() {
       /push|publish/i.test(`${node.id} ${node.label}`),
   );
   assert.ok(pushNode, "The planner should select the TypeScript push block");
-  const pushAttempt = implemented.attempts.find(
-    (attempt) => attempt.nodeId === pushNode.id,
-  );
+  const pushAttempt = implemented.attempts.find((attempt) => attempt.nodeId === pushNode.id);
   assert.equal(pushAttempt?.result?.outcome, "pass");
-  assert.equal(
-    pushAttempt?.usage?.requests ?? 0,
-    0,
-    "The push block must not call a model",
-  );
+  assert.equal(pushAttempt?.usage?.requests ?? 0, 0, "The push block must not call a model");
   const local = (await git("rev-parse", "HEAD")).stdout.trim();
   const published = (
     await execute("git", ["--git-dir", remote, "rev-parse", "main"])
   ).stdout.trim();
   assert.equal(published, local);
   const tracked = (await git("ls-files")).stdout.trim().split("\n");
-  for (const filename of [
-    "math.ts",
-    "math.test.ts",
-    "package.json",
-    ".gitignore",
-  ]) {
-    assert.ok(
-      tracked.includes(filename),
-      `Initial publication must include ${filename}`,
-    );
+  for (const filename of ["math.ts", "math.test.ts", "package.json", ".gitignore"]) {
+    assert.ok(tracked.includes(filename), `Initial publication must include ${filename}`);
   }
   assert.ok(
     !tracked.some(
@@ -710,9 +567,7 @@ async function checkWorkflows() {
     exact: true,
   });
   if (await allSteps.isVisible()) await allSteps.click();
-  await page
-    .getByRole("button", { name: "Expand workspace", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Expand workspace", exact: true }).click();
   const workspace = page.getByRole("dialog", {
     name: "Expanded workflow workspace",
     exact: true,
@@ -726,44 +581,28 @@ async function checkWorkflows() {
   });
   await page.keyboard.press("Escape");
   await expect(workspace).not.toBeVisible();
-  await expect(page.getByLabel("Search activity", { exact: true })).toHaveValue(
-    "bash",
-  );
+  await expect(page.getByLabel("Search activity", { exact: true })).toHaveValue("bash");
   await page.getByRole("button", { name: "Workflow", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Expand workspace", exact: true })
-    .click();
-  await workspace
-    .getByRole("button", { name: "Fit workflow", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Expand workspace", exact: true }).click();
+  await workspace.getByRole("button", { name: "Fit workflow", exact: true }).click();
   await page.screenshot({
     path: path.join(directory, "expanded-workflow.png"),
     fullPage: true,
   });
-  await workspace
-    .getByRole("button", { name: "Close expanded view", exact: true })
-    .click();
+  await workspace.getByRole("button", { name: "Close expanded view", exact: true }).click();
   await page.getByRole("button", { name: /View full results/ }).click();
   const artifact = page.locator(".result-artifact").first();
   await expect(artifact.locator(".markdown-body")).toBeVisible();
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await artifact
-    .getByRole("button", { name: "Copy Markdown", exact: true })
-    .click();
-  await expect(
-    artifact.getByText("Markdown copied", { exact: true }),
-  ).toHaveCount(1);
+  await artifact.getByRole("button", { name: "Copy Markdown", exact: true }).click();
+  await expect(artifact.getByText("Markdown copied", { exact: true })).toHaveCount(1);
   const markdown = await page.evaluate(() => navigator.clipboard.readText());
   assert.ok(markdown.length > 0);
   const downloadStarted = page.waitForEvent("download");
-  await artifact
-    .getByRole("button", { name: "Download Markdown", exact: true })
-    .click();
+  await artifact.getByRole("button", { name: "Download Markdown", exact: true }).click();
   const download = await downloadStarted;
   assert.equal(await readFile((await download.path())!, "utf8"), markdown);
-  console.log(
-    `PASS: screenshot → workflow → code + tests → commit → push. HEAD ${local}`,
-  );
+  console.log(`PASS: screenshot → workflow → code + tests → commit → push. HEAD ${local}`);
 
   if (scenario === "all") {
     await checkComposition();
@@ -791,9 +630,7 @@ async function checkBlockDesigner() {
   await page.goto(address);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("button", { name: "Blocks", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Design with AI", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Design with AI", exact: true }).click();
   const chat = page.getByRole("dialog", {
     name: "Design blocks with AI",
     exact: true,
@@ -803,9 +640,7 @@ async function checkBlockDesigner() {
     .fill(
       'Add one reusable TypeScript block with id repository-status. It must use ctx.exec("git status --short") without an AI call and return {exitCode,output}. Define its output schema, publish output in ctx.summary, and keep all existing blocks unchanged. Do not execute it during design.',
     );
-  await chat
-    .getByRole("button", { name: "Send to AI designer", exact: true })
-    .click();
+  await chat.getByRole("button", { name: "Send to AI designer", exact: true }).click();
   const design = await until(
     "Code block designer",
     async () => {
@@ -816,22 +651,15 @@ async function checkBlockDesigner() {
   );
   assert.equal(design?.status, "ready", design?.error);
   assert.equal(design?.proposal?.scope, "blocks");
-  if (design?.proposal?.scope !== "blocks")
-    throw new Error("Expected a block proposal");
+  if (design?.proposal?.scope !== "blocks") throw new Error("Expected a block proposal");
   const proposed = design.proposal.changes.blocks.find(
     (change) => change.bundle.definition.id === "repository-status",
   );
   assert.equal(proposed?.bundle.definition.executor?.kind, "code");
-  await chat
-    .getByRole("button", { name: "Apply changes", exact: true })
-    .click();
-  await expect(
-    chat.getByText("Changes applied", { exact: true }),
-  ).toBeVisible();
-  await chat
-    .getByRole("button", { name: "Minimize design chat", exact: true })
-    .click();
-  const { loadLibrary } = await import("../src/library.js");
+  await chat.getByRole("button", { name: "Apply changes", exact: true }).click();
+  await expect(chat.getByText("Changes applied", { exact: true })).toBeVisible();
+  await chat.getByRole("button", { name: "Minimize design chat", exact: true }).click();
+  const { loadLibrary } = await import("../src/core/library/library.js");
   const current = await loadLibrary(project);
   const run = await engine.createProgram(
     "AI-designed code block",
@@ -850,11 +678,7 @@ async function checkBlockDesigner() {
   assert.match(finished.output ?? "", /math\.ts/);
   await writeFile(
     path.join(directory, "report.json"),
-    JSON.stringify(
-      { scenario, design, run: finished, browserErrors: errors },
-      null,
-      2,
-    ),
+    JSON.stringify({ scenario, design, run: finished, browserErrors: errors }, null, 2),
   );
   assert.deepEqual(errors, []);
   console.log(

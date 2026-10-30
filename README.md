@@ -37,11 +37,11 @@ flowchart LR
 
 The coordinator uses the supplied request, context, task instructions, blocks, and model profiles. It starts with compact descriptions and loads selected block definitions and task instructions as needed. Enabled project memory can supply reusable guidance from approaches you liked. Repository inspection happens inside execution blocks. A task instruction such as “bug fix” describes how to approach that kind of work; it does not prescribe a fixed graph. [Reuse an approach](docs/reusing-approaches.md) explains how remembered strategies inform fresh plans.
 
-| Concept | What you define |
-| --- | --- |
-| **Block** | A reusable TypeScript function with optional AI calls, commands, inputs, and outputs. |
-| **Workflow** | Steps composed into sequences, branches, parallel groups, and bounded loops. |
-| **Task instructions and model profiles** | Guidance the orchestrator uses to choose blocks and models for a particular request. |
+| Concept                                  | What you define                                                                       |
+| ---------------------------------------- | ------------------------------------------------------------------------------------- |
+| **Block**                                | A reusable TypeScript function with optional AI calls, commands, inputs, and outputs. |
+| **Workflow**                             | Steps composed into sequences, branches, parallel groups, and bounded loops.          |
+| **Task instructions and model profiles** | Guidance the orchestrator uses to choose blocks and models for a particular request.  |
 
 The web UI uses Vue, Vue Flow, CodeMirror, and Catppuccin Mocha. The terminal workspace uses OpenTUI. Pi provides embedded model sessions and authentication integration; Temporal provides durable execution. Workflow owns the task workspace, configuration, approval flow, and results. [Read the design rationale](docs/concepts.md) or [explore the architecture](docs/architecture.md).
 
@@ -139,19 +139,23 @@ const check = block({
 
 const tests = step("tests", check, { inputs: { command: "bun test" } });
 const types = step("types", check, { inputs: { command: "bun run typecheck" } });
-const report = step("report", block({
-  input: z.object({ tests: z.string(), types: z.string() }),
-  run(ctx) {
-    ctx.artifact("tests.txt", ctx.input.tests);
-    ctx.artifact("types.txt", ctx.input.types);
-    return "Tests and typechecking passed.";
-  },
-}), {
-  inputs: ctx => ({
-    tests: ctx.output(tests)!.output,
-    types: ctx.output(types)!.output,
+const report = step(
+  "report",
+  block({
+    input: z.object({ tests: z.string(), types: z.string() }),
+    run(ctx) {
+      ctx.artifact("tests.txt", ctx.input.tests);
+      ctx.artifact("types.txt", ctx.input.types);
+      return "Tests and typechecking passed.";
+    },
   }),
-});
+  {
+    inputs: (ctx) => ({
+      tests: ctx.output(tests)!.output,
+      types: ctx.output(types)!.output,
+    }),
+  },
+);
 
 export default workflow({
   name: "Verify project",
@@ -173,21 +177,21 @@ The **Data** inspector shows each step visit's raw and effective inputs, typed o
 
 Start at **[docs/README.md](docs/README.md)** for reading paths and a complete index.
 
-| I want to… | Read |
-| --- | --- |
-| Understand why Workflow exists and its core concepts | [Concepts and design](docs/concepts.md) |
-| Install it and run my first task | [Getting started](docs/getting-started.md) |
-| Write sequences, branches, parallel groups, and loops | [Writing workflows](docs/workflows.md) |
-| Build reusable code and AI blocks | [Writing blocks](docs/blocks.md) · [Contracts, testing and evidence](docs/block-contracts-and-evidence.md) |
-| Configure models, task instructions, skills, and MCP | [Configuration](docs/configuration.md) |
-| Inspect tool calls, timing, historical events, and retained output | [Inspecting execution](docs/execution-inspection.md) |
-| Follow typed handoffs and exact model context | [Inspecting workflow data](docs/inspecting-data.md) |
-| Understand statuses, retries, recovery, and backups | [Running and recovering workflows](docs/operations.md) |
-| Run automatically for new GitHub issues or PRs | [GitHub triggers](docs/triggers.md) |
-| Work entirely in a terminal | [Terminal workspace](docs/terminal.md) |
-| Embed the engine or build another UI | [Engine and clients](docs/clients.md) |
-| Use the CLI or local HTTP API | [Command and API reference](docs/reference.md) |
-| Understand the implementation or contribute | [Architecture](docs/architecture.md) · [Development](docs/development.md) |
+| I want to…                                                         | Read                                                                                                       |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| Understand why Workflow exists and its core concepts               | [Concepts and design](docs/concepts.md)                                                                    |
+| Install it and run my first task                                   | [Getting started](docs/getting-started.md)                                                                 |
+| Write sequences, branches, parallel groups, and loops              | [Writing workflows](docs/workflows.md)                                                                     |
+| Build reusable code and AI blocks                                  | [Writing blocks](docs/blocks.md) · [Contracts, testing and evidence](docs/block-contracts-and-evidence.md) |
+| Configure models, task instructions, skills, and MCP               | [Configuration](docs/configuration.md)                                                                     |
+| Inspect tool calls, timing, historical events, and retained output | [Inspecting execution](docs/execution-inspection.md)                                                       |
+| Follow typed handoffs and exact model context                      | [Inspecting workflow data](docs/inspecting-data.md)                                                        |
+| Understand statuses, retries, recovery, and backups                | [Running and recovering workflows](docs/operations.md)                                                     |
+| Run automatically for new GitHub issues or PRs                     | [GitHub triggers](docs/triggers.md)                                                                        |
+| Work entirely in a terminal                                        | [Terminal workspace](docs/terminal.md)                                                                     |
+| Embed the engine or build another UI                               | [Engine and clients](docs/clients.md)                                                                      |
+| Use the CLI or local HTTP API                                      | [Command and API reference](docs/reference.md)                                                             |
+| Understand the implementation or contribute                        | [Architecture](docs/architecture.md) · [Development](docs/development.md)                                  |
 
 ## Execution boundaries
 
@@ -206,3 +210,5 @@ bun run test:e2e   # build + headless browser tests
 ```
 
 `dev` and `start` use real AI. Paid/subscription integration testing is a separate opt-in command, `bun run test:live`. See [Development](docs/development.md) for prerequisites, focused checks, and live-test scenarios.
+
+Code organization and contributor checks are documented in [architecture](docs/architecture.md#module-ownership) and [development](docs/development.md#code-quality). Run `bun run check` for lint, formatting, build and tests; use `bun run lint:fix` and `bun run format` to apply the shared code style.

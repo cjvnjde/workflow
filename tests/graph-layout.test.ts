@@ -5,8 +5,8 @@ import {
   routedEdge,
   type Point,
   type Obstacle,
-} from "../web/edge-routing.js";
-import { compositionLayout } from "../web/graph-layout.js";
+} from "../web/features/graph/edge-routing.js";
+import { compositionLayout } from "../web/features/graph/graph-layout.js";
 import {
   block,
   step,
@@ -15,7 +15,7 @@ import {
   when,
   repeatUntil,
   describeFlow,
-} from "../src/workflow-sdk.js";
+} from "../src/sdk/workflow-sdk.js";
 function clear(points: Point[], boxes: Obstacle[]) {
   assert.ok(points.length >= 2);
   for (let i = 1; i < points.length; i++) {
@@ -57,19 +57,10 @@ test("orthogonal routes avoid staggered cards and reroute after dragging", () =>
 });
 test("self loops route outside their own card and covered ports fail explicitly", () => {
   const box = { x: 0, y: 0, width: 260, height: 184 };
-  const route = routedEdge(
-    { x: 130, y: 184 },
-    { x: 130, y: 0 },
-    "bottom",
-    "top",
-    [box],
-  );
+  const route = routedEdge({ x: 130, y: 184 }, { x: 130, y: 0 }, "bottom", "top", [box]);
   assert.ok(route.path);
   assert.match(route.path, /L/);
-  assert.deepEqual(
-    routeBetween({ x: 10, y: 10 }, { x: 500, y: 10 }, [box]),
-    [],
-  );
+  assert.deepEqual(routeBetween({ x: 10, y: 10 }, { x: 500, y: 10 }, [box]), []);
 });
 test("nested parallel, conditional and loop layouts reserve non-overlapping card bounds", () => {
   const job = () => block({ run: () => null });

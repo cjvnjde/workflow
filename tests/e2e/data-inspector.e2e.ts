@@ -1,9 +1,4 @@
-import {
-  expect,
-  test,
-  type APIRequestContext,
-  type Page,
-} from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import {
@@ -11,7 +6,7 @@ import {
   type AttemptEvidence,
   type EvidenceContentRef,
   type StoredEvidenceValue,
-} from "../../src/contracts.js";
+} from "../../src/contracts/index.js";
 
 const source = `import { workflow, block, step, sequence, parallel, repeatUntil, z } from "workflow";
 const producer = block({run(ctx) { const name = String(ctx.input.kind); return {files:[name+".ts"],tests:name === "frontend" ? 2 : 3}; }});
@@ -42,16 +37,10 @@ async function create(request: APIRequestContext, prompt?: string) {
   expect(response.ok(), await response.text()).toBe(true);
   return await response.json();
 }
-async function completed(
-  page: Page,
-  request: APIRequestContext,
-  prompt?: string,
-) {
+async function completed(page: Page, request: APIRequestContext, prompt?: string) {
   const run = await create(request, prompt);
   await page.goto(`/#run=${run.id}`);
-  await page
-    .getByRole("button", { name: "Approve & start", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Approve & start", exact: true }).click();
   await expect(page.locator(".status-pill")).toHaveText("Completed", {
     timeout: 20000,
   });
@@ -63,9 +52,7 @@ async function completed(
     name: "Step data inspector",
     exact: true,
   });
-  await inspector
-    .getByRole("combobox", { name: "Step", exact: true })
-    .selectOption("report");
+  await inspector.getByRole("combobox", { name: "Step", exact: true }).selectOption("report");
   return { run, inspector };
 }
 function value(panel: ReturnType<Page["getByRole"]>, label: string) {
@@ -84,46 +71,29 @@ test("data inspector shows planned sources, parallel named inputs and exact hist
   const run = await create(request);
   let contentRequests = 0;
   page.on("request", (request) => {
-    if (/\/attempts\/[^/]+\/\d+\/content\//.test(request.url()))
-      contentRequests++;
+    if (/\/attempts\/[^/]+\/\d+\/content\//.test(request.url())) contentRequests++;
   });
   await page.goto(`/#run=${run.id}`);
   await page.locator('.workflow-node[data-id="report"]').click();
-  await page
-    .getByRole("button", { name: "Inspect step data", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Inspect step data", exact: true }).click();
   const inspector = page.getByRole("region", {
     name: "Step data inspector",
     exact: true,
   });
-  await expect(
-    inspector.getByRole("combobox", { name: "Visit", exact: true }),
-  ).toBeDisabled();
-  await expect(inspector).toContainText(
-    "Deferred · resolved when this step starts",
-  );
+  await expect(inspector.getByRole("combobox", { name: "Visit", exact: true })).toBeDisabled();
+  await expect(inspector).toContainText("Deferred · resolved when this step starts");
   await expect(inspector).toContainText("ctx.output(frontend)");
-  await inspector
-    .getByRole("combobox", { name: "Step", exact: true })
-    .selectOption("frontend");
+  await inspector.getByRole("combobox", { name: "Step", exact: true }).selectOption("frontend");
   await expect(inspector).toContainText("Literal value");
   await expect(inspector).toContainText('"kind": "frontend"');
   expect(contentRequests).toBe(0);
-  await inspector
-    .getByRole("combobox", { name: "Step", exact: true })
-    .selectOption("report");
-  await page
-    .getByRole("button", { name: "Approve & start", exact: true })
-    .click();
+  await inspector.getByRole("combobox", { name: "Step", exact: true }).selectOption("report");
+  await page.getByRole("button", { name: "Approve & start", exact: true }).click();
   await expect(page.locator(".status-pill")).toHaveText("Completed", {
     timeout: 20000,
   });
-  await expect(
-    inspector.getByRole("combobox", { name: "Visit", exact: true }),
-  ).toHaveValue("2");
-  await inspector
-    .getByRole("combobox", { name: "Visit", exact: true })
-    .selectOption("1");
+  await expect(inspector.getByRole("combobox", { name: "Visit", exact: true })).toHaveValue("2");
+  await inspector.getByRole("combobox", { name: "Visit", exact: true }).selectOption("1");
   await expect(
     inspector.getByRole("heading", {
       name: "Compare both branches · visit 1",
@@ -137,20 +107,14 @@ test("data inspector shows planned sources, parallel named inputs and exact hist
   await effective.locator("summary").click();
   await expect(raw).toContainText("frontend.ts");
   await expect(raw).toContainText("backend.ts");
-  await expect(
-    raw.getByRole("heading", { name: /frontend\s*object/ }),
-  ).toBeVisible();
-  await expect(
-    raw.getByRole("heading", { name: /backend\s*object/ }),
-  ).toBeVisible();
+  await expect(raw.getByRole("heading", { name: /frontend\s*object/ })).toBeVisible();
+  await expect(raw.getByRole("heading", { name: /backend\s*object/ })).toBeVisible();
   await expect(raw).not.toContainText("compact");
   await expect(effective).toContainText("compact");
   const output = value(inspector, "Typed output");
   await output.locator("summary").click();
   await expect(
-    output
-      .locator(".evidence-fields > section")
-      .filter({ hasText: /round\s*number/ }),
+    output.locator(".evidence-fields > section").filter({ hasText: /round\s*number/ }),
   ).toContainText("1");
   await expect(inspector).toContainText("Inputs computed from");
   const toast = page.getByRole("button", {
@@ -159,23 +123,15 @@ test("data inspector shows planned sources, parallel named inputs and exact hist
   });
   if (await toast.isVisible()) await toast.click();
   await inspector.screenshot({ path: "/tmp/workflow-feature4-data.png" });
-  await inspector
-    .getByRole("button", { name: "Frontend · visit 1", exact: true })
-    .click();
-  await expect(
-    inspector.getByRole("combobox", { name: "Step", exact: true }),
-  ).toHaveValue("frontend");
-  await expect(
-    inspector.getByRole("combobox", { name: "Visit", exact: true }),
-  ).toHaveValue("1");
+  await inspector.getByRole("button", { name: "Frontend · visit 1", exact: true }).click();
+  await expect(inspector.getByRole("combobox", { name: "Step", exact: true })).toHaveValue(
+    "frontend",
+  );
+  await expect(inspector.getByRole("combobox", { name: "Visit", exact: true })).toHaveValue("1");
   await value(inspector, "Typed output").locator("summary").click();
   await expect(value(inspector, "Typed output")).toContainText("frontend.ts");
-  await inspector
-    .getByRole("combobox", { name: "Step", exact: true })
-    .selectOption("report");
-  await expect(
-    inspector.getByRole("combobox", { name: "Visit", exact: true }),
-  ).toHaveValue("2");
+  await inspector.getByRole("combobox", { name: "Step", exact: true }).selectOption("report");
+  await expect(inspector.getByRole("combobox", { name: "Visit", exact: true })).toHaveValue("2");
   await value(inspector, "Typed output").locator("summary").click();
   await expect(
     value(inspector, "Typed output")
@@ -189,9 +145,7 @@ test("AI session context loads lazily and full search, copy and download survive
   request,
 }) => {
   const long =
-    "Explicit context only.\n" +
-    "selected evidence\n".repeat(2000) +
-    "FINAL_SEARCH_TARGET";
+    "Explicit context only.\n" + "selected evidence\n".repeat(2000) + "FINAL_SEARCH_TARGET";
   const { run, inspector } = await completed(page, request, long);
   const contents = new Map<string, { text: string; mediaType: string }>();
   const ref = (text: string, mediaType = "text/plain"): EvidenceContentRef => {
@@ -297,9 +251,7 @@ test("AI session context loads lazily and full search, copy and download survive
           {
             index: 1,
             kind: "continuation",
-            text: stored(
-              "Submit the existing review without repeating the inspection.",
-            ),
+            text: stored("Submit the existing review without repeating the inspection."),
             images: [
               {
                 state: "unavailable",
@@ -320,24 +272,18 @@ test("AI session context loads lazily and full search, copy and download survive
       },
     ],
   });
-  await page.route(
-    `**/api/runs/${run.id}/attempts/report/2/evidence`,
-    (route) => route.fulfill({ json: payload }),
+  await page.route(`**/api/runs/${run.id}/attempts/report/2/evidence`, (route) =>
+    route.fulfill({ json: payload }),
   );
   let fetched = 0;
   const realPromptId = createHash("sha256").update(long).digest("hex");
   page.on("request", (request) => {
-    if (
-      request.url().includes(`/api/runs/${run.id}/attempts/report/2/content/`)
-    )
-      fetched++;
+    if (request.url().includes(`/api/runs/${run.id}/attempts/report/2/content/`)) fetched++;
   });
   // The large text is a real captured artifact: exercise the actual content/download route.
   // Other session fields use deterministic metadata without making a paid model call.
   await page.route(
-    new RegExp(
-      `/api/runs/${run.id}/attempts/report/2/content/(?!${realPromptId})`,
-    ),
+    new RegExp(`/api/runs/${run.id}/attempts/report/2/content/(?!${realPromptId})`),
     (route) => {
       const url = new URL(route.request().url());
       const item = contents.get(url.pathname.split("/").at(-1)!)!;
@@ -350,9 +296,7 @@ test("AI session context loads lazily and full search, copy and download survive
       });
     },
   );
-  await inspector
-    .getByRole("button", { name: "Refresh data", exact: true })
-    .click();
+  await inspector.getByRole("button", { name: "Refresh data", exact: true }).click();
   await expect(inspector).toContainText("fixture/independent-reviewer");
   expect(fetched).toBe(0);
   const session = inspector.getByLabel(`AI session ${sessionId}`, {
@@ -370,12 +314,8 @@ test("AI session context loads lazily and full search, copy and download survive
     .fill("FINAL_SEARCH_TARGET");
   await expect(original.locator("mark")).toHaveText("FINAL_SEARCH_TARGET");
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
-  await original
-    .getByRole("button", { name: "Copy Original call prompt", exact: true })
-    .click();
-  await expect
-    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
-    .toBe(long);
+  await original.getByRole("button", { name: "Copy Original call prompt", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(long);
   const download = page.waitForEvent("download");
   await original.getByRole("link", { name: "Download", exact: true }).click();
   expect(await readFile((await (await download).path())!, "utf8")).toBe(long);
@@ -384,17 +324,11 @@ test("AI session context loads lazily and full search, copy and download survive
     "Inspect only the explicit selected evidence",
   );
   await value(session, "Available tool definitions").locator("summary").click();
-  await expect(value(session, "Available tool definitions")).toContainText(
-    '"submit_result"',
-  );
-  await value(session, "Session prompt 2 (continuation)")
-    .locator("summary")
-    .click();
+  await expect(value(session, "Available tool definitions")).toContainText('"submit_result"');
+  await value(session, "Session prompt 2 (continuation)").locator("summary").click();
   await expect(session).toContainText("without repeating the inspection");
   await value(session, "Prompt 2 image 1").locator("summary").click();
-  await expect(session).toContainText(
-    "Image evidence exceeded the capture limit",
-  );
+  await expect(session).toContainText("Image evidence exceeded the capture limit");
   const toast = page.getByRole("button", {
     name: "Dismiss notification",
     exact: true,
@@ -402,9 +336,7 @@ test("AI session context loads lazily and full search, copy and download survive
   if (await toast.isVisible()) await toast.click();
   await page.setViewportSize({ width: 390, height: 900 });
   expect(
-    await inspector.evaluate(
-      (element) => element.getBoundingClientRect().right <= innerWidth,
-    ),
+    await inspector.evaluate((element) => element.getBoundingClientRect().right <= innerWidth),
   ).toBe(true);
   await inspector.screenshot({
     path: "/tmp/workflow-feature4-data-mobile.png",
@@ -414,12 +346,8 @@ test("AI session context loads lazily and full search, copy and download survive
     reason: "This historical visit did not capture exact inputs.",
   };
   payload.sessions = [];
-  await inspector
-    .getByRole("button", { name: "Refresh data", exact: true })
-    .click();
-  await expect(inspector).toContainText(
-    "This historical visit did not capture exact inputs",
-  );
+  await inspector.getByRole("button", { name: "Refresh data", exact: true }).click();
+  await expect(inspector).toContainText("This historical visit did not capture exact inputs");
   await expect(inspector).toContainText("shortened previews");
   await expect(value(inspector, "Raw inputs")).toHaveCount(0);
 });
@@ -429,23 +357,14 @@ test("a delayed historical lookup cannot replace the newly selected visit", asyn
   request,
 }) => {
   const { run, inspector } = await completed(page, request);
-  const first = await (
-    await request.get(`/api/runs/${run.id}/attempts/report/1/evidence`)
-  ).json();
+  const first = await (await request.get(`/api/runs/${run.id}/attempts/report/1/evidence`)).json();
   let delayed: import("@playwright/test").Route | undefined;
-  await page.route(
-    `**/api/runs/${run.id}/attempts/report/1/evidence`,
-    (route) => {
-      delayed = route;
-    },
-  );
-  await inspector
-    .getByRole("combobox", { name: "Visit", exact: true })
-    .selectOption("1");
+  await page.route(`**/api/runs/${run.id}/attempts/report/1/evidence`, (route) => {
+    delayed = route;
+  });
+  await inspector.getByRole("combobox", { name: "Visit", exact: true }).selectOption("1");
   await expect.poll(() => !!delayed).toBe(true);
-  await inspector
-    .getByRole("combobox", { name: "Visit", exact: true })
-    .selectOption("2");
+  await inspector.getByRole("combobox", { name: "Visit", exact: true }).selectOption("2");
   await expect(
     inspector.getByRole("heading", {
       name: "Compare both branches · visit 2",
@@ -459,7 +378,5 @@ test("a delayed historical lookup cannot replace the newly selected visit", asyn
       .locator(".evidence-fields > section")
       .filter({ hasText: /round\s*number/ }),
   ).toContainText("2");
-  await expect(
-    inspector.getByRole("combobox", { name: "Visit", exact: true }),
-  ).toHaveValue("2");
+  await expect(inspector.getByRole("combobox", { name: "Visit", exact: true })).toHaveValue("2");
 });
