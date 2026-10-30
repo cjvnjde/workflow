@@ -24,6 +24,7 @@ import { mcpServerSchema } from "./capability-schema.js";
 import { inspectMcp } from "./mcp-tools.js";
 import { createProgramSchema } from "./contracts.js";
 import { refineProgram } from "./program-refiner.js";
+import { createAccountingContext } from "./usage-store.js";
 import { Triggers } from "./triggers.js";
 import type { GithubTriggerSource } from "./github-trigger-source.js";
 
@@ -40,6 +41,7 @@ const proposalSchema = z
     instructions: z.string().max(8000).default(""),
     autoApprove: z.boolean().default(false),
     maxCostUsd: z.number().positive().optional(),
+    maxTaskCostUsd: z.number().positive().optional(),
   })
   .strict();
 
@@ -134,6 +136,9 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
     executionSettings: () => executionSettings(engine.project),
     updateExecutionSettings: (value: unknown) => planningJob(() => updateExecutionSettings(engine.project, value)),
     setup: async () => ({ ...(await projectModelSettings(engine.project)), providers: await providers(planning.signal) }),
+    usage: () => engine.usage.report(),
+    taskUsage: (id: string) => { tasks.get(id); return engine.usage.report({ taskId: id }); },
+    runUsage: (id: string) => { engine.get(id); return engine.usage.report({ runId: id }); },
     updateProjectModel: (value: unknown) => planningJob(async () => ({
       ...(await updateProjectModel(engine.project, value, (await catalog(planning.signal)).models)),
       providers: await providers(planning.signal),
@@ -193,6 +198,8 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
         if (proposal.maxCostUsd !== undefined) {
           library.config.budget = budgetSchema.parse({ ...library.config.budget, maxCostUsd: proposal.maxCostUsd });
         }
+        if (proposal.maxTaskCostUsd !== undefined) library.config.budget = budgetSchema.parse({ ...library.config.budget, maxTaskCostUsd: proposal.maxTaskCostUsd });
+        const accounting = proposal.strategy === "ai" ? await createAccountingContext(engine.project, "planning", { maxCostUsd: library.config.budget?.maxTaskCostUsd }) : undefined;
         if (proposal.strategy === "ai" && engine.mode === "demo") {
           throw new Error(
             "AI coordination needs live mode. Demo supports bug and feature templates.",
@@ -203,6 +210,7 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
             ? await planWithAi({
                 project: engine.project,
                 library,
+                accounting,
                 task: proposal.task,
                 instructions: proposal.instructions,
                 emit: (kind, message) => {
@@ -213,7 +221,7 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
               })
             : createTemplate(proposal.task, proposal.strategy, library);
         signal.throwIfAborted();
-        const run = await engine.create(plan, library);
+        const run = await engine.create(plan, library, accounting ? { scopeId: accounting.scopeId } : undefined);
         if (signal.aborted) {
           await engine.remove(run.id);
           signal.throwIfAborted();
@@ -230,8 +238,9 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
         const run = engine.get(id);
         if (run.status !== "draft") { throw new Error("Only draft workflows can be refined"); }
         if (revision !== undefined && run.revision !== revision) { throw new Error("Draft changed since you loaded it. Review the latest draft and try again."); }
+        const accounting = await createAccountingContext(engine.project, "refinement", { scopeId: (await engine.usage.ensureRun(run)).id, runId: run.id });
         if (run.program && run.program.composition !== "graph") {
-          const program = await refineProgram({ project: engine.project, run, instructions: input.instructions,
+          const program = await refineProgram({ project: engine.project, run, accounting, instructions: input.instructions,
             models: (await catalog(signal)).models, signal, emit });
           signal.throwIfAborted();
           return await engine.updateProgram(run.id, program, run.revision, signal);
@@ -239,6 +248,7 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
         const plan = await planWithAi({
           project: engine.project, library: { config: run.config, blocks: run.blocks }, task: run.plan.task,
           previousPlan: run.plan, instructions: input.instructions, signal, emit,
+          accounting,
           models: (await catalog(signal)).models,
         });
         signal.throwIfAborted();

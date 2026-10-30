@@ -174,6 +174,8 @@ Workflow is a **single-user local application**. AI tools and commands run with 
 
 One workflow executes per project at a time, with explicit parallelism inside it. Provider errors, failed checks, exhausted limits, and unsuccessful planning can still stop a task. [Operations and current limitations](docs/operations.md) explain what can be resumed and what must be corrected first.
 
+Usage totals cover planning, setup, design, and execution, including failed requests and retries. Inspect costs by phase/model in the web UI or with `workflow usage`. Optional task/setup limits complement the execution-only cap; in-flight responses can exceed a remaining limit. See [cost accounting and limits](docs/configuration.md#execution-limits-and-costs).
+
 ## Develop Workflow
 
 ```sh

@@ -16,6 +16,8 @@ The development script starts the live API, waits for readiness, then starts Vit
 
 Use `bun run workflow --help` for the source CLI. `bun run start` serves the built distribution. Rebuild after changing the tool when using a `bun link` installation, since the linked command runs `dist/cli.js`.
 
+An existing background host keeps the code it started with. After rebuilding or upgrading, use `workflow stop` and `workflow start` when ready to restart it; saved tasks remain available. Refresh the browser after the host restarts.
+
 Do not run competing servers against the same project. Use disposable project directories for integration checks.
 
 ## Application structure

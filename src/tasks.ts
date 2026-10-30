@@ -12,6 +12,7 @@ import { planTask } from "./task-planner.js";
 import { availableModels } from "./available-models.js";
 import { newTaskSchema, taskSchema, type TaskRequest } from "./task-schema.js";
 import { createTemplate } from "./templates.js";
+import { createAccountingContext, UsageStore } from "./usage-store.js";
 
 export class Tasks {
   private readonly records = new Map<string, TaskRequest>();
@@ -65,6 +66,10 @@ export class Tasks {
     const { settings } = await loadOrchestration(this.engine.project);
     const now = new Date().toISOString();
     const task = taskSchema.parse({ id: randomUUID(), createdAt: now, updatedAt: now, revision: 0, status: "queued", prompt: sourceRun?.plan.task ?? input.prompt, sourceRunId: sourceRun?.id, attachments, answers: structuredClone(sourceTask?.answers ?? []), approval: sourceRun ? "review" : input.approval ?? settings.approval });
+    const usage = new UsageStore(this.engine.project);
+    const inheritedScope = sourceRun ? await usage.ensureRun(sourceRun) : undefined;
+    await usage.ensureScope({ id: inheritedScope?.id, owner: inheritedScope?.owner ?? { kind: "task", id: task.id }, taskId: task.id,
+      maxCostUsd: inheritedScope?.maxCostUsd ?? input.maxTaskCostUsd ?? (await loadLibrary(this.engine.project)).config.budget?.maxTaskCostUsd });
     this.records.set(task.id, task);
     await this.save(task); this.enqueue(task.id);
     return this.get(task.id);
@@ -81,6 +86,9 @@ export class Tasks {
         controller.signal.throwIfAborted();
         this.emit(task, "planning", "Composing a graph from your request, blocks and task instructions…");
         const library = await loadLibrary(this.engine.project);
+        const usage = new UsageStore(this.engine.project);
+        const scope = await usage.scopeForTask(task.id) ?? await usage.ensureScope({ owner: { kind: "task", id: task.id }, taskId: task.id, maxCostUsd: library.config.budget?.maxTaskCostUsd });
+        const accounting = await createAccountingContext(this.engine.project, "planning", { scopeId: scope.id, taskId: task.id });
         const { settings } = await loadOrchestration(this.engine.project);
         const result = this.engine.mode === "demo" ? await (async () => {
           await delay(200, undefined, { signal: controller.signal });
@@ -89,13 +97,13 @@ export class Tasks {
           plan.title = task.prompt.replace(/\s+/g, " ").slice(0, 100);
           library.config.attachments = task.attachments;
           return { kind: "plan" as const, plan, library, rationale: "Demo simulation. No model requests, commands, or task-file changes.", suggestedBlocks: [], caseName: "Demo task" };
-        })() : await this.planner({ project: this.engine.project, library, settings, task: structuredClone(task), recovery: task.sourceRunId ? this.engine.get(task.sourceRunId) : undefined, models: (await this.catalog(controller.signal)).models, signal: controller.signal, emit: (kind, message) => this.emit(task, kind, message) });
+        })() : await this.planner({ project: this.engine.project, library, settings, accounting, task: structuredClone(task), recovery: task.sourceRunId ? this.engine.get(task.sourceRunId) : undefined, models: (await this.catalog(controller.signal)).models, signal: controller.signal, emit: (kind, message) => this.emit(task, kind, message) });
         controller.signal.throwIfAborted();
         if (result.kind === "question") { task.status = "needs_input"; task.question = result.question; }
         else {
           const run = result.kind === "program"
-            ? await this.engine.createProgram(result.title, task.prompt, result.program, result.library)
-            : await this.engine.create(result.plan, result.library);
+            ? await this.engine.createProgram(result.title, task.prompt, result.program, result.library, undefined, undefined, { scopeId: scope.id, taskId: task.id })
+            : await this.engine.create(result.plan, result.library, { scopeId: scope.id, taskId: task.id });
           unpublishedRunId = run.id;
           controller.signal.throwIfAborted();
           task.runId = run.id; task.status = "ready"; task.rationale = result.rationale;

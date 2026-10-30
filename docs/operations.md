@@ -91,6 +91,7 @@ The journal does not undo Bash edits, Git operations, check-command effects, ext
 ├── library-proposals/        # saved library proposals
 ├── design-chats/             # settings conversations
 ├── tasks/                    # requests and planning history
+├── usage/                    # durable model-session costs and task/setup scopes
 ├── attachments/              # uploaded request data
 ├── runs/                     # approval snapshots, events, attempt journals
 ├── versions/                 # archived workflow bundles, tools.js and manifests

@@ -11,11 +11,14 @@ import { validateCodeBlocks } from "./program-compiler.js";
 import { validateLibraryChanges } from "./library-proposals.js";
 import type { ActivitySink } from "./agent-session.js";
 import { clearProjectCoordinator, projectModelSettings } from "./project-model.js";
+import { randomUUID } from "node:crypto";
+import { createAccountingContext } from "./usage-store.js";
 
 const setupRecordSchema = z.object({
   version: z.literal(1), completedAt: z.string(),
   model: z.object({ provider: z.string(), model: z.string(), thinking: z.string() }),
   libraryProposalId: z.string().uuid(),
+  usageScopeId: z.string().uuid().optional(),
 });
 
 export type InitializeSetupOptions = {
@@ -23,6 +26,7 @@ export type InitializeSetupOptions = {
   regenerate?: boolean;
   signal?: AbortSignal;
   emit?: ActivitySink;
+  maxSetupCostUsd?: number;
 };
 
 /** Explicit project bootstrap. Ordinary init/startup never makes model requests. */
@@ -55,6 +59,8 @@ export async function initializeSetup(
   }
   validateModelChoice(agent, models);
   const { provider, model, thinking } = agent;
+  const setupId = randomUUID();
+  const accounting = await createAccountingContext(project, "setup", { owner: { kind: "setup", id: setupId }, setupId, maxCostUsd: options.maxSetupCostUsd ?? library.config.budget?.maxSetupCostUsd });
   const design = services.design ?? designSettings;
   // Setup is explicitly driven by the chosen default, even when regenerating a
   // project with an older dedicated coordinator. Preserve execution limits.
@@ -67,7 +73,7 @@ export async function initializeSetup(
   const request = async (scope: "profiles" | "cases" | "blocks", instructions: string) => {
     signal.throwIfAborted();
     emit("setup", `Designing project ${scope} with ${provider}/${model}…`);
-    const input: DesignOptions = { ...context, scope, messages: [{
+    const input: DesignOptions = { ...context, scope, accounting: { ...accounting, operationId: `${setupId}/${scope}`, setupStage: scope }, messages: [{
       role: "user", time: new Date().toISOString(),
       content: `${instructions}\n\nInspect the actual project using read-only tools. Generate a complete proposal now, using reasonable defaults instead of questions. Keep the result concise and reusable. User preferences: ${options.instructions || "Balance reliability and cost; keep simple work simple."}`,
     }] };
@@ -133,7 +139,7 @@ export async function initializeSetup(
     throw new Error(`Generated blocks were saved, but model profiles/task instructions could not be saved. Retry workflow setup to finish: ${error instanceof Error ? error.message : String(error)}`);
   }
   await atomicWrite(recordPath, JSON.stringify(setupRecordSchema.parse({
-    version: 1, completedAt: new Date().toISOString(), model: { provider, model, thinking }, libraryProposalId: proposal.id,
+    version: 1, completedAt: new Date().toISOString(), model: { provider, model, thinking }, libraryProposalId: proposal.id, usageScopeId: accounting.scopeId,
   }), null, 2) + "\n");
   emit("setup", "Project setup saved. Review models, task instructions and blocks in Settings.");
   return { status: "generated" as const, profiles: context.settings.profiles.length, cases: context.settings.cases.length, blocks: Object.keys(validated.blocks).length };

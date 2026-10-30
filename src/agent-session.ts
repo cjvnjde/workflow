@@ -12,6 +12,8 @@ import type { z } from "zod";
 import { addUsage, emptyUsage, priceUsage } from "./budget.js";
 import { getModelRuntime } from "./model-runtime.js";
 import { boundedEvidence, type OperationRecorder } from "./operation-schema.js";
+import { createAccountingContext, UsageStore } from "./usage-store.js";
+import type { AccountingContext } from "./usage-schema.js";
 
 export type ActivitySink = (kind: string, message: string) => void;
 
@@ -28,6 +30,7 @@ export async function runAgentSession(options: {
   onUsage?: (usage: UsageTotals) => Promise<void>;
   maxCostUsd?: number;
   price?: z.infer<typeof priceSchema>;
+  accounting?: AccountingContext;
   operation?: { parentId: string; record: OperationRecorder };
   /** Continue a prematurely ended response in the same session and budgets. */
   completion?: { isComplete: () => boolean; prompt: () => string };
@@ -54,6 +57,15 @@ export async function runAgentSession(options: {
   if (options.images?.length && !model.input.includes("image") && options.requireVision !== false) { throw new Error("This model cannot read images. Select an image-capable coordinator/model profile in Settings."); }
   if (options.maxCostUsd !== undefined && options.maxCostUsd <= 0) { throw new Error("Workflow spending limit reached"); }
   if (options.maxCostUsd !== undefined && !options.price && ![model.cost.input, model.cost.output, model.cost.cacheRead, model.cost.cacheWrite].some((rate) => rate > 0)) { throw new Error("Cannot enforce a dollar budget without model pricing"); }
+  const accounting = options.accounting ?? await createAccountingContext(project, "execution");
+  const catalogPriced = [model.cost.input, model.cost.output, model.cost.cacheRead, model.cost.cacheWrite].some(rate => rate > 0);
+  const tracked = await new UsageStore(accounting.project).beginSession(accounting, {
+    provider: model.provider, model: model.id, thinking: settings.thinking,
+    pricing: { source: options.price ? "override" : catalogPriced ? "catalog" : "unknown",
+      rates: options.price ?? (catalogPriced ? { input: model.cost.input, output: model.cost.output, cacheRead: model.cost.cacheRead, cacheWrite: model.cost.cacheWrite, tiers: model.cost.tiers } : null) },
+  }, signal);
+  const limits = [options.maxCostUsd, tracked.remainingCostUsd].filter((value): value is number => value !== undefined);
+  const maxCostUsd = limits.length ? Math.min(...limits) : undefined;
   const resourceLoader: ResourceLoader = {
     getExtensions: () => ({
       extensions: [],
@@ -125,9 +137,9 @@ export async function runAgentSession(options: {
     sessionManager: SessionManager.inMemory(project),
     settingsManager: SettingsManager.inMemory({
       retry: { enabled: true, maxRetries: 2 },
-      compaction: { enabled: options.maxCostUsd === undefined },
+      compaction: { enabled: maxCostUsd === undefined },
     }),
-  });
+  }).catch(async error => { try { await tracked.finish(signal.aborted ? "cancelled" : "failed", String(error)); } finally { tracked.release(); } throw error; });
   let abortPromise: Promise<void> | undefined;
   const abort = () => {
     // Retry-start listeners run before Pi installs its backoff controller.
@@ -149,10 +161,10 @@ export async function runAgentSession(options: {
     });
     usage = addUsage(usage, next);
     const snapshot = { ...usage };
-    usageWrites = usageWrites.then(async () => { await options.onUsage?.(snapshot); });
+    usageWrites = usageWrites.then(async () => { await tracked.update(snapshot); await options.onUsage?.(snapshot); });
     void usageWrites.catch((error: unknown) => { budget.abort(error); });
     emit("usage", JSON.stringify(snapshot));
-    if (options.maxCostUsd !== undefined && (usage.unpricedRequests > 0 || usage.costUsd >= options.maxCostUsd)) {
+    if (maxCostUsd !== undefined && (usage.unpricedRequests > 0 || usage.costUsd >= maxCostUsd)) {
       budget.abort(new Error(usage.unpricedRequests > 0 ? "Cannot enforce a dollar budget without model pricing" : "Workflow spending limit reached"));
     }
   };
@@ -220,6 +232,7 @@ export async function runAgentSession(options: {
     }
   });
   const sessionStartedAt = Date.now();
+  let sessionError: unknown;
   combinedSignal.addEventListener("abort", abort, { once: true });
   try {
     combinedSignal.throwIfAborted();
@@ -227,7 +240,7 @@ export async function runAgentSession(options: {
       "agent_start",
       `${model.provider}/${model.id} · thinking ${session.thinkingLevel}`,
     );
-    emit("model_session", JSON.stringify({ provider: model.provider, model: model.id, thinking: session.thinkingLevel, tools: options.tools.map(tool => tool.name) }));
+    emit("model_session", JSON.stringify({ sessionId: tracked.id, operationId: accounting.operationId, scopeId: accounting.scopeId, nodeId: accounting.nodeId, visit: accounting.visit, provider: model.provider, model: model.id, thinking: session.thinkingLevel, tools: options.tools.map(tool => tool.name) }));
     const prompt = async (message: string, images?: ImageContent[]) => {
       modelFailure = undefined;
       await session.prompt(message, { images });
@@ -247,7 +260,8 @@ export async function runAgentSession(options: {
       await prompt(options.completion.prompt());
     }
     combinedSignal.throwIfAborted();
-  } finally {
+  } catch (error) { sessionError = error; throw error; }
+  finally {
     combinedSignal.removeEventListener("abort", abort);
     unsubscribe();
     try {
@@ -255,8 +269,10 @@ export async function runAgentSession(options: {
       await usageWrites;
       await operationWrites;
     } finally {
-      emit("model_session_end", JSON.stringify({ durationMs: Date.now() - sessionStartedAt, usage }));
-      session.dispose();
+      try {
+        await tracked.finish(signal.aborted ? "cancelled" : sessionError || combinedSignal.aborted ? "failed" : "completed", sessionError ? String(sessionError) : undefined);
+        emit("model_session_end", JSON.stringify({ sessionId: tracked.id, operationId: accounting.operationId, scopeId: accounting.scopeId, durationMs: Date.now() - sessionStartedAt, usage }));
+      } finally { tracked.release(); session.dispose(); }
     }
   }
 }

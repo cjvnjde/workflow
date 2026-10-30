@@ -400,12 +400,12 @@ test("the UI shows a draft budget estimate, execution version and configured spe
   await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
   await page.locator(".run-metrics > summary").click();
   const budget = page.locator(".run-metrics");
-  await expect(budget).toContainText("ESTIMATED COST$0.0000");
-  await expect(budget).toContainText("SPENDING LIMIT$2.5");
+  await expect(budget).toContainText("ESTIMATED EXECUTION COST$0.0000");
+  await expect(budget).toContainText("EXECUTION LIMIT$2.5");
   await expect(budget).toContainText(/Version [a-f0-9]{12}/);
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
   await expect(page.locator(".status-pill")).toHaveText("Completed", { timeout: 15_000 });
-  await expect(budget).toContainText("REPORTED COST$0.0000");
+  await expect(budget).toContainText("REPORTED EXECUTION COST$0.0000");
 });
 
 test("manual block editing is reviewed before applying and preserves existing workflow snapshots", async ({ page, request }) => {

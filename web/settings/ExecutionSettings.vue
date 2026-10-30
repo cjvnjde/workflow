@@ -14,14 +14,17 @@ const approval = defineModel<OrchestrationSettings["approval"]>("approval", {
   required: true,
 });
 const newCommand = ref("");
-function setBudget(value: string) {
+function setBudget(
+  key: "maxCostUsd" | "maxTaskCostUsd" | "maxSetupCostUsd",
+  value: string,
+) {
   execution.value.budget = {
     inputTokensPerCall: 4000,
     outputTokensPerCall: 1000,
     callsPerVisit: 4,
     prices: {},
     ...execution.value.budget,
-    maxCostUsd: value ? Number(value) : undefined,
+    [key]: value ? Number(value) : undefined,
   };
 }
 function addCommand() {
@@ -65,18 +68,57 @@ function addCommand() {
             min="1"
             max="500"
             :value="execution.maxSteps"
-            @input="execution.maxSteps = Number(inputValue($event))" /></Field
-        ><Field
+            @input="execution.maxSteps = Number(inputValue($event))"
+        /></Field>
+      </div>
+    </div>
+    <div class="settings-card">
+      <h2>AI spending limits</h2>
+      <p>
+        Defaults for new tasks and setup operations. Leave a limit blank to omit
+        it. Reported usage stops further work at the limit; an in-flight
+        response can exceed it.
+      </p>
+      <div class="field-grid">
+        <Field
+          v-slot="{ id }"
+          label="Total task spending limit (USD)"
+          help="Includes planning, workflow refinement, execution, retries and recovery. Requires known model prices."
+        >
+          <input
+            :id="id"
+            type="number"
+            min="0.001"
+            step="any"
+            :value="execution.budget?.maxTaskCostUsd ?? ''"
+            @input="setBudget('maxTaskCostUsd', inputValue($event))"
+          />
+        </Field>
+        <Field
+          v-slot="{ id }"
+          label="Project setup spending limit (USD)"
+          help="Covers one complete setup operation and its retries, including model roles, task instructions and blocks."
+        >
+          <input
+            :id="id"
+            type="number"
+            min="0.001"
+            step="any"
+            :value="execution.budget?.maxSetupCostUsd ?? ''"
+            @input="setBudget('maxSetupCostUsd', inputValue($event))"
+          />
+        </Field>
+        <Field
           v-slot="{ id }"
           label="Execution spending limit (USD)"
-          help="Optional. Requires pricing for all AI steps; planning is separate."
+          help="An additional limit for execution only. Planning and refinement count toward the total task limit above."
           ><input
             :id="id"
             type="number"
             min="0.001"
             step="any"
             :value="execution.budget?.maxCostUsd ?? ''"
-            @input="setBudget(inputValue($event))"
+            @input="setBudget('maxCostUsd', inputValue($event))"
         /></Field>
       </div>
     </div>

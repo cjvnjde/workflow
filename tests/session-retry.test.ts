@@ -8,6 +8,7 @@ import { runAgentSession } from "../src/agent-session.js";
 import { agentSchema, type UsageTotals } from "../src/domain.js";
 import { textResult } from "../src/block-runner.js";
 import { fixture } from "./helpers.js";
+import { UsageStore } from "../src/usage-store.js";
 
 type Reply = { tool?: boolean; truncated?: boolean; error?: string };
 async function responseFixture(t: TestContext, respond: (turn: number) => Reply) {
@@ -72,6 +73,10 @@ test("a broken Responses stream retries in the same session without replaying co
   assert.ok(fixture.events.some((event) => event.message.includes("connection recovered")));
   assert.equal(fixture.usage.at(-1)?.requests, 3);
   assert.equal(fixture.usage.at(-1)?.inputTokens, 200);
+  const report = await new UsageStore(fixture.options.project).report();
+  assert.equal(report.sessionCount, 1);
+  assert.deepEqual(report.total, fixture.usage.at(-1));
+  assert.equal(report.sessions[0]?.status, "completed");
 });
 
 test("repeated broken streams exhaust retries and preserve the provider error", async (t) => {
@@ -80,6 +85,9 @@ test("repeated broken streams exhaust retries and preserve the provider error", 
   assert.equal(fixture.requests.length, 3);
   assert.equal(fixture.effects(), 0);
   assert.equal(fixture.usage.at(-1)?.requests, 3);
+  const report = await new UsageStore(fixture.options.project).report();
+  assert.equal(report.sessions[0]?.status, "failed");
+  assert.equal(report.total.requests, 3);
 });
 
 test("cancellation during provider backoff stops retries immediately", async (t) => {

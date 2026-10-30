@@ -50,6 +50,8 @@ const priceRates = {
 export const priceSchema = z.object({ ...priceRates, tiers: z.array(z.object({ ...priceRates, inputTokensAbove: z.number().nonnegative() }).strict()).optional() }).strict();
 export const budgetSchema = z.object({
   maxCostUsd: z.number().positive().optional(),
+  maxTaskCostUsd: z.number().positive().optional(),
+  maxSetupCostUsd: z.number().positive().optional(),
   inputTokensPerCall: z.number().int().positive().default(4000),
   outputTokensPerCall: z.number().int().positive().default(1000),
   callsPerVisit: z.number().int().positive().max(1000).default(4),
@@ -70,6 +72,7 @@ export const estimateSchema = z.object({
   worstCaseCostUsd: z.number().nonnegative().nullable(),
   expectedVisits: z.number().int().nonnegative(), maxVisits: z.number().int().nonnegative(),
   unpricedNodes: z.array(z.string()), assumptions: z.string(),
+  dynamicNodes: z.array(z.string()).optional(),
 }).strict();
 export const configSchema = z
   .object({

@@ -89,11 +89,21 @@ Review approval is the default. **Automatic** mode starts an accepted plan witho
 
 The total step limit defaults to 30 and can be set from 1 to 500. Per-step visits, loop iterations, block time/operation limits, and model time/tool-call limits also apply. Choose bounds that allow the intended feedback loop while preventing indefinite work.
 
-An optional spending limit applies to model execution, not coordinator planning or settings design. Prices are captured from the local catalog or configured rates. Unknown prices remain unknown; calls requiring a priced budget cannot proceed without known pricing. Code-only operations do not have model cost.
+The usage panel shows reported planning, setup, settings design, refinement, and execution costs, including failed attempts, provider retries, and compaction. Expand it for phase/model totals and individual model sessions. Settings shows the project lifetime total; a task or workflow shows its shared task scope. Recovery tasks retain their original scope and spending. `workflow usage [task-or-run-id] --json` exposes the same report.
 
-Usage includes reported tokens/costs from failed attempts. With a spending limit, AI sessions serialize so parallel branches do not spend the same remaining balance. Limits stop later work and can abort sessions after reported usage reaches the threshold; a request already in flight can exceed the remaining estimate.
+Three optional limits are available in **Execution**:
 
-Cost estimates are planning aids, not a bill or a measure of subscription quota. They depend on context, call count, cache behavior, available prices, and provider usage reporting. TypeScript blocks can choose AI calls and models at runtime, so draft estimates cannot fully predict their cost. Command costs and external service charges are not calculated.
+| Configuration field | Coverage |
+| --- | --- |
+| `budget.maxCostUsd` | Execution only for each run; existing frozen run limits keep this meaning. |
+| `budget.maxTaskCostUsd` | Planning, clarification, refinement, execution, and retries for a task or direct workflow. |
+| `budget.maxSetupCostUsd` | All stages of one setup generation. |
+
+Limits are captured when work starts. `workflow task "Request" --max-task-cost 2` and `workflow setup --max-setup-cost 1` override the corresponding project default for new work. Retrying or answering a task does not reset its total. Settings design and standalone library generation are accounted for in the project total but do not inherit a task or setup limit.
+
+Prices come from configured overrides or the connected model catalog; every session saves its pricing source. Unknown prices remain unknown, and budgeted model calls require known pricing. Model sessions sharing a total limit serialize so parallel branches cannot spend the same remaining balance. Limits stop later work and can abort sessions after reported usage reaches the threshold; a response already in flight can exceed it. The ledger retains the actual reported amount, including any overshoot.
+
+Cost estimates are planning aids, not a bill or a measure of subscription quota. TypeScript blocks choose AI calls and models at runtime, so their draft estimate is unknown rather than zero. Deterministic command executors have no model cost. Older execution records and custom-runner usage are included once; unavailable historical planning costs, missing pricing, and interrupted/in-flight reporting are shown as incomplete. Command costs, external service charges, and unreported provider charges are not calculated.
 
 ## Named checks
 
@@ -128,6 +138,7 @@ Named commands use argument arrays without shell interpolation. Code blocks inte
 | `.workflow/server.json` | Private running-host discovery receipt; not reusable project configuration. |
 | `.workflow/libraries/` | Prior library snapshots. |
 | `.workflow/design-chats/` | Private settings conversations and proposals. |
+| `.workflow/usage/` | Private durable model-session usage, pricing, and task/setup ownership; retained when history entries are removed. |
 
 Reusable project configuration can be version controlled. Generated runs, tasks, attachments, conversations, journals, and Temporal state are private runtime data; initialization adds ignore rules for them. [Operations](operations.md#persistence-and-backups) lists what to back up.
 

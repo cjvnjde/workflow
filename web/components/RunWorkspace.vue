@@ -16,6 +16,7 @@ import MarkdownActions from "./MarkdownActions.vue";
 import ActivityFeed from "./ActivityFeed.vue";
 import { describeActivity } from "../activity.js";
 import { findGroup } from "../graph-layout.js";
+import { usageCost } from "../usage-presentation.js";
 const WorkflowGraph = defineAsyncComponent(() => import("./WorkflowGraph.vue"));
 const PlanEditor = defineAsyncComponent(() => import("./PlanEditor.vue"));
 const ProgramEditor = defineAsyncComponent(() => import("./ProgramEditor.vue"));
@@ -915,7 +916,7 @@ function selectStep(id: string) {
       </summary>
       <div class="metrics-grid">
         <div>
-          <small>ESTIMATED COST</small
+          <small>ESTIMATED EXECUTION COST</small
           ><strong>{{
             run.estimate?.expectedCostUsd == null
               ? "Pricing unavailable"
@@ -923,11 +924,11 @@ function selectStep(id: string) {
           }}</strong>
         </div>
         <div>
-          <small>REPORTED COST</small
-          ><strong>${{ (run.usage?.costUsd ?? 0).toFixed(4) }}</strong>
+          <small>REPORTED EXECUTION COST</small
+          ><strong>{{ run.usage ? usageCost(run.usage) : "Not reported" }}</strong>
         </div>
         <div>
-          <small>SPENDING LIMIT</small
+          <small>EXECUTION LIMIT</small
           ><strong>{{
             run.config.budget?.maxCostUsd === undefined
               ? "None"

@@ -27,8 +27,10 @@ import { mcpTools } from "./mcp-tools.js";
 import { inspectGit } from "./git-inspection.js";
 import type { FlowStructure } from "./composition-sdk.js";
 import type { OperationRecorder } from "./operation-schema.js";
+import type { AccountingContext } from "./usage-schema.js";
 
 export type BlockExecution = {
+  accounting?: AccountingContext;
   context?: "workflow" | "none";
   tools?: "none" | "selected";
   customTools?: (protect?: ProtectedPaths) => Promise<ToolDefinition[]>;
@@ -302,6 +304,7 @@ export const runPiBlock: BlockRunner = async (execution) => {
       images: attachments.images,
       requireVision: false,
       onUsage: execution.onUsage,
+      accounting: execution.accounting,
       maxCostUsd: execution.maxCostUsd,
       price:
         config.budget?.prices[

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   eventSchema, projectSchema, runListSchema, runSchema, taskListSchema, taskSchema,
+  usageReportSchema,
   triggerStateSchema, triggerSchema, triggerJobSchema, type TriggerConfig,
   type CreateProgram, type RunAction, type RunEvent, type WorkflowRun,
 } from "./contracts.js";
@@ -69,6 +70,9 @@ export class WorkflowClient {
     return schema.parse(data);
   }
   project(signal?: AbortSignal) { return this.request("/api/project", projectSchema, { signal }); }
+  usage(signal?: AbortSignal) { return this.request("/api/usage", usageReportSchema, { signal }); }
+  taskUsage(id: string, signal?: AbortSignal) { return this.request(`/api/tasks/${encodeURIComponent(id)}/usage`, usageReportSchema, { signal }); }
+  runUsage(id: string, signal?: AbortSignal) { return this.request(`/api/runs/${encodeURIComponent(id)}/usage`, usageReportSchema, { signal }); }
   runs(signal?: AbortSignal) { return this.request("/api/runs", runListSchema, { signal }); }
   run(id: string, signal?: AbortSignal) { return this.request(`/api/runs/${encodeURIComponent(id)}`, runSchema, { signal }); }
   events(id: string, signal?: AbortSignal) { return this.request(`/api/runs/${encodeURIComponent(id)}/events`, z.array(eventSchema), { signal }); }
@@ -85,7 +89,7 @@ export class WorkflowClient {
   pollTriggers() { return this.request("/api/triggers/poll", triggerStateSchema, { method: "POST", body: {} }); }
   triggerEventAction(id: string, action: "retry" | "cancel") { return this.request(`/api/trigger-events/${encodeURIComponent(id)}/${action}`, triggerJobSchema, { method: "POST", body: {} }); }
   task(id: string, signal?: AbortSignal) { return this.request(`/api/tasks/${encodeURIComponent(id)}`, taskSchema, { signal }); }
-  createTask(prompt: string, signal?: AbortSignal) { return this.request("/api/tasks", taskSchema, { method: "POST", body: { prompt }, signal }); }
+  createTask(prompt: string, signal?: AbortSignal, maxTaskCostUsd?: number) { return this.request("/api/tasks", taskSchema, { method: "POST", body: { prompt, maxTaskCostUsd }, signal }); }
   answerTask(id: string, answer: string, revision: number, signal?: AbortSignal) {
     return this.request(`/api/tasks/${encodeURIComponent(id)}/answer`, taskSchema, { method: "POST", body: { answer, revision }, signal });
   }

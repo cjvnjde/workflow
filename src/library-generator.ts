@@ -9,8 +9,11 @@ import { modelAssignmentsSchema, type AvailableModel, type LibraryChanges } from
 import { validateLibraryChanges } from "./library-proposals.js";
 import { validateCodeBlocks } from "./program-compiler.js";
 import { formatBlock } from "./source-format.js";
+import { createAccountingContext } from "./usage-store.js";
+import type { AccountingContext } from "./usage-schema.js";
 
 export async function generateLibraryChanges(options: {
+  accounting?: AccountingContext;
   project: string; library: Library; kind: "regenerate" | "models"; models: AvailableModel[];
   instructions: string; signal: AbortSignal; emit: ActivitySink;
 }, session: typeof runAgentSession = runAgentSession): Promise<LibraryChanges> {
@@ -50,6 +53,8 @@ export async function generateLibraryChanges(options: {
   const workspace = await Workspace.create(options.project, { signal: options.signal });
   const settings = resolveAgentSettings(options.library.config.agent, options.library.config.coordinator);
   await session({
+    price: options.library.config.budget?.prices[`${settings.provider}/${settings.model}`],
+    accounting: options.accounting ?? await createAccountingContext(options.project, "library"),
     project: options.project, settings, signal: AbortSignal.any([options.signal, AbortSignal.timeout(settings.timeoutMs)]),
     tools: [...workspaceTools(workspace), submit], emit: options.emit,
     systemPrompt: [

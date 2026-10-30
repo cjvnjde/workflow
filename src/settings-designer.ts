@@ -14,8 +14,11 @@ import { validateLibraryResources } from "./library.js";
 import type { AvailableModel } from "./library-editor-schema.js";
 import { orchestrationSchema, type OrchestrationSettings } from "./orchestration-schema.js";
 import { designProposalSchema, type DesignProposal, type DesignScope, type DesignMessage } from "./design-schema.js";
+import { createAccountingContext } from "./usage-store.js";
+import type { AccountingContext } from "./usage-schema.js";
 
 export type DesignOptions = {
+  accounting?: AccountingContext;
   project: string; scope: DesignScope; library: Library; settings: OrchestrationSettings;
   models: AvailableModel[]; messages: DesignMessage[]; previous?: DesignProposal;
   signal: AbortSignal; emit: ActivitySink; inspect?: DesignInspector;
@@ -77,9 +80,11 @@ export async function designSettings(options: DesignOptions, session: typeof run
     cases: '{scope:"cases",summary,instructions,cases:[{id,name,description,instructions,enabled}],suggestBlocks}. Supply the full proposed list. Cases are descriptions and instructions, NEVER predefined graphs. Tell the orchestrator how to approach, verify and hand off a class of work; keep the actual graph task-specific.',
     blocks: '{scope:"blocks",summary,changes:{summary,blocks:[{bundle:{definition:{id,name,description,executor:{kind:"code",source},skills:[],outputs:[],checks:[]},skills:[]},rationale}],remove?:["block-id"]}}. Unmentioned blocks stay unchanged. Keep all behavior in TypeScript source, including model calls, prompts, schemas, host checks and execution limits. Preserve existing artifact contracts. Deletions must be requested or clearly justified.\n\n' + blockInstructions,
     capabilities: '{scope:"capabilities",summary,capabilities:{skills:[{id,name,description,content,enabled}],mcpServers:[{id,name,enabled,transport:"http"|"stdio",url,command,args,tokenEnv?}]}}. Supply complete proposed lists. Skill content contains instructions. MCP setup requires exact user-provided endpoint/command information; ask if missing. Do not invent server addresses, tool names or credentials. tokenEnv is only an environment-variable name, never a secret. Enabling a server makes all its tools available to execution blocks; the graph coordinator uses supplied context without calling MCP tools. Keep existing enabled states unless asked to change them; enable a new server when the user asks to use it. tools and planningTools are legacy discovery metadata, not permissions; omit them on new servers.',
-    execution: '{scope:"execution",summary,settings:{instructions,commands:{name:{argv:["executable","arg"],timeoutMs}},maxSteps,budget?:{maxCostUsd?,inputTokensPerCall,outputTokensPerCall,callsPerVisit,prices:{}}}}. Supply all execution fields. Inspect package scripts before proposing commands. Commands are exact argument arrays without shell parsing; explain side effects such as commits. Never request or embed credentials. Workflow auto-approval is a separate user-controlled setting, not part of this proposal.',
+    execution: '{scope:"execution",summary,settings:{instructions,commands:{name:{argv:["executable","arg"],timeoutMs}},maxSteps,budget?:{maxCostUsd?,maxTaskCostUsd?,maxSetupCostUsd?,inputTokensPerCall,outputTokensPerCall,callsPerVisit,prices:{}}}}. Supply all execution fields and preserve existing spending limits unless the user asks to change them. maxCostUsd covers execution; maxTaskCostUsd covers task planning/refinement/execution/retries; maxSetupCostUsd covers one setup operation. Inspect package scripts before proposing commands. Commands are exact argument arrays without shell parsing; explain side effects such as commits. Never request or embed credentials. Workflow auto-approval is a separate user-controlled setting, not part of this proposal.',
   };
   await session({
+    price: options.library.config.budget?.prices[`${agent.provider}/${agent.model}`],
+    accounting: options.accounting ?? await createAccountingContext(options.project, "design"),
     project: options.project, settings: agent, signal, emit: options.emit,
     tools: tools.map((tool) => ({ ...tool, execute: async (...args: Parameters<ToolDefinition["execute"]>) => {
       signal.throwIfAborted(); if (result) { throw new Error("This design turn is already finished"); }

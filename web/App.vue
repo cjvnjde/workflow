@@ -27,6 +27,7 @@ import RunWorkspace from "./components/RunWorkspace.vue";
 import Icon from "./components/Icon.vue";
 import SessionSwitcher from "./components/SessionSwitcher.vue";
 import ProjectSetup from "./components/ProjectSetup.vue";
+import UsageSummary from "./components/UsageSummary.vue";
 import { parseSessionLocation, sessionLink } from "./session-location.js";
 const SettingsPage = defineAsyncComponent(
   () => import("./settings/SettingsPage.vue"),
@@ -53,6 +54,7 @@ const {
   connected,
   taskStreams,
   events,
+  usageRevision,
   liveText,
   liveTextByNode,
   coordinatorActivity,
@@ -769,6 +771,7 @@ async function designApplied() {
           :on-saved="settingsSaved"
           :design-revision="settingsRevision"
           :applying-design="applyingDesign"
+          :usage-revision="usageRevision"
           @dirty="settingsDirty = $event"
           @context="settingsContext = $event"
           @design="design"
@@ -879,6 +882,18 @@ async function designApplied() {
               <p>{{ answer.answer }}</p>
             </details>
           </div>
+          <UsageSummary
+            v-if="task || run"
+            :key="task?.id ?? run?.id"
+            :scope="task ? 'task' : 'run'"
+            :scope-id="task?.id ?? run?.id"
+            :revision="`${usageRevision}:${task?.updatedAt}:${run?.revision}`"
+            :active="
+              !!refinementController ||
+              !!(task && ['queued', 'planning'].includes(task.status)) ||
+              !!(run && ['running', 'pausing'].includes(run.status))
+            "
+          />
           <div
             v-if="task?.error && task.runId"
             class="inline-error"

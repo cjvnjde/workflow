@@ -13,8 +13,11 @@ import { graphInstructions } from "./graph-composition.js";
 import { availableModels } from "./available-models.js";
 import { validatePlanModels } from "./library-proposals.js";
 import type { AvailableModel } from "./library-editor-schema.js";
+import { createAccountingContext } from "./usage-store.js";
+import type { AccountingContext } from "./usage-schema.js";
 
 export async function createAiPlan(options: {
+  accounting?: AccountingContext;
   project: string;
   library: Library;
   task: string;
@@ -46,6 +49,8 @@ export async function createAiPlan(options: {
   });
   const settings = planningAgent(library.config.agent, library.config.coordinator, models);
   await session({
+    price: library.config.budget?.prices[`${settings.provider}/${settings.model}`],
+    accounting: options.accounting ?? await createAccountingContext(options.project, options.previousPlan ? "refinement" : "planning", { maxCostUsd: library.config.budget?.maxTaskCostUsd }),
     project: options.project,
     settings,
     tools: [submit],

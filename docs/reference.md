@@ -9,7 +9,7 @@ Run project commands from the target project's directory. Configuration is in th
 | Command | Behavior |
 | --- | --- |
 | `workflow init [--instructions "..."]` | Create configuration and starter TypeScript blocks without model calls. `--no-ai` remains a compatibility flag. |
-| `workflow setup [--model provider/id] [--thinking level] [--instructions "..."] [--regenerate]` | Use the selected default to inspect the project and generate reusable blocks, task instructions, and model profiles. |
+| `workflow setup [--model provider/id] [--thinking level] [--instructions "..."] [--regenerate] [--max-setup-cost USD]` | Use the selected default to inspect the project and generate reusable blocks, task instructions, and model profiles. |
 | `workflow profiles [--instructions "..."]` | Regenerate model profiles using AI. |
 | `workflow` or `workflow start [--json]` | Start or reuse a detached background host for this project; return after readiness. |
 | `workflow status [--json]` | Report this project's host identity, mode, URL, and lifecycle state without secrets. |
@@ -22,7 +22,8 @@ Run project commands from the target project's directory. Configuration is in th
 | `workflow show <run-id>` | Full draft or result, including revision. |
 | `workflow approve <run-id> [--wait]`, `workflow reject <run-id>` | Decide whether a draft runs. |
 | `workflow events <run-id>`, `workflow watch <run-id>` | Read activity or wait for completion/attention. |
-| `workflow task "Request"`, `workflow tasks`, `workflow task-show <task-id>` | Create/list/inspect planning requests. |
+| `workflow task "Request" [--max-task-cost USD]`, `workflow tasks`, `workflow task-show <task-id>` | Create/list/inspect planning requests. The optional limit includes planning and execution. |
+| `workflow usage [task-or-run-id] [--json]` | Read project or shared task usage totals, phases, model sessions, and spending limits from the running host. |
 | `workflow answer <task-id> "Answer"` | Answer the current planning question. |
 | `workflow runs` | List runs on the local project server. |
 | `workflow pause <run-id>` | Finish active steps, then pause new dispatch. |
@@ -96,13 +97,17 @@ These routes are registered by CLI-owned background and foreground hosts, not by
 | `GET /api/project` | Served project, mode, and library/configuration. |
 | `GET /api/health` | Server readiness. |
 | `GET /api/tasks` | Task list. |
-| `POST /api/tasks` | Create `{ prompt, attachments?: [attachmentId], approval?: "review" \| "automatic", sourceRunId? }`; returns 202 with the task. Omitted approval uses project settings; recovery tasks always require review. |
+| `POST /api/tasks` | Create `{ prompt, attachments?: [attachmentId], approval?: "review" \| "automatic", sourceRunId?, maxTaskCostUsd? }`; returns 202 with the task. Omitted approval uses project settings; recovery tasks always require review and retain the original spending scope. |
 | `GET /api/tasks/:id` | Task, planning events, and linked run. |
+| `GET /api/usage` | Project lifetime usage, including setup/design and retained execution. |
+| `GET /api/tasks/:id/usage`, `GET /api/runs/:id/usage` | Shared task/run scope usage, limits, and model sessions. The report's canonical `scope` identifies linked recovery work. |
 | `POST /api/tasks/:id/answer` | Answer an essential question with `{ answer, revision }`. |
 | `POST /api/tasks/:id/retry` or `/cancel` | Retry or cancel planning. |
 | `DELETE /api/tasks/:id` | Remove a deletable task and its linked run from history. |
 | `POST /api/attachments` | Upload `{ name, mimeType, data: base64 }`. |
 | `GET /api/attachments/:id` | Read validated attachment bytes. |
+
+Usage reports include `total`, `phases`, `models`, the newest 100 `sessions`, `sessionCount`, `sessionsTruncated`, `limits`, `incomplete`, and `warnings`. `legacyExecution` is an attribution subtotal already included in `total`, not an extra amount to add. Dollar totals represent known reported costs; `remainingCostUsd` is null when no total limit or incomplete coverage applies. Model sessions include stable session/operation IDs, phase, model/pricing, status, and available task/run/node/visit ownership. The typed client exposes `usage()`, `taskUsage(id)`, and `runUsage(id)`.
 
 Example, with the server running in review mode:
 

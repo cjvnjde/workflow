@@ -16,6 +16,8 @@ async function main() {
       "host-id": { type: "string" },
       model: { type: "string" },
       thinking: { type: "string" },
+      "max-task-cost": { type: "string" },
+      "max-setup-cost": { type: "string" },
       regenerate: { type: "boolean", default: false },
       demo: { type: "boolean", default: false },
       "no-ai": { type: "boolean", default: false },
@@ -35,7 +37,7 @@ async function main() {
   if (values.help || command === "help") {
     console.log(`Usage:
   workflow init [--instructions "Project constraints"]  Create local configuration; no AI call
-  workflow setup [--model provider/id] [--thinking level] [--instructions "Preferences"] [--regenerate]
+  workflow setup [--model provider/id] [--thinking level] [--instructions "Preferences"] [--regenerate] [--max-setup-cost USD]
   workflow profiles [--instructions "Model preferences"]
   workflow [start] [--port 4310] [--no-web] [--demo] [--json]  Start or reuse a background host
   workflow status [--json]      Inspect this project's host
@@ -45,7 +47,8 @@ async function main() {
   workflow attach <session-id> [--server URL]  Reopen the same session in the terminal
   workflow exec <file.ts> [--input JSON] [--json]
   workflow run <file.ts> [--input JSON] [--approve] [--wait]
-  workflow task "Request"       Create an asynchronous planning task
+  workflow task "Request" [--max-task-cost USD]  Budget planning and execution together
+  workflow usage [task-or-run-id] [--json]  Inspect persisted project/session spending
   workflow tasks               List tasks
   workflow task-show <task-id>  Inspect planning, questions, and the linked run
   workflow answer <task-id> "Answer"
@@ -85,6 +88,15 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
     return;
   }
   const project = await realpath(process.cwd());
+  const costLimit = (value: string | undefined) => {
+    if (value === undefined) return undefined;
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) throw new Error("Spending limits must be positive finite USD amounts");
+    return parsed;
+  };
+  const maxTaskCostUsd = costLimit(values["max-task-cost"]), maxSetupCostUsd = costLimit(values["max-setup-cost"]);
+  if (maxTaskCostUsd !== undefined && command !== "task") throw new Error("--max-task-cost is a task request override; configure project defaults in Settings for other workflows.");
+  if (maxSetupCostUsd !== undefined && !["setup", "generate"].includes(command)) throw new Error("--max-setup-cost applies to workflow setup or generate.");
   if (["start", "status", "stop"].includes(command)) {
     if (positionals.length > 1 || values.server) throw new Error(`Use workflow ${command} from the project folder, with optional --port and --json.`);
     const { startProjectHost, projectHostStatus, stopProjectHost } = await import("./host-lifecycle.js");
@@ -113,6 +125,7 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
     await runClientCommand(command, positionals.slice(1), {
       project, port: values.port, server: values.server, input: values.input,
       approve: values.approve, wait: values.wait, json: values.json,
+      maxTaskCostUsd,
     });
     return;
   }
@@ -176,7 +189,7 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
       await updateProjectModel(project, { configRevision: (await projectModelSettings(project)).configRevision, agent: { provider, model, thinking } }, catalog.models);
     }
     console.log("Tailoring reusable blocks, model profiles, and task workflows with your default model…");
-    const setup = await initializeSetup(project, { instructions: values.instructions, regenerate: values.regenerate || command === "generate", emit: (_kind, message) => console.error(message) });
+    const setup = await initializeSetup(project, { instructions: values.instructions, maxSetupCostUsd, regenerate: values.regenerate || command === "generate", emit: (_kind, message) => console.error(message) });
     if (setup.status === "unconnected") throw new Error("No connected provider. Run workflow login, choose workflow model, then retry workflow setup.");
     console.log(`${setup.status === "existing" ? "Kept" : "Generated"} ${setup.profiles} model profiles, ${setup.cases} task workflows, and ${setup.blocks} blocks. Run workflow or workflow tui to start working.`);
     return;

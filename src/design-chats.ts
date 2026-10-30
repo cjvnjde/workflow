@@ -11,6 +11,7 @@ import { LibraryProposals, libraryHash } from "./library-proposals.js";
 import { availableModels } from "./available-models.js";
 import { designSettings, validateDesign } from "./settings-designer.js";
 import { designMessageSchema, designScopeSchema, designSessionSchema, designTurnSchema, type DesignSession, type DesignScope } from "./design-schema.js";
+import { createAccountingContext } from "./usage-store.js";
 
 export class DesignChats {
   private readonly sessions = new Map<string, DesignSession>();
@@ -72,6 +73,7 @@ export class DesignChats {
         const snapshot = await this.snapshot(controller.signal);
         controller.signal.throwIfAborted();
         const result = await this.designer({ project: this.project, scope: session.scope, library: snapshot.library, settings: snapshot.orchestration.settings,
+          accounting: await createAccountingContext(this.project, "design", { owner: { kind: "design", id: session.id }, designId: session.id }),
           inspect: this.inspect, models: snapshot.models, messages: structuredClone(session.messages), previous, signal: controller.signal,
           emit: (kind, message) => {
             if (controller.signal.aborted) { return; }

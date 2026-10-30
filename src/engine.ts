@@ -52,10 +52,12 @@ import { compositionPlan } from "./composition-plan.js";
 import { loadOrchestration } from "./orchestration-settings.js";
 import { instantiateTrigger, triggerTemplate } from "./trigger-template.js";
 import type { GithubEvent } from "./trigger-schema.js";
+import { createAccountingContext, UsageStore } from "./usage-store.js";
 
 const activeStatuses = new Set<WorkflowRun["status"]>(["running", "pausing", "paused", "interrupted"]);
 
 export class WorkflowEngine {
+  readonly usage: UsageStore;
   private readonly executionWorkspaces = new Map<string, { token: symbol; access: "read" | "write" | "legacy" }[]>();
   private readonly usageByAttempt = new Map<string, UsageTotals>();
   private readonly runs = new Map<string, WorkflowRun>();
@@ -82,6 +84,7 @@ export class WorkflowEngine {
     private readonly temporalOptions: TemporalOptions = {},
     private readonly environmentFactory: ExecutionEnvironmentFactory = localExecutionEnvironment,
   ) {
+    this.usage = new UsageStore(project);
     this.versions = new WorkflowVersions(path.join(project, ".workflow", "versions"));
     this.store = new RunStore(path.join(project, ".workflow", "runs"));
     this.taskQueue = `workflow-${createHash("sha256").update(project).digest("hex").slice(0, 32)}`;
@@ -399,10 +402,10 @@ export class WorkflowEngine {
     return this.get(id);
   }
 
-  async create(plan: WorkflowPlan, library: Library) {
+  async create(plan: WorkflowPlan, library: Library, ownership?: { scopeId: string; taskId?: string }) {
     if (plan.nodes.some(node => library.blocks[node.block]?.definition.executor?.kind === "code")) {
       const checked = validatePlan(plan, library);
-      return this.createProgram(checked.title, checked.task, { source: graphProgram(library), input: { plan: checked } }, library, undefined, checked);
+      return this.createProgram(checked.title, checked.task, { source: graphProgram(library), input: { plan: checked } }, library, undefined, checked, ownership);
     }
     return await this.mutate(async () => {
       const snapshot = structuredClone(library);
@@ -421,6 +424,7 @@ export class WorkflowEngine {
       if (Buffer.byteLength(JSON.stringify(run)) > 1_000_000) {
         throw new Error("Workflow snapshot is too large for Temporal. Reduce block resources or split the workflow.");
       }
+      await this.usage.ensureRun(run, ownership?.scopeId, ownership?.taskId);
       await this.store.save(run);
       this.runs.set(run.id, run);
       this.emit(run, "draft", "Workflow proposed. Review its steps, commands and handoffs before approval.");
@@ -430,7 +434,7 @@ export class WorkflowEngine {
     });
   }
 
-  async createProgram(title: string, task: string, value: unknown, library: Library, signal?: AbortSignal, graph?: WorkflowPlan) {
+  async createProgram(title: string, task: string, value: unknown, library: Library, signal?: AbortSignal, graph?: WorkflowPlan, ownership?: { scopeId: string; taskId?: string }) {
     return await this.mutate(async () => {
       signal?.throwIfAborted();
       const snapshot = structuredClone(library);
@@ -448,7 +452,13 @@ export class WorkflowEngine {
         program: { ...prepared.program, composition: checked ? "graph" : composed ? "structured" : undefined },
         config: snapshot.config, blocks: checked ? snapshot.blocks : composed?.blocks ?? {}, cursor: checked?.entry ?? composed?.plan.entry ?? "start", visits: {}, artifacts: {}, attempts: [],
       });
+      run.estimate = run.plan.nodes.length ? estimateBudget(run.plan, { config: run.config, blocks: run.blocks }, run.mode) : {
+        expectedCostUsd: run.mode === "demo" ? 0 : null, worstCaseCostUsd: run.mode === "demo" ? 0 : null,
+        expectedVisits: 0, maxVisits: run.config.maxSteps, unpricedNodes: [], dynamicNodes: ["program"],
+        assumptions: "TypeScript decides its model calls at execution time; pre-execution cost is unknown. Actual model pricing is checked before each budgeted call.",
+      };
       this.checkSnapshotSize(run);
+      await this.usage.ensureRun(run, ownership?.scopeId, ownership?.taskId);
       await this.store.save(run);
       this.runs.set(id, run);
       this.emit(run, "draft", checked
@@ -529,6 +539,10 @@ export class WorkflowEngine {
       run.program = { ...prepared.program, composition: composed ? "structured" : undefined };
       run.plan = composed?.plan ?? { ...run.plan, entry: "start", nodes: [] };
       run.blocks = composed?.blocks ?? {};
+      run.estimate = run.plan.nodes.length ? estimateBudget(run.plan, { config: run.config, blocks: run.blocks }, run.mode) : {
+        expectedCostUsd: run.mode === "demo" ? 0 : null, worstCaseCostUsd: run.mode === "demo" ? 0 : null, expectedVisits: 0, maxVisits: run.config.maxSteps,
+        unpricedNodes: [], dynamicNodes: ["program"], assumptions: "TypeScript model calls are dynamic; actual model pricing is checked before each budgeted call.",
+      };
       run.cursor = run.plan.entry;
       run.executionVersion = prepared.version.id;
       run.revision++;
@@ -555,12 +569,16 @@ export class WorkflowEngine {
         throw new Error("Workflow snapshot is too large for Temporal. Reduce the graph or block resources.");
       }
       await this.priceSnapshot(plan, { config: run.config, blocks: run.blocks });
+      const archivedEstimate = run.executionVersion !== this.currentVersion?.id && !run.estimate?.dynamicNodes;
       if (run.program?.composition === "graph") {
         // Connections and defaults are inputs to the already frozen TypeScript.
         // Do not rebuild helpers from today's files when editing a graph draft.
         run.program.input = { ...run.program.input, plan };
-        run.estimate = undefined;
+        run.estimate = estimateBudget(plan, { config: run.config, blocks: run.blocks }, run.mode);
       } else run.estimate = estimateBudget(plan, { config: run.config, blocks: run.blocks }, run.mode);
+      // Older archived workflow bundles validate strict estimate schemas. Keep
+      // their input shape while still reporting unknown dynamic cost honestly.
+      if (archivedEstimate) delete run.estimate.dynamicNodes;
       run.plan = plan;
       this.checkSnapshotSize(run);
       run.cursor = run.plan.entry;
@@ -1012,7 +1030,8 @@ export class WorkflowEngine {
 
   private async executeBlock(value: WorkflowRun, resultMode?: "value", protectedPaths?: string[], writablePaths?: string[], workspace = this.project, tools?: "none" | "selected", capabilities?: import("./workflow-sdk.js").AIOptions["capabilities"], shared?: { tools: Exclude<Extract<CodeOperation, {kind:"ai"}>["tools"], string | undefined>; parentId: string }, aiContext?: "workflow" | "none") {
     const node = value.plan.nodes.find(node => node.id === value.cursor);
-    if (value.config.budget?.maxCostUsd === undefined || (node && value.blocks[node.block]?.definition.executor)) return this.executeBlockNow(value, resultMode, protectedPaths, writablePaths, workspace, tools, capabilities, shared, aiContext);
+    const scope = await this.usage.ensureRun(value);
+    if ((value.config.budget?.maxCostUsd === undefined && scope.maxCostUsd === undefined) || (node && value.blocks[node.block]?.definition.executor)) return this.executeBlockNow(value, resultMode, protectedPaths, writablePaths, workspace, tools, capabilities, shared, aiContext);
     // Only budgeted model sessions serialize. Otherwise siblings may spend the
     // same stale remaining balance. Compute and unbudgeted AI stay parallel.
     const before = this.budgetQueue;
@@ -1058,7 +1077,12 @@ export class WorkflowEngine {
       const attempts = new Map([...this.requireRun(run.id).attempts, ...run.attempts].map(attempt => [`${attempt.nodeId}/${attempt.visit}`, attempt]));
       for (const attempt of attempts.values()) spent += (await loadUsage(attemptDirectory(this.project, run.id, attempt.nodeId, attempt.visit))).costUsd;
     }
-    const remainingCost = run.config.budget?.maxCostUsd === undefined ? undefined : run.config.budget.maxCostUsd - spent;
+    const usageScope = await this.usage.ensureRun(run);
+    const totalUsage = usageScope.maxCostUsd === undefined ? undefined : await this.usage.report({ scopeId: usageScope.id });
+    if (totalUsage?.total.unpricedRequests) throw new Error("Cannot enforce total spending limit because earlier requests have unknown pricing.");
+    const limits = [run.config.budget?.maxCostUsd === undefined ? undefined : run.config.budget.maxCostUsd - spent,
+      usageScope.maxCostUsd === undefined ? undefined : usageScope.maxCostUsd - totalUsage!.total.costUsd].filter((value): value is number => value !== undefined);
+    const remainingCost = limits.length ? Math.min(...limits) : undefined;
     if (!bundle.definition.executor && remainingCost !== undefined && remainingCost <= 0) { throw new Error("Workflow spending limit reached"); }
     if (run.program && !bundle.definition.executor && remainingCost !== undefined &&
         !run.config.budget?.prices[`${settings.provider}/${settings.model}`]) {
@@ -1078,6 +1102,8 @@ export class WorkflowEngine {
         customTools: shared ? protect => this.selectedTools(run, shared.tools, shared.parentId, { project: workspace, signal, journal, protect, isolated }) : undefined,
         operation: { parentId: shared?.parentId ?? `${run.id}/${context.info.activityId}`, record: value => this.recordOperation(run, node.id, value) },
         onUsage: async (sessionUsage) => { const usage = addUsage(previousUsage, sessionUsage); await saveUsage(directory, usage); this.usageByAttempt.set(`${run.id}/${node.id}/${run.visits[node.id] ?? 1}`, { ...usage }); this.emit(run, "usage", JSON.stringify(usage), node.id); },
+        accounting: await createAccountingContext(this.project, "execution", { scopeId: usageScope.id, runId: run.id, taskId: usageScope.runTasks[run.id],
+          nodeId: node.id, visit: run.visits[node.id] ?? 1, activityAttempt: context.info.attempt, operationId: `${run.id}/${context.info.activityId}` }),
         emit: (kind, message) => { this.emit(run, kind, message, node.id); },
       }), bundle);
       signal.throwIfAborted();

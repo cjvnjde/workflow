@@ -304,7 +304,7 @@ export async function initializeProject(project: string, instructions = "", form
       { flag: "wx" },
     );
   }
-  await writeFile(path.join(directory, ".gitignore"), "runs/\ntasks/\nattachments/\ndesign-chats/\ntemporal/\nversions/\nlibrary-proposals/\nlibraries/\nserver-lease/\nlibrary-write-lease/\nserver.json\nhost.log\nhost-manager-lease/\nlock\n", {
+  await writeFile(path.join(directory, ".gitignore"), "runs/\ntasks/\nusage/\nattachments/\ndesign-chats/\ntemporal/\nversions/\nlibrary-proposals/\nlibraries/\nserver-lease/\nlibrary-write-lease/\nserver.json\nhost.log\nhost-manager-lease/\nlock\n", {
     flag: "wx",
   });
 

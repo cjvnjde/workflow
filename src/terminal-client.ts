@@ -5,7 +5,7 @@ import { WorkflowClient, waitForRun } from "./client.js";
 import type { CreateProgram, RunAction, WorkflowRun } from "./contracts.js";
 import { discoverProjectServer } from "./host-discovery.js";
 
-export const clientCommands = ["run", "runs", "show", "events", "watch", "approve", "reject", "pause", "resume", "cancel", "recover", "tasks", "task", "task-show", "answer"];
+export const clientCommands = ["run", "runs", "show", "events", "watch", "approve", "reject", "pause", "resume", "cancel", "recover", "tasks", "task", "task-show", "answer", "usage"];
 export async function readProgram(project: string, filename: string | undefined, inputJson: string): Promise<CreateProgram> {
   if (!filename?.endsWith(".ts")) throw new Error("Expected a project-relative TypeScript file (*.ts)");
   const relative = path.relative(project, path.resolve(project, filename));
@@ -24,6 +24,7 @@ export function executionExitCode(run: WorkflowRun) {
 
 export async function runClientCommand(command: string, args: string[], options: {
   project: string; port?: string; server?: string; input: string; approve: boolean; wait: boolean; json: boolean;
+  maxTaskCostUsd?: number;
 }) {
   const port = Number(options.port ?? "4310");
   if (!options.server && (!Number.isInteger(port) || port < 1 || port > 65535)) throw new Error("Port must be between 1 and 65535");
@@ -40,6 +41,20 @@ export async function runClientCommand(command: string, args: string[], options:
   const served = await client.project(AbortSignal.timeout(5000));
   // An explicit endpoint selects that server's project, including over an SSH tunnel.
   if (!options.server && await realpath(served.project) !== await realpath(options.project)) throw new Error("The local server belongs to another project");
+  if (command === "usage") {
+    if (args.length > 1) throw new Error("workflow usage accepts at most one task or run ID");
+    const signal = AbortSignal.timeout(15_000);
+    const selected = args[0] ? await client.resolveSession(args[0], signal) : undefined;
+    const report = !selected ? await client.usage(signal) : selected.kind === "task" ? await client.taskUsage(selected.id, signal) : await client.runUsage(selected.id, signal);
+    if (options.json) console.log(JSON.stringify(report));
+    else {
+      console.log(`${report.scope.kind} usage · $${report.total.costUsd.toFixed(6)} known cost · ${report.total.requests} reported requests`);
+      for (const phase of report.phases) console.log(`${phase.phase.padEnd(12)} $${phase.usage.costUsd.toFixed(6)} · ${phase.usage.requests} requests`);
+      if (report.limits.totalCostUsd !== undefined) console.log(`Total limit: $${report.limits.totalCostUsd}; remaining: ${report.limits.remainingCostUsd === null ? "unknown" : `$${report.limits.remainingCostUsd.toFixed(6)}`}`);
+      for (const warning of report.warnings) console.log(warning);
+    }
+    return;
+  }
   const expectedArgs = ["runs", "tasks"].includes(command) ? 0 : command === "answer" ? 2 : 1;
   if (args.length !== expectedArgs) throw new Error(`workflow ${command} expects ${expectedArgs} argument(s)`);
   if (command === "runs") {
@@ -56,7 +71,7 @@ export async function runClientCommand(command: string, args: string[], options:
   }
   if (["task", "task-show", "answer"].includes(command)) {
     const signal = AbortSignal.timeout(15_000);
-    const task = command === "task" ? await client.createTask(args[0]!, signal)
+    const task = command === "task" ? await client.createTask(args[0]!, signal, options.maxTaskCostUsd)
       : command === "task-show" ? await client.task(z.string().uuid().parse(args[0]), signal)
       : await client.answerTask(z.string().uuid().parse(args[0]), args[1]!, (await client.task(args[0]!, signal)).revision, signal);
     console.log(JSON.stringify(task, null, options.json ? undefined : 2));

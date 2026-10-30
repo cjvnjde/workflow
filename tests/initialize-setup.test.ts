@@ -10,6 +10,8 @@ import { designAgent, type designSettings } from "../src/settings-designer.js";
 import { bundleSchema } from "../src/domain.js";
 import type { AvailableModel } from "../src/library-editor-schema.js";
 import { fixture } from "./helpers.js";
+import { UsageStore } from "../src/usage-store.js";
+import { emptyUsage } from "../src/budget.js";
 
 const models: AvailableModel[] = ["small", "careful"].map(id => ({
   provider: "test", id, name: id, reasoning: true, imageInput: false,
@@ -110,6 +112,32 @@ test("disconnected setup never requests generation or changes project settings",
   const result = await initializeSetup(project, {}, { catalog: async () => ({ models: [], warnings: [] }), design: async () => { throw new Error("Must not call AI"); } });
   assert.equal(result.status, "unconnected");
   await assert.rejects(readFile(path.join(project, ".workflow/setup.json")), /ENOENT/);
+});
+
+test("setup stages share one cap and retain failed generation spending without publishing", async t => {
+  const { project } = await fixture(t);
+  await setDefault(project);
+  const contexts: NonNullable<Parameters<typeof designSettings>[0]["accounting"]>[] = [];
+  await assert.rejects(initializeSetup(project, { maxSetupCostUsd: 0.1 }, { catalog, design: async options => {
+    const context = options.accounting!;
+    contexts.push(context);
+    const session = await new UsageStore(project).beginSession(context, {
+      provider: "test", model: "small", thinking: "low", pricing: { source: "override", rates: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 } },
+    }, options.signal);
+    await session.update({ ...emptyUsage(), requests: 1, inputTokens: 100, costUsd: 0.06 });
+    await session.finish("completed"); session.release();
+    return design(options);
+  } }), /Total spending limit reached/);
+  assert.equal(contexts.length, 3);
+  assert.equal(new Set(contexts.map(context => context.scopeId)).size, 1);
+  assert.deepEqual(contexts.map(context => context.setupStage), ["profiles", "cases", "blocks"]);
+  const report = await new UsageStore(project).report({ scopeId: contexts[0]!.scopeId });
+  assert.equal(report.scope.kind, "setup");
+  assert.equal(report.total.costUsd, 0.12);
+  assert.equal(report.sessionCount, 2);
+  assert.equal(report.phases[0]?.phase, "setup");
+  await assert.rejects(readFile(path.join(project, ".workflow/setup.json")), /ENOENT/);
+  await assert.rejects(readFile(path.join(project, ".workflow/library.json")), /ENOENT/);
 });
 
 test("new projects run detected checks with code and honor their declared package manager", async t => {

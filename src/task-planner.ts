@@ -18,6 +18,8 @@ import { compositionInstructions, type ProgramSource } from "./program-schema.js
 import { compositionPlan } from "./composition-plan.js";
 
 import { formatBlock } from "./source-format.js";
+import { createAccountingContext } from "./usage-store.js";
+import type { AccountingContext } from "./usage-schema.js";
 
 export type TaskPlanResult = {
   kind: "plan"; plan: WorkflowPlan; library: Library; caseId?: string; caseName?: string; rationale: string;
@@ -27,6 +29,7 @@ export type TaskPlanResult = {
   caseId?: string; caseName?: string; rationale: string; suggestedBlocks: { id: string; rationale: string }[];
 } | { kind: "question"; question: ReturnType<typeof questionSchema.parse> };
 export type TaskPlannerOptions = {
+  accounting?: AccountingContext;
   project: string; library: Library; task: TaskRequest; settings: OrchestrationSettings;
   recovery?: WorkflowRun;
   models: AvailableModel[]; signal: AbortSignal; emit: ActivitySink;
@@ -133,6 +136,8 @@ export async function planTask(options: TaskPlannerOptions, session: typeof runA
     }),
   ];
   await session({
+    price: library.config.budget?.prices[`${agent.provider}/${agent.model}`],
+    accounting: options.accounting ?? await createAccountingContext(options.project, "planning", { owner: { kind: "task", id: task.id }, taskId: task.id, maxCostUsd: library.config.budget?.maxTaskCostUsd }),
     project: options.project, settings: agent, signal: AbortSignal.any([signal, AbortSignal.timeout(agent.timeoutMs)]), emit,
     tools: tools.map((tool) => ({ ...tool, execute: async (...args: Parameters<ToolDefinition["execute"]>) => {
       if (result) { throw new Error("Planning has already finished"); }

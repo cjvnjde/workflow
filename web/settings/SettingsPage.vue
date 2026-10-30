@@ -21,11 +21,13 @@ import BlockSettings from "./BlockSettings.vue";
 import Capabilities from "./Capabilities.vue";
 import ExecutionSettings from "./ExecutionSettings.vue";
 import TriggerSettings from "./TriggerSettings.vue";
+import UsageSummary from "../components/UsageSummary.vue";
 const props = defineProps<{
   library: Library;
   onSaved: () => Promise<void>;
   designRevision: number;
   applyingDesign: boolean;
+  usageRevision: number;
 }>();
 const emit = defineEmits<{
   dirty: [dirty: boolean];
@@ -263,6 +265,7 @@ function reload() {
         Shape how your orchestrator plans, chooses models, and executes work.
       </p>
     </div>
+    <UsageSummary scope="project" :revision="usageRevision" active />
     <nav class="settings-tabs" aria-label="Settings sections">
       <button
         v-for="[id, label] in tabs"

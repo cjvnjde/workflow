@@ -20,12 +20,16 @@ export function estimateBudget(plan: WorkflowPlan, library: Library, mode: "live
   const budget = budgetSchema.parse(library.config.budget ?? {});
   const costs = new Map<string, { typical: number | null; maximum: number | null }>();
   const unpricedNodes: string[] = [];
+  const dynamicNodes: string[] = [];
   const slots: (number | null)[] = [];
   for (const node of plan.nodes) {
     const settings = resolveAgentSettings(library.config.agent, library.blocks[node.block]?.definition.agent, node.agent);
     const price = budget.prices[`${settings.provider}/${settings.model}`];
-    const cost = mode === "demo" || library.blocks[node.block]?.definition.executor ? 0 : price ? priceUsage(price, budget.inputTokensPerCall, budget.outputTokensPerCall) : null;
-    if (cost === null) { unpricedNodes.push(node.id); }
+    const executor = library.blocks[node.block]?.definition.executor;
+    const dynamic = mode !== "demo" && executor?.kind === "code";
+    const cost = mode === "demo" || executor && !dynamic ? 0 : dynamic ? null : price ? priceUsage(price, budget.inputTokensPerCall, budget.outputTokensPerCall) : null;
+    if (dynamic) dynamicNodes.push(node.id);
+    else if (cost === null) unpricedNodes.push(node.id);
     const typical = cost === null ? null : cost * Math.min(budget.callsPerVisit, settings.maxToolCalls + 1);
     // Retries can make up to three requests per turn in the embedded runtime.
     const maximum = cost === null ? null : cost * (settings.maxToolCalls + 1) * 3;
@@ -48,6 +52,6 @@ export function estimateBudget(plan: WorkflowPlan, library: Library, mode: "live
   }
   const maxVisits = Math.min(library.config.maxSteps, slots.length);
   const worstCaseCostUsd = slots.some((cost) => cost === null) ? null : (slots as number[]).sort((a, b) => b - a).slice(0, maxVisits).reduce((sum, cost) => sum + cost, 0);
-  return { expectedCostUsd, worstCaseCostUsd, expectedVisits, maxVisits, unpricedNodes,
-    assumptions: `USD estimate: ${budget.inputTokensPerCall} input + ${budget.outputTokensPerCall} output tokens/call, ${budget.callsPerVisit} calls/visit on pass routes. Retry estimate includes visit/tool/step limits and up to 3 requests/turn. Token sizes and provider billing can exceed these assumptions. Coordinator planning is separate.` };
+  return { expectedCostUsd, worstCaseCostUsd, expectedVisits, maxVisits, unpricedNodes, ...(dynamicNodes.length ? { dynamicNodes } : {}),
+    assumptions: `Execution estimate: ${budget.inputTokensPerCall} input + ${budget.outputTokensPerCall} output tokens/call, ${budget.callsPerVisit} calls/visit on pass routes. Retry estimate includes visit/tool/step limits and up to 3 requests/turn. TypeScript can call AI dynamically, so its cost is unknown before execution. Actual token sizes and provider billing can exceed estimates. Planning and refinement are included separately in the task usage total.` };
 }
