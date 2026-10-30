@@ -10,6 +10,8 @@ Tool calls consolidate start, progress, and result events. Expand parents to ins
 
 ## History and evidence
 
+Results loads model sessions, decisions, workspaces, file changes, ownership records, and capability warnings from the complete saved history, independently of the live feed. Loading, failed reads, and unavailable logs are shown explicitly; they are not treated as evidence that no records exist.
+
 Activity offers grouped tool calls and raw event history. Older events load through append-order cursors, independently of the live 500-event feed. Timeline summaries cover the saved run's operation records; exact payloads load when a call is selected. Search explicitly covers operation summaries or the loaded raw-history window, rather than claiming to search unrequested file contents.
 
 History snapshots carry a watermark. Reading earlier pages of a snapshot does not include later appends, and a refresh gets a new snapshot. Legacy text events remain available. Older operations with missing visit, attempt, parent, or timing evidence remain visibly incomplete instead of being reconstructed from current project files.
@@ -20,6 +22,7 @@ The terminal transcript uses the same operation projection as the browser within
 
 - `GET /api/runs/:id/history?limit=200&before=<cursor>&asOf=<watermark>` returns a page in append order.
 - `GET /api/runs/:id/execution` returns compact operation summaries and their watermark.
+- `GET /api/runs/:id/report-evidence` returns the Results evidence records in append order, with `asOf`, total saved event count, and an `available` flag for the event log. Its cache shares the execution projection and folds appended records.
 - `GET /api/runs/:id/operation-events?key=<key>` returns the selected operation's saved lifecycle records. Use the key returned by the summary API, URL-encoded as the query value.
 
 ## Request timing and context changes

@@ -23,6 +23,16 @@ await cp(temporalCache, path.join(process.env.WORKFLOW_HOME, "cache", "temporal"
 await initializeProject(project, "", "legacy");
 process.env.WORKFLOW_DEMO_DELAY_MS = "400";
 const engine = new WorkflowEngine(project, "demo", async execution => {
+  if (execution.task.includes("[long-evidence-fixture]") && execution.node.id === "prepare") {
+    execution.emit("execution_workspace", "/fixture/early-worktree");
+    execution.emit("model_session", JSON.stringify({ provider: "fixture", model: "early-model", thinking: "off", tools: ["read"] }));
+    execution.emit("model_session_end", JSON.stringify({ durationMs: 4200 }));
+    execution.emit("file_evidence", JSON.stringify({ workspace: "/fixture/early-worktree", changedFileCount: 1, changes: [{ path: "early-evidence.ts", before: null, after: "fixture-hash" }] }));
+    execution.emit("ownership_evidence", JSON.stringify({ checkedFileCount: 17, protectedPaths: ["tests/**"] }));
+    execution.emit("flow_decision", JSON.stringify({ groupId: "early-decision", result: true, route: "exit", reason: "Recorded before the live feed limit" }));
+    execution.emit("capability_warning", "Early capability warning retained in Results");
+    for (let index = 0; index < 600; index++) execution.emit("tool_end", `Routine fixture activity ${index}`);
+  }
   if (execution.task.includes("[recovery-conflict]") && execution.node.id === "work") {
     const workspace = await Workspace.create(project, {journal:execution.journal});
     await workspace.write("recovery-fixture.txt", "managed change");

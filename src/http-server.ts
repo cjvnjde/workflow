@@ -138,6 +138,7 @@ export async function createHttpServer(app: WorkflowApplication, port = 4310) {
   server.get<{ Params: { id: string } }>("/api/runs/:id/events", async request => app.events(request.params.id));
   server.get<{ Params: { id: string } }>("/api/runs/:id/history", request => app.history(request.params.id, historyQuerySchema.parse(request.query)));
   server.get<{ Params: { id: string } }>("/api/runs/:id/execution", request => app.execution(request.params.id));
+  server.get<{ Params: { id: string } }>("/api/runs/:id/report-evidence", request => app.reportEvidence(request.params.id));
   server.get<{ Params: { id: string }; Querystring: { key: string } }>("/api/runs/:id/operation-events", request =>
     app.operationEvents(request.params.id, z.string().min(1).max(4000).parse(request.query.key)));
 

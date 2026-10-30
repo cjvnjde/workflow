@@ -162,6 +162,7 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
 
     history: (id: string, query: HistoryQuery = {}) => engine.history(id, query),
     execution: (id: string) => engine.execution(id),
+    reportEvidence: (id: string) => engine.reportEvidence(id),
     operationEvents: (id: string, key: string) => engine.operationEvents(id, key),
     attemptEvidence: (id: string, nodeId: string, visit: number) => engine.attemptEvidence(id, nodeId, visit),
     evidenceContent: (id: string, nodeId: string, visit: number, contentId: string) => engine.evidenceContent(id, nodeId, visit, contentId),

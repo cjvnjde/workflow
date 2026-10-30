@@ -94,6 +94,8 @@ Or, for an implementation:
 
 During execution, active blocks are highlighted. Select a block for its inputs, visits, and activity. Drag graph blocks to arrange them, use **Fit workflow**, or expand the workspace. Layout changes do not change execution order.
 
+Unsent task text and uploaded attachment references are saved per project in this browser. Opening Settings, switching sessions, or refreshing the page preserves the draft. **New task** returns to it; **Discard task draft** clears it. Successful submission clears only the submitted draft, preserving any newer edits. File bytes remain in the project's attachment store. If browser storage is disabled, the draft still survives navigation within the open page.
+
 The outcome appears above the graph. **Results** contains rendered summaries, checks, and artifacts; **Activity** contains detailed events and command output. Copy or download Markdown from results. Active and previous tasks remain in the sidebar.
 
 ## Attachments

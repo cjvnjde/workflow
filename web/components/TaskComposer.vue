@@ -1,23 +1,16 @@
 <script setup lang="ts">
 import { onScopeDispose, ref } from "vue";
-import {
-  attachmentSchema,
-  type Attachment,
-} from "../../src/contracts.js";
+import { attachmentSchema, type Attachment } from "../../src/contracts.js";
 import { apiUrl, request } from "../api.js";
 import Icon from "./Icon.vue";
 
-const props = withDefaults(
-  defineProps<{
-    onSubmit: (prompt: string, attachments: string[]) => Promise<void>;
-    automatic: boolean;
-    initialText?: string;
-  }>(),
-  { initialText: "" },
-);
-const emit = defineEmits<{ settings: [] }>();
-const text = ref(props.initialText);
-const files = ref<Attachment[]>([]);
+const props = defineProps<{
+  onSubmit: (prompt: string, attachments: string[]) => Promise<void>;
+  automatic: boolean;
+}>();
+const emit = defineEmits<{ settings: []; discard: [] }>();
+const text = defineModel<string>("text", { required: true });
+const files = defineModel<Attachment[]>("files", { required: true });
 const uploading = ref(false);
 const submitting = ref(false);
 const error = ref("");
@@ -27,6 +20,10 @@ const input = ref<HTMLTextAreaElement>();
 let uploadController: AbortController | undefined;
 function cancelUpload() {
   uploadController?.abort();
+}
+function discard() {
+  error.value = "";
+  emit("discard");
 }
 onScopeDispose(cancelUpload);
 const suggestions = [
@@ -78,7 +75,7 @@ async function attach(selected: File[]) {
         signal: controller.signal,
       });
       controller.signal.throwIfAborted();
-      files.value.push(attached);
+      files.value = [...files.value, attached];
     }
   } catch (failure) {
     if (!controller.signal.aborted)
@@ -226,6 +223,13 @@ function drop(event: DragEvent) {
         }}</span
       >
       <button @click="emit('settings')">Change in Settings</button>
+      <button
+        v-if="text || files.length"
+        :disabled="uploading || submitting"
+        @click="discard"
+      >
+        Discard task draft
+      </button>
     </div>
     <div v-if="!text && !files.length" class="prompt-suggestions">
       <button

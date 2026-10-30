@@ -15,6 +15,21 @@ export const historyPageSchema = z.object({
   nextBefore: z.number().int().nonnegative().optional(), hasMore: z.boolean(),
 });
 export type HistoryPage = z.infer<typeof historyPageSchema>;
+
+// Results need these records across the entire run, independently of the
+// bounded live feed. Omit chat deltas and tool payloads from this read model.
+const reportEvidenceKinds = new Set([
+  "flow_decision", "model_session", "model_session_end", "execution_workspace",
+  "file_evidence", "file_evidence_unavailable", "ownership_contract",
+  "ownership_evidence", "ownership_violation", "capability_warning",
+]);
+export const isReportEvidenceEvent = (event: RunEvent) => reportEvidenceKinds.has(event.kind);
+export const reportEvidenceSchema = z.object({
+  events: z.array(eventSchema),
+  asOf: z.number().int().min(-1), total: z.number().int().nonnegative(),
+  available: z.boolean(),
+});
+export type ReportEvidence = z.infer<typeof reportEvidenceSchema>;
 export const executionOperationSchema = z.object({
   key: z.string(), id: z.string(), parentId: z.string().optional(), parentKey: z.string().optional(),
   name: z.string(), kind: operationRecordSchema.shape.kind, state: operationRecordSchema.shape.state,

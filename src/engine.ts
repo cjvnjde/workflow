@@ -317,6 +317,9 @@ export class WorkflowEngine {
   async execution(id: string) {
     this.requireRun(id); await this.flushEvents(); return this.store.execution(id);
   }
+  async reportEvidence(id: string) {
+    this.requireRun(id); await this.flushEvents(); return this.store.reportEvidence(id);
+  }
   async operationEvents(id: string, key: string) {
     this.requireRun(id); await this.flushEvents(); return this.store.operationEvents(id, key);
   }

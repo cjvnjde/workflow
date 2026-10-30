@@ -3,15 +3,27 @@ import { computed } from "vue";
 import type { RunEvent, WorkflowRun } from "../../src/contracts.js";
 import { runReport } from "../run-report.js";
 import { executionEvidence } from "../execution-evidence.js";
+import { useReportEvidence } from "../composables/use-report-evidence.js";
 const props = defineProps<{
   run: WorkflowRun;
   events: RunEvent[];
   now: number;
 }>();
-const report = computed(() => runReport(props.run, props.events));
+const {
+  events: savedEvents,
+  complete,
+  available,
+  loading,
+  error,
+  refresh,
+} = useReportEvidence(
+  () => props.run,
+  () => props.events,
+);
+const report = computed(() => runReport(props.run, savedEvents.value));
 const evidence = computed(() => executionEvidence(props.run, props.now));
 const files = computed(() =>
-  props.events
+  savedEvents.value
     .filter((event) =>
       ["file_evidence", "file_evidence_unavailable"].includes(event.kind),
     )
@@ -30,7 +42,7 @@ const files = computed(() =>
     }),
 );
 const ownership = computed(() =>
-  props.events.filter((event) =>
+  savedEvents.value.filter((event) =>
     [
       "ownership_evidence",
       "ownership_violation",
@@ -55,6 +67,16 @@ function ownershipText(event: RunEvent) {
     <summary>
       Execution evidence · {{ evidence.intervals.length }} step attempts
     </summary>
+    <p v-if="loading" role="status">Loading complete saved evidence…</p>
+    <div v-else-if="error" class="inline-error" role="alert">
+      Could not load complete execution evidence: {{ error }}
+      Missing records have not been established.
+      <button @click="refresh">Retry evidence loading</button>
+    </div>
+    <p v-else-if="!available">
+      Saved execution history is unavailable. Missing records have not been
+      established.
+    </p>
     <p>
       Step success is separate from task acceptance. Authoring can complete with
       valid failing tests; acceptance depends on the workflow’s checks and
@@ -97,7 +119,7 @@ function ownershipText(event: RunEvent) {
       </ul>
     </details>
     <h3>Decisions</h3>
-    <p v-if="!report.decisions.length">
+    <p v-if="complete && !report.decisions.length">
       No predicate evaluations recorded. Older runs retain their group state but
       not decision history.
     </p>
@@ -113,13 +135,13 @@ function ownershipText(event: RunEvent) {
       </li>
     </ol>
     <details
-      v-if="events.some((event) => event.kind === 'capability_warning')"
+      v-if="savedEvents.some((event) => event.kind === 'capability_warning')"
       open
     >
       <summary>Capability warnings</summary>
       <ul>
         <li
-          v-for="event in events.filter(
+          v-for="event in savedEvents.filter(
             (event) => event.kind === 'capability_warning',
           )"
           :key="event.id"
@@ -129,7 +151,7 @@ function ownershipText(event: RunEvent) {
       </ul>
     </details>
     <h3>Actual model calls</h3>
-    <p v-if="!report.calls.length">
+    <p v-if="complete && !report.calls.length">
       No detailed model-session records. See agent-start activity for older
       runs; step defaults may differ from inner calls.
     </p>
@@ -191,7 +213,7 @@ function ownershipText(event: RunEvent) {
       verification after the join before accepting concurrent edits.
     </p>
     <h3>Concurrent model sessions</h3>
-    <p v-if="!report.modelOverlaps.length">
+    <p v-if="complete && !report.modelOverlaps.length">
       No completed overlapping model sessions recorded.
     </p>
     <ul v-else>
@@ -206,12 +228,17 @@ function ownershipText(event: RunEvent) {
       </li>
     </ul>
     <h3>Execution workspaces</h3>
-    <p v-if="!events.some((item) => item.kind === 'execution_workspace')">
+    <p
+      v-if="
+        complete &&
+        !savedEvents.some((item) => item.kind === 'execution_workspace')
+      "
+    >
       No workspace records captured for this run.
     </p>
     <ul>
       <li
-        v-for="event in events.filter(
+        v-for="event in savedEvents.filter(
           (item) => item.kind === 'execution_workspace',
         )"
         :key="event.id"
@@ -250,7 +277,7 @@ function ownershipText(event: RunEvent) {
         >
       </li>
     </ul>
-    <p v-if="!files.length">No file-change snapshots recorded.</p>
+    <p v-if="complete && !files.length">No file-change snapshots recorded.</p>
     <details v-for="item in files" :key="item.event.id">
       <summary>
         {{ item.event.nodeId }} ·
@@ -281,7 +308,7 @@ function ownershipText(event: RunEvent) {
       <p v-else>{{ item.event.message }}</p>
     </details>
     <h3>File ownership</h3>
-    <p v-if="!ownership.length">
+    <p v-if="complete && !ownership.length">
       No file-ownership evidence recorded for this run. This does not establish
       that files were unchanged.
     </p>

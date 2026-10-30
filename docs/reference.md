@@ -159,6 +159,7 @@ Events are `issue.opened` or `pull_request.opened`; result destinations are `loc
 | `POST /api/runs/:id/pause`, `/resume`, `/cancel`, `/recover` | Execution controls. |
 | `DELETE /api/runs/:id` | Remove a deletable run and its linked task from visible history. |
 | `GET /api/runs/:id/events` | Persisted activity. |
+| `GET /api/runs/:id/report-evidence` | Complete saved Results evidence, independent of the live event limit, with log availability and an append-order watermark. |
 | `GET /api/runs/:id/attempts/:nodeId/:visit/evidence` | Exact stored input/output and AI-session evidence for a step visit, with explicit unavailable states. |
 | `GET /api/runs/:id/attempts/:nodeId/:visit/content/:hash` | Fetch verified content owned by that attempt; `?download=1` requests an attachment. |
 | `GET /api/stream` | Server-sent events for task/run updates and live activity. |

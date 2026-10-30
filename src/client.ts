@@ -1,7 +1,7 @@
 import { z } from "zod";
 import {
   eventSchema, projectSchema, runListSchema, runSchema, taskListSchema, taskSchema,
-  usageReportSchema, commandOutputPageSchema, historyPageSchema, executionSnapshotSchema, operationEventsSchema, type HistoryQuery,
+  usageReportSchema, commandOutputPageSchema, historyPageSchema, executionSnapshotSchema, reportEvidenceSchema, operationEventsSchema, type HistoryQuery,
   setupJobSchema, setupJobsLatestSchema, type StartSetup,
   attemptEvidenceSchema,
   memoryStateSchema, memoryEntrySchema, memoryMutationSchema, type CreateMemoryEntry, type UpdateMemoryEntry,
@@ -103,6 +103,9 @@ export class WorkflowClient {
   }
   execution(id: string, signal?: AbortSignal) {
     return this.request(`/api/runs/${encodeURIComponent(id)}/execution`, executionSnapshotSchema, { signal });
+  }
+  reportEvidence(id: string, signal?: AbortSignal) {
+    return this.request(`/api/runs/${encodeURIComponent(id)}/report-evidence`, reportEvidenceSchema, { signal });
   }
   operationEvents(id: string, key: string, signal?: AbortSignal) {
     return this.request(`/api/runs/${encodeURIComponent(id)}/operation-events?key=${encodeURIComponent(key)}`, operationEventsSchema, { signal });

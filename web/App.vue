@@ -15,6 +15,7 @@ import { libraryProposalSchema } from "../src/contracts.js";
 import type { DesignScope } from "../src/contracts.js";
 import { apiUrl, request } from "./api.js";
 import { useDraft } from "./composables/use-draft.js";
+import { useTaskDraft } from "./composables/use-task-draft.js";
 import { useWorkflowData } from "./composables/use-workflow-data.js";
 import { useTasks } from "./composables/use-tasks.js";
 import { useSetupJobs } from "./composables/use-setup-jobs.js";
@@ -136,7 +137,13 @@ const applyingDesign = ref(false);
 const designChatCount = ref(0);
 const sidebar = ref(false);
 const composerKey = ref(0);
-const initialText = ref("");
+const {
+  draft: taskDraft,
+  text: setTaskDraftText,
+  files: setTaskDraftFiles,
+  clear: clearTaskDraft,
+  clearSubmitted,
+} = useTaskDraft(() => project.value?.project);
 const filter = ref("");
 async function readSettings() {
   automatic.value =
@@ -208,11 +215,20 @@ function navigate(next: "task" | "settings", action?: () => void) {
   sidebar.value = false;
   action?.();
 }
-function newTask(text = "") {
+function newTask(text?: string) {
+  if (
+    text !== undefined &&
+    (taskDraft.value.text || taskDraft.value.files.length) &&
+    !window.confirm("Replace the unsent task draft with this request?")
+  )
+    return;
   navigate("task", () => {
     selectedTask.value = undefined;
     selectRun(undefined);
-    initialText.value = text;
+    if (text !== undefined) {
+      clearTaskDraft();
+      setTaskDraftText(text);
+    }
     composerKey.value++;
   });
 }
@@ -404,10 +420,12 @@ function selectEntry(item: (typeof entries.value)[number]) {
 }
 async function submitTask(prompt: string, attachments: string[]) {
   const submittedComposer = composerKey.value;
+  const submittedDraft = taskDraft.value;
   const created = await request("/api/tasks", taskSchema, {
     method: "POST",
     body: { prompt, attachments },
   });
+  clearSubmitted(submittedDraft);
   // Creation may finish after the user has opened another task or a new draft.
   // Keep the created task in history without replacing that newer workspace.
   if (
@@ -799,8 +817,13 @@ async function designApplied() {
             @settings="navigate('settings')"
           />
           <TaskComposer
+            v-if="project"
             :key="composerKey"
-            :initial-text="initialText"
+            :text="taskDraft.text"
+            :files="taskDraft.files"
+            @update:text="setTaskDraftText"
+            @update:files="setTaskDraftFiles"
+            @discard="clearTaskDraft"
             :automatic="automatic"
             :on-submit="submitTask"
             @settings="navigate('settings')"

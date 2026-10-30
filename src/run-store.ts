@@ -1,5 +1,5 @@
 import { StringDecoder } from "node:string_decoder";
-import { ExecutionProjection, historyQuerySchema, type HistoryQuery, type HistoryPage, type ExecutionSnapshot } from "./execution-history.js";
+import { ExecutionProjection, historyQuerySchema, isReportEvidenceEvent, type HistoryQuery, type HistoryPage, type ExecutionSnapshot, type ReportEvidence } from "./execution-history.js";
 import {
   appendFile,
   stat,
@@ -23,6 +23,7 @@ interface ProjectionCache {
   bytes: bigint;
   total: number;
   projection: ExecutionProjection;
+  reportEvents: RunEvent[];
 }
 
 export class RunStore {
@@ -107,7 +108,9 @@ export class RunStore {
         const next = await this.logStamp(filename);
         if (next && next.bytes === cached.bytes + BigInt(Buffer.byteLength(contents))) {
           // The serialized append committed before its cached projection changes.
-          cached.projection.apply(eventSchema.parse(JSON.parse(contents)), cached.total);
+          const recorded = eventSchema.parse(JSON.parse(contents));
+          cached.projection.apply(recorded, cached.total);
+          if (isReportEvidenceEvent(recorded)) cached.reportEvents.push(recorded);
           cached.total++;
           cached.stamp = next.stamp;
           cached.bytes = next.bytes;
@@ -196,7 +199,7 @@ export class RunStore {
     }
   }
 
-  private async executionSnapshot(runId: string): Promise<ExecutionSnapshot> {
+  private async projection(runId: string): Promise<ProjectionCache> {
     const filename = path.join(this.directory, runId, "events.jsonl");
     const before = await this.logStamp(filename);
     let cached = this.executionCache.get(runId);
@@ -205,12 +208,14 @@ export class RunStore {
       // A log changed outside this store; recheck its tail before a later append.
       this.eventFilesReady.delete(runId);
       const projection = new ExecutionProjection(true);
+      const reportEvents: RunEvent[] = [];
       let total = 0;
       for await (const { cursor, event } of this.scan(runId)) {
         total = cursor + 1; projection.apply(event, cursor);
+        if (isReportEvidenceEvent(event)) reportEvents.push(event);
       }
       const after = await this.logStamp(filename);
-      cached = { stamp: after?.stamp ?? "missing", bytes: after?.bytes ?? 0n, total, projection };
+      cached = { stamp: after?.stamp ?? "missing", bytes: after?.bytes ?? 0n, total, projection, reportEvents };
       // External replacement or truncation during the scan cannot seed a cache.
       if (before && after?.stamp === before.stamp) this.executionCache.set(runId, cached);
     }
@@ -219,13 +224,25 @@ export class RunStore {
       this.executionCache.delete(runId); this.executionCache.set(runId, cached!);
     }
     while (this.executionCache.size > 8) this.executionCache.delete(this.executionCache.keys().next().value!);
-    return structuredClone({ version: 1, asOf: cached!.total - 1, total: cached!.total, operations: [...cached!.projection.operations.values()] });
+    return cached!;
   }
 
   execution(runId: string): Promise<ExecutionSnapshot> {
     // Serialize with writes so a published watermark always includes exactly
     // the events folded into the cache; a failed read is not a write failure.
-    const read = this.eventWrites.then(() => this.executionSnapshot(runId));
+    const read = this.eventWrites.then(async (): Promise<ExecutionSnapshot> => {
+      const cached = await this.projection(runId);
+      return structuredClone({ version: 1, asOf: cached.total - 1, total: cached.total, operations: [...cached.projection.operations.values()] });
+    });
+    this.eventWrites = read.then(() => {}, () => {});
+    return read;
+  }
+
+  reportEvidence(runId: string): Promise<ReportEvidence> {
+    const read = this.eventWrites.then(async () => {
+      const cached = await this.projection(runId);
+      return structuredClone({ events: cached.reportEvents, asOf: cached.total - 1, total: cached.total, available: cached.stamp !== "missing" });
+    });
     this.eventWrites = read.then(() => {}, () => {});
     return read;
   }

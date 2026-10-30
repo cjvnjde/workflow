@@ -21,6 +21,11 @@ test("history and output APIs preserve snapshots and scope transcripts to a reco
   const history = await client.history(run.id, { asOf: snapshot.asOf, limit: 500 });
   assert.equal(history.asOf, snapshot.asOf);
   assert.equal(history.total, snapshot.total);
+  const evidence = await client.reportEvidence(run.id);
+  assert.equal(evidence.available, true);
+  assert.equal(evidence.asOf, snapshot.asOf);
+  assert.equal(evidence.total, snapshot.total);
+  await assert.rejects(client.reportEvidence("00000000-0000-4000-8000-000000000000"), /Workflow not found/);
   const capture = await createCommandCapture(attemptDirectory(project, run.id, "one", 1));
   capture.append("stdout", "first\n"); capture.append("stderr", "warning\n");
   const ref = await capture.finish();
