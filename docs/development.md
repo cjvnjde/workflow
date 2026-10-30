@@ -91,6 +91,28 @@ Browser tests run headlessly against an isolated fixture server on port 4311. Ke
 
 The pinned Temporal SDK may print `v8.promiseHooks.createHook is not available` on Bun. Workflow stack-trace collection is unavailable there; the execution and replay tests still exercise real Temporal behavior.
 
+## Mutation testing
+
+Stryker requires Node.js 22+ for its coordinator; tests still run on Bun through its built-in command runner. See the [Stryker configuration reference](https://stryker-mutator.io/docs/stryker-js/configuration/).
+
+```sh
+bun run test:mutation:smoke  # a handful of mutants and two tests; no build or Temporal
+bun run test:mutation:dry    # instrument and build all targets, run tests once; no active mutants
+bun run test:mutation        # opt-in full mutation run; can take a long time
+```
+
+The main configuration mutates TypeScript in `src/` and `web/`, excluding declarations and frozen legacy sources. Vue single-file components and browser journeys are outside this scope. It builds the instrumented distribution once inside Stryker's sandbox so CLI and worker tests exercise the same mutations as source imports. Local `.workflow/` state and existing build output are excluded from that sandbox.
+
+The command runner cannot select tests by coverage, so `coverageAnalysis` is off and every mutant runs the backend/integration suite. Concurrency is limited to one to keep local Temporal service usage bounded. Mutation testing is separate from `check` and CI. No minimum score is enforced until a full baseline is established; the smoke check requires all of its mutants to be killed to verify mutation activation.
+
+HTML and JSON reports go to `reports/mutation/`, with smoke reports in `reports/mutation-smoke/`. Both reports and `.stryker-tmp/` are ignored by Git, ESLint, and Prettier. The smoke configuration inherits the main configuration and narrows mutation to the token-total function's return expression and its focused tests.
+
+To focus the main configuration on a source file while retaining the normal build and test suite:
+
+```sh
+bun run test:mutation --mutate src/core/execution/budget.ts
+```
+
 ## UI screenshots
 
 The README execution screenshots use deterministic demonstration records rendered by the built browser UI. Regenerate them after building, with port 4311 free:

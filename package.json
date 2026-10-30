@@ -59,6 +59,9 @@
     "prepare": "bun run build",
     "start": "bun dist/cli.js",
     "test": "bun run build && bun test --timeout 30000 tests/*.test.ts",
+    "test:mutation": "stryker run",
+    "test:mutation:dry": "stryker run --dryRunOnly",
+    "test:mutation:smoke": "stryker run stryker.smoke.config.mjs",
     "test:e2e": "bun run build && bun --bun run playwright test",
     "test:live": "bun run build && bun scripts/live-smoke.ts",
     "typecheck": "bun scripts/typecheck.ts",
@@ -108,6 +111,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.64.0",
+    "@stryker-mutator/core": "^10.1.1",
     "@types/bun": "^1.4.2",
     "@types/markdown-it": "14.1.2",
     "@types/node": "^24.10.0",

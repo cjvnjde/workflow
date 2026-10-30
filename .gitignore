@@ -2,6 +2,9 @@ node_modules/
 dist/
 playwright-report/
 test-results/
+.stryker-tmp/
+reports/mutation/
+reports/mutation-smoke/
 .workflow/runs/
 .workflow/lock
 *.log
