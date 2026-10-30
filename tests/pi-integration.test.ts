@@ -318,7 +318,7 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
   assert.equal(proposal.nodes[0]?.block, "custom-audit");
   assert.deepEqual(
     requests[3]?.tools.map((tool) => tool.function.name).sort(),
-    ["submit_plan"],
+    ["list_blocks", "load_block", "submit_plan"],
   );
   assert.ok(JSON.stringify(requests[3]).includes("Available models"));
   const generated = await generateLibraryChanges({
@@ -328,7 +328,7 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
   });
   assert.equal(generated.blocks[0]?.bundle.definition.agent?.model, "local-test");
   assert.equal(generated.blocks[0]?.bundle.prompt, customAudit.prompt);
-  assert.deepEqual(requests[4]?.tools.map((tool) => tool.function.name).sort(), ["bash", "edit_file", "git_changes", "list_files", "read_file", "submit_library", "write_file"]);
+  assert.deepEqual(requests[4]?.tools.map((tool) => tool.function.name).sort(), ["bash", "edit_file", "git_changes", "list_blocks", "list_files", "load_block", "read_file", "submit_library", "write_file"]);
   const failedUsage: UsageTotals[] = [];
   await assert.rejects(runPiBlock({
     project, config: library.config, bundle, node, task: "Stop at spending limit", inputs: {}, visit: 3,

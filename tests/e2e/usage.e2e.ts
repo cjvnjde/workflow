@@ -287,7 +287,13 @@ test("task, setup and execution spending defaults save independently and can be 
     const latest = await (await request.get("/api/settings/execution")).json();
     const restored = await request.put("/api/settings/execution", {
       headers: { "x-workflow-client": "1" },
-      data: { ...original, configRevision: latest.configRevision },
+      data: {
+        ...original,
+        // Omitting an unset budget preserves the current budget; explicitly
+        // clear the temporary caps when the project started without one.
+        budget: original.budget ?? { prices: {} },
+        configRevision: latest.configRevision,
+      },
     });
     expect(restored.ok(), await restored.text()).toBe(true);
   }

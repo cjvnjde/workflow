@@ -36,7 +36,7 @@ flowchart LR
     Execute --> Results["Results, artifacts, and activity"]
 ```
 
-The coordinator uses the supplied request, context, task instructions, blocks, and model profiles. Repository inspection happens inside execution blocks. A task instruction such as “bug fix” describes how to approach that kind of work; it does not prescribe a fixed graph.
+The coordinator uses the supplied request, context, task instructions, blocks, and model profiles. It starts with compact descriptions and loads selected block definitions and task instructions as needed. Enabled project memory can supply reusable guidance from approaches you liked. Repository inspection happens inside execution blocks. A task instruction such as “bug fix” describes how to approach that kind of work; it does not prescribe a fixed graph. [Reuse an approach](docs/reusing-approaches.md) explains how remembered strategies inform fresh plans.
 
 | Concept | What you define |
 | --- | --- |

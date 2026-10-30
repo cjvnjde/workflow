@@ -4,7 +4,7 @@ import { Type } from "@earendil-works/pi-ai";
 import { blockInstructions } from "./code-schema.js";
 import { scriptBundle } from "./script-migration.js";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { resolveAgentSettings, validatePlan, type Library, type WorkflowPlan, type WorkflowRun, bundleSchema, blocksForAgent } from "./domain.js";
+import { resolveAgentSettings, validatePlan, type Library, type WorkflowPlan, type WorkflowRun, bundleSchema } from "./domain.js";
 import { runAgentSession, type ActivitySink } from "./agent-session.js";
 import { textResult } from "./block-runner.js";
 import { validateLibraryResources } from "./library.js";
@@ -21,6 +21,7 @@ import { formatBlock } from "./source-format.js";
 import { createAccountingContext } from "./usage-store.js";
 import type { AccountingContext } from "./usage-schema.js";
 import { planningMemory } from "./planning-memory.js";
+import { blockCatalogTools } from "./block-catalog.js";
 
 export type TaskPlanResult = {
   kind: "plan"; plan: WorkflowPlan; library: Library; caseId?: string; caseName?: string; rationale: string;
@@ -59,8 +60,10 @@ export async function planTask(options: TaskPlannerOptions, session: typeof runA
   const suggestedBlocks: { id: string; rationale: string }[] = [];
   const context = await new Attachments(options.project).context(task.attachments);
   const memory = await planningMemory(options.project, signal);
+  const catalog = blockCatalogTools({ blocks: () => library.blocks, signal });
   const tools: ToolDefinition[] = [
     ...memory.tools,
+    ...catalog.tools,
     defineTool({
       name: "choose_task_case", label: "Classify request", description: "Choose the most relevant task case and load its instructions. Use an empty id if no case fits. Call before submitting a workflow.",
       parameters: Type.Object({ id: Type.String(), reason: Type.String() }),
@@ -183,7 +186,7 @@ export async function planTask(options: TaskPlannerOptions, session: typeof runA
       `Project instructions:\n${library.config.instructions}\n${settings.instructions}`,
       ...(memory.prompt ? [memory.prompt] : []),
       `Configured commands:\n${JSON.stringify(library.config.commands)}`,
-      `Block catalog:\n${JSON.stringify(blocksForAgent(library.blocks))}`,
+      catalog.prompt(),
       `Available MCP servers for execution: ${JSON.stringify(settings.capabilities.mcpServers.filter(server => server.enabled).map(({ id, name }) => ({ id, name })))}`,
       `Project skills available to execution (select relevant IDs; execution loads instructions with load_skill): ${JSON.stringify(settings.capabilities.skills.filter(skill => skill.enabled).map(({id,name,description}) => ({id,name,description})))}`,
     ].join("\n\n"),

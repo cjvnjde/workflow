@@ -5,6 +5,7 @@ import {
   setupJobSchema, setupJobsLatestSchema, type StartSetup,
   attemptEvidenceSchema,
   memoryStateSchema, memoryEntrySchema, memoryMutationSchema, type CreateMemoryEntry, type UpdateMemoryEntry,
+  strategyPreviewSchema, rememberStrategyResultSchema, type RememberStrategy,
   triggerStateSchema, triggerSchema, triggerJobSchema, type TriggerConfig,
   type CreateProgram, type RunAction, type RunEvent, type WorkflowRun,
 } from "./contracts.js";
@@ -76,6 +77,8 @@ export class WorkflowClient {
   project(signal?: AbortSignal) { return this.request("/api/project", projectSchema, { signal }); }
   usage(signal?: AbortSignal) { return this.request("/api/usage", usageReportSchema, { signal }); }
   memory(signal?: AbortSignal) { return this.request("/api/memory", memoryStateSchema, { signal }); }
+  strategyPreview(id: string, signal?: AbortSignal) { return this.request("/api/runs/" + encodeURIComponent(id) + "/strategy-preview", strategyPreviewSchema, { signal }); }
+  rememberStrategy(id: string, body: RememberStrategy, signal?: AbortSignal) { return this.request("/api/runs/" + encodeURIComponent(id) + "/remember", rememberStrategyResultSchema, { method: "POST", body, signal }); }
   setMemoryEnabled(enabled: boolean, revision: string, signal?: AbortSignal) { return this.request("/api/memory", memoryStateSchema, { method: "PUT", body: { enabled, revision }, signal }); }
   memoryEntry(id: string, signal?: AbortSignal) { return this.request(`/api/memory/entries/${encodeURIComponent(id)}`, memoryEntrySchema, { signal }); }
   createMemoryEntry(body: CreateMemoryEntry, signal?: AbortSignal) { return this.request("/api/memory/entries", memoryMutationSchema, { method: "POST", body, signal }); }

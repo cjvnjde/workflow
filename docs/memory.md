@@ -13,6 +13,7 @@ This disposable project contains an example preference and an observation from a
 - **Notes** contain project guidance you choose to keep.
 - **Preferences** contain instructions you explicitly save, such as how you like changes reviewed. Workflow does not infer personal preferences from your activity.
 - **Observations** aggregate recorded execution facts by task type, reusable block and model. They include outcomes, checks, usage and a few source references. A completed job is an observed result, not proof that a model is better or that every change was correct.
+- **Strategies** record an approach you explicitly chose to remember after a workflow completed. They contain compact guidance and source metadata, not a fixed execution graph. See [Reusing an approach](reusing-approaches.md).
 
 Observations come from normal live runs started while memory is enabled. They do not copy prompts, outputs, full graphs or conversations. Existing historical runs are not automatically imported when you enable memory. Code without model evidence is identified separately rather than attributed to an assumed model.
 

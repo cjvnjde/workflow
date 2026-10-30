@@ -98,7 +98,7 @@ test("the coordinator classifies dynamically, reads case instructions, selects p
     assert.match(session.systemPrompt, /project-reference/);
     assert.equal(session.images?.length, 1);
     assert.ok((session.tools.find(tool => tool.name === "submit_plan")!.parameters as { required?: string[] }).required?.includes("attachmentSummary"));
-    assert.deepEqual(session.tools.map(tool => tool.name).sort(), ["ask_user", "choose_task_case", "submit_plan", "submit_workflow", "suggest_block"]);
+    assert.deepEqual(session.tools.map(tool => tool.name).sort(), ["ask_user", "choose_task_case", "list_blocks", "load_block", "submit_plan", "submit_workflow", "suggest_block"]);
     assert.match(session.systemPrompt, /no commits or no usable comparison base/);
     assert.match(session.systemPrompt, /not branch-relative/);
     const plan = createTemplate(task.prompt, "bug", library);
@@ -181,11 +181,13 @@ test("graph composition uses only supplied context and never connects enabled MC
   }]}});
   const result = await planTask({ project, library, task, settings, models,
     signal: new AbortController().signal, emit: () => {} }, async session => {
-    assert.deepEqual(session.tools.map(tool=>tool.name).sort(),["ask_user","choose_task_case","submit_plan","submit_workflow","suggest_block"]);
+    assert.deepEqual(session.tools.map(tool=>tool.name).sort(),["ask_user","choose_task_case","list_blocks","load_block","submit_plan","submit_workflow","suggest_block"]);
     assert.match(session.systemPrompt,/Put all investigation and configuration checks into execution blocks/);
     assert.match(session.systemPrompt,/ctx.ai/);
     assert.ok(!(session.tools.find(tool => tool.name === "submit_plan")!.parameters as { required?: string[] }).required?.includes("attachmentSummary"));
-    assert.ok(session.systemPrompt.includes(JSON.stringify(library.blocks.review!.prompt)));
+    assert.ok(!session.systemPrompt.includes(JSON.stringify(library.blocks.review!.prompt)));
+    const selected = await call(session, "load_block", { id: "review", path: ["prompt"] });
+    assert.equal(JSON.parse(selected.content.filter(value => value.type === "text").map(value => value.text).join("\n")).text, library.blocks.review!.prompt);
     await call(session,"choose_task_case",{id:"investigation",reason:"Review"});
     await call(session,"submit_plan",{json:JSON.stringify({title:"Review changes",entry:"review",nodes:[{
       id:"review",block:"review",label:"Review",goal:"Inspect the baseline, adapt to working files if absent, and review.",inputs:[],maxVisits:1,on:{pass:"$complete",retry:"$failed",fail:"$failed"},

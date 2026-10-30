@@ -2,6 +2,8 @@
 
 Use `/memory` to inspect optional project memory and enable or disable it. Notes and preferences are editable in browser Settings → Memory or through `workflow memory add/update`; see [Project memory](memory.md).
 
+For a completed run, `/remember` previews reusable guidance and `/remember save` explicitly keeps it. This preserves the memory setting and starts no AI job. [Reusing an approach](reusing-approaches.md) covers editing guidance and CLI controls.
+
 [Documentation](README.md) → Terminal workspace
 
 `workflow tui` opens a full-screen [OpenTUI](https://opentui.com/packages/opentui-core/) workspace with a conversation, live AI responses and tool activity, a workflow graph, and execution controls. It uses the same engine and HTTP client as the browser.

@@ -29,6 +29,7 @@ Run project commands from the target project's directory. Configuration is in th
 | `workflow usage [task-or-run-id] [--json]` | Read project or shared task usage totals, phases, model sessions, and spending limits from the running host. |
 | `workflow data <run-id> <step-id> [visit] [--json]` | Inspect stored inputs, outputs and AI context for one visit. Omit the visit for the latest one; JSON includes content references and loaded text. |
 | `workflow memory [list\|on\|off\|show ID\|add entry.json\|update ID entry.json\|remove ID] [--json]` | Manage optional project memory through the running core. It starts disabled. |
+| `workflow remember <run-id> [--save] [--input JSON] [--json]` | Preview compact strategy guidance from a completed run. `--save` explicitly remembers it without enabling memory or approving execution. |
 | `workflow answer <task-id> "Answer"` | Answer the current planning question. |
 | `workflow runs` | List runs on the local project server. |
 | `workflow pause <run-id>` | Finish active steps, then pause new dispatch. |
@@ -89,6 +90,8 @@ Settings and library mutations carry their own required revision/hash fields. Re
 ### Project memory
 
 `GET /api/memory` lists descriptions and the current revision. `PUT /api/memory` toggles use with `{revision,enabled}`. Entry management uses `POST /api/memory/entries` and `GET`, `PATCH`, or `DELETE /api/memory/entries/:id`. Mutations require the current revision; conflicts return 409. Management remains available while memory is disabled, but planner reads and ordinary-run collection stop. See [Project memory](memory.md) for entry fields, terminal commands and retention behavior.
+
+`GET /api/runs/:id/strategy-preview` derives compact guidance and bounded source metadata without writing memory. `POST /api/runs/:id/remember` accepts `{sourceRunRevision,memoryRevision,title,description,details,tags?}`; it derives trusted metadata again and saves a user-endorsed strategy. Only completed, non-deleted source runs qualify. Saving preserves the memory setting and returns `{state,entry,reused}`. See [Reusing an approach](reusing-approaches.md).
 
 ### CLI host lifecycle
 

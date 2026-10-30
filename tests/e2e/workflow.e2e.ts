@@ -396,16 +396,25 @@ test("the UI shows a draft budget estimate, execution version and configured spe
   await page.getByLabel("What should we work on?").fill("Budget display regression");
   const config = await (await request.get("/api/settings/execution")).json();
   await request.put("/api/settings/execution", { headers: { "x-workflow-client": "1" }, data: { ...config, budget: { maxCostUsd: 2.5 } } });
-  await page.getByRole("button", { name: "Start task", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
-  await page.locator(".run-metrics > summary").click();
-  const budget = page.locator(".run-metrics");
-  await expect(budget).toContainText("ESTIMATED EXECUTION COST$0.0000");
-  await expect(budget).toContainText("EXECUTION LIMIT$2.5");
-  await expect(budget).toContainText(/Version [a-f0-9]{12}/);
-  await page.getByRole("button", { name: "Approve & start", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Completed", { timeout: 15_000 });
-  await expect(budget).toContainText("REPORTED EXECUTION COST$0.0000");
+  try {
+    await page.getByRole("button", { name: "Start task", exact: true }).click();
+    await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
+    await page.locator(".run-metrics > summary").click();
+    const budget = page.locator(".run-metrics");
+    await expect(budget).toContainText("ESTIMATED EXECUTION COST$0.0000");
+    await expect(budget).toContainText("EXECUTION LIMIT$2.5");
+    await expect(budget).toContainText(/Version [a-f0-9]{12}/);
+    await page.getByRole("button", { name: "Approve & start", exact: true }).click();
+    await expect(page.locator(".status-pill")).toHaveText("Completed", { timeout: 15_000 });
+    await expect(budget).toContainText("REPORTED EXECUTION COST$0.0000");
+  } finally {
+    const latest = await (await request.get("/api/settings/execution")).json();
+    const restored = await request.put("/api/settings/execution", {
+      headers: { "x-workflow-client": "1" },
+      data: { ...config, budget: config.budget ?? { prices: {} }, configRevision: latest.configRevision },
+    });
+    expect(restored.ok(), await restored.text()).toBe(true);
+  }
 });
 
 test("manual block editing is reviewed before applying and preserves existing workflow snapshots", async ({ page, request }) => {

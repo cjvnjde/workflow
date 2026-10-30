@@ -21,6 +21,7 @@ export function formatMemoryEntry(entry: MemoryEntry) {
   return [entry.title, `${entry.kind} · ${entry.id}`, entry.description, "", entry.details,
     ...(entry.edited && entry.kind === "observation" ? ["", "Text includes your annotation; recorded facts remain unchanged."] : []),
     ...(entry.observation ? ["", "RECORDED FACTS", "Associated execution outcomes are not model quality rankings.", JSON.stringify(entry.observation, null, 2)] : []),
+    ...(entry.strategy ? ["", "REMEMBERED APPROACH", "User-endorsed guidance; source metadata is historical and does not prescribe a fixed graph or model.", JSON.stringify(entry.strategy, null, 2)] : []),
   ].join("\n");
 }
 

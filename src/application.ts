@@ -27,6 +27,8 @@ import { refineProgram } from "./program-refiner.js";
 import { createAccountingContext } from "./usage-store.js";
 import { SetupJobs } from "./setup-jobs.js";
 import { withProjectSettingsSnapshot } from "./settings-publication.js";
+import { assertStrategyRun, previewStrategy, strategyMetadata } from "./workflow-strategy.js";
+import { rememberStrategySchema } from "./memory-schema.js";
 import { Triggers } from "./triggers.js";
 import type { GithubTriggerSource } from "./github-trigger-source.js";
 
@@ -111,6 +113,10 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
   const memoryMutation = <T>(action: () => Promise<T>) => operation(async () => {
     const result = await action(); emit("memory_state", "Project memory changed."); return result;
   });
+  const strategyTask = (runId: string) => {
+    const task = tasks.list(true).find(task => task.runId === runId);
+    return task ? { id: task.id, caseId: task.caseId, caseName: task.caseName } : undefined;
+  };
   if (services.startTriggers !== false) triggers.start();
   return {
     engine,
@@ -130,6 +136,22 @@ export async function attachApplication(engine: WorkflowEngine, services: Applic
     createMemoryEntry: (value: unknown) => memoryMutation(() => engine.memory.create(value)),
     updateMemoryEntry: (id: string, value: unknown) => memoryMutation(() => engine.memory.update(id, value)),
     deleteMemoryEntry: (id: string, value: unknown) => memoryMutation(() => engine.memory.remove(id, value)),
+    strategyPreview: async (id: string, signal?: AbortSignal) => {
+      z.string().uuid().parse(id); signal?.throwIfAborted();
+      const run = engine.get(id); assertStrategyRun(run);
+      const preview = await previewStrategy(engine.memory, run, await engine.usage.sessions(), strategyTask(id), signal);
+      assertStrategyRun(engine.get(id), run.revision);
+      return preview;
+    },
+    rememberStrategy: (id: string, value: unknown, signal?: AbortSignal) => memoryMutation(async () => {
+      z.string().uuid().parse(id); const input = rememberStrategySchema.parse(value);
+      const requestSignal = signalFor(signal); requestSignal.throwIfAborted();
+      return engine.withRunRevision(id, input.sourceRunRevision, async run => {
+        assertStrategyRun(run, input.sourceRunRevision);
+        const metadata = strategyMetadata(run, await engine.usage.sessions(), strategyTask(id));
+        return engine.memory.rememberStrategy(input, metadata, () => assertStrategyRun(engine.get(id), input.sourceRunRevision), requestSignal);
+      });
+    }),
     subscribe: engine.subscribe.bind(engine),
     listRuns: (includeDeleted = true) => engine.list(includeDeleted),
     getRun: (id: string) => engine.get(id),

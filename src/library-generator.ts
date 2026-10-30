@@ -1,7 +1,7 @@
 import { Type } from "@earendil-works/pi-ai";
 import { blockInstructions } from "./code-schema.js";
 import { defineTool } from "@earendil-works/pi-coding-agent";
-import { blocksForAgent, resolveAgentSettings, type Library } from "./domain.js";
+import { resolveAgentSettings, type Library } from "./domain.js";
 import { runAgentSession, type ActivitySink } from "./agent-session.js";
 import { Workspace } from "./workspace.js";
 import { textResult, workspaceTools } from "./block-runner.js";
@@ -11,6 +11,7 @@ import { validateCodeBlocks } from "./program-compiler.js";
 import { formatBlock } from "./source-format.js";
 import { createAccountingContext } from "./usage-store.js";
 import type { AccountingContext } from "./usage-schema.js";
+import { blockCatalogTools } from "./block-catalog.js";
 
 export async function generateLibraryChanges(options: {
   accounting?: AccountingContext;
@@ -52,11 +53,12 @@ export async function generateLibraryChanges(options: {
   });
   const workspace = await Workspace.create(options.project, { signal: options.signal });
   const settings = resolveAgentSettings(options.library.config.agent, options.library.config.coordinator);
+  const catalog = blockCatalogTools({ blocks: () => options.library.blocks, signal: options.signal });
   await session({
     price: options.library.config.budget?.prices[`${settings.provider}/${settings.model}`],
     accounting: options.accounting ?? await createAccountingContext(options.project, "library"),
     project: options.project, settings, signal: AbortSignal.any([options.signal, AbortSignal.timeout(settings.timeoutMs)]),
-    tools: [...workspaceTools(workspace), submit], emit: options.emit,
+    tools: [...workspaceTools(workspace), ...catalog.tools, submit], emit: options.emit,
     systemPrompt: [
       "You design a project's reusable AI workflow blocks. Use the file and bash tools to inspect the project, then submit exactly one proposal with submit_library. This task is to propose settings for user review, so leave project implementation and publication to workflow execution.",
       "Choose models per block difficulty and consequence. Independent review, ambiguous requirements, complex implementation and security reasoning warrant the strongest suitable available model. Routine formatting, summarization and commit-message preparation warrant a cheaper capable model and low/off thinking. Deterministic work uses ctx.exec inside code blocks and no model. All AI blocks have full local file, bash, Git and inherited environment/network access. Describe responsibilities in instructions; do not add file permissions or command allowlists. Put publication after verification.",
@@ -67,7 +69,7 @@ export async function generateLibraryChanges(options: {
         : 'Regenerate or add TypeScript blocks using the block API above. Submit {summary,blocks:[{bundle:{definition:{id,name,description,executor:{kind:"code",source},skills:[],outputs:[],checks:[]},skills:[]},rationale}]}. Preserve existing IDs and output contracts. Models, prompts, schemas and verification commands live inside the source. Unmentioned blocks remain.',
       `Project instructions:\n${options.library.config.instructions}`,
       `Configured host commands:\n${JSON.stringify(options.library.config.commands)}`,
-      `Current blocks:\n${JSON.stringify(blocksForAgent(options.library.blocks))}`,
+      catalog.prompt(),
       `Available models:\n${JSON.stringify(options.models)}`,
     ].join("\n\n"),
     prompt: JSON.stringify({ instructions: options.instructions || "Tailor blocks and model choices to this project, balancing reliability and cost." }),

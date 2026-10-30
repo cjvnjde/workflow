@@ -2,7 +2,6 @@ import { planningAgent } from "./planning-model.js";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import {
-  blocksForAgent,
   validatePlan,
   type Library,
   type WorkflowPlan,
@@ -16,6 +15,7 @@ import type { AvailableModel } from "./library-editor-schema.js";
 import { createAccountingContext } from "./usage-store.js";
 import type { AccountingContext } from "./usage-schema.js";
 import { planningMemory } from "./planning-memory.js";
+import { blockCatalogTools } from "./block-catalog.js";
 
 export async function createAiPlan(options: {
   accounting?: AccountingContext;
@@ -50,12 +50,13 @@ export async function createAiPlan(options: {
   });
   const settings = planningAgent(library.config.agent, library.config.coordinator, models);
   const memory = await planningMemory(options.project, options.signal);
+  const catalog = blockCatalogTools({ blocks: () => library.blocks, signal: options.signal });
   await session({
     price: library.config.budget?.prices[`${settings.provider}/${settings.model}`],
     accounting: options.accounting ?? await createAccountingContext(options.project, options.previousPlan ? "refinement" : "planning", { maxCostUsd: library.config.budget?.maxTaskCostUsd }),
     project: options.project,
     settings,
-    tools: [...memory.tools, submit],
+    tools: [...memory.tools, ...catalog.tools, submit],
     completion: { isComplete: () => !!plan, prompt: () => "Submit a valid graph with submit_plan. Correct any validation errors; investigation belongs in execution blocks." },
     signal: AbortSignal.any([
       options.signal,
@@ -70,11 +71,7 @@ export async function createAiPlan(options: {
       `Project instructions:\n${library.config.instructions}`,
       ...(memory.prompt ? [memory.prompt] : []),
       `Configured host check commands (AI blocks may also use bash):\n${JSON.stringify(library.config.commands, null, 2)}`,
-      `Block catalog:\n${JSON.stringify(
-        blocksForAgent(library.blocks),
-        null,
-        2,
-      )}`,
+      catalog.prompt(),
     ].join("\n\n"),
     prompt: JSON.stringify({
       task,

@@ -9,6 +9,8 @@ import {
 import { commands, short } from "./presentation.js";
 import { exportAttemptEvidence, formatEvidenceExport } from "../evidence-export.js";
 import { formatMemoryEntry } from "../memory-client.js";
+import { formatStrategyPreview } from "../strategy-client.js";
+import type { StrategyPreview } from "../memory-schema.js";
 
 export type Session = { id: string; kind: "task" | "run"; title: string; status: string; time: string; runId?: string };
 export type Choice = { id: string; label: string; detail: string };
@@ -54,6 +56,7 @@ export class TerminalController extends EventEmitter {
   private authGeneration = 0;
   private refiningRun?: string;
   private setupJobId?: string;
+  private strategyPreview?: StrategyPreview;
   private refinement?: AbortController;
   private readonly localNotes = new Map<string, RunEvent[]>();
 
@@ -200,11 +203,13 @@ export class TerminalController extends EventEmitter {
     finally { this.state.busy = ""; this.changed(); }
   }
   newSession() {
+    this.strategyPreview = undefined;
     this.generation++; this.selected = undefined; this.state.task = undefined; this.state.run = undefined;
     this.state.events = []; this.state.live = {}; this.state.screen = "chat"; this.state.error = "";
     this.state.notice = "New session. Describe what you want to accomplish."; this.changed();
   }
   async openSession(session: Pick<Session, "id" | "kind">) {
+    this.strategyPreview = undefined;
     this.generation++; this.selected = { id: session.id, kind: session.kind };
     this.state.task = undefined; this.state.run = undefined; this.state.events = []; this.state.live = {}; this.state.screen = "chat";
     await this.refreshing;
@@ -363,6 +368,7 @@ export class TerminalController extends EventEmitter {
     }
     if (command === "/setup") { await this.projectSetup(argument); return; }
     if (command === "/memory") { await this.projectMemory(argument); return; }
+    if (command === "/remember") { await this.rememberApproach(argument); return; }
     if (command === "/models" || command === "/model") { await this.models(argument); return; }
     if (command === "/thinking") { await this.thinking(); return; }
     if (command === "/login") { await this.login(argument); return; }
@@ -415,6 +421,28 @@ export class TerminalController extends EventEmitter {
       } },
       ...state.entries.map(entry => ({ id: entry.id, label: entry.title, detail: `${entry.kind} · ${entry.description}`, action: () => this.projectMemory(entry.id) })),
     ]);
+  }
+  private async rememberApproach(argument: string) {
+    if (argument && argument !== "save") throw new Error("Use /remember to preview the selected run, then /remember save to keep its approach.");
+    const run = this.state.run;
+    if (!run || run.status !== "completed") throw new Error("Open a completed workflow before remembering its approach.");
+    if (argument === "save") {
+      const preview = this.strategyPreview;
+      if (!preview || preview.sourceRunId !== run.id) throw new Error("Use /remember first to review the approach before saving it.");
+      const result = await this.client.rememberStrategy(run.id, {
+        sourceRunRevision: preview.sourceRunRevision, memoryRevision: preview.memoryRevision, ...preview.entry,
+      }, this.signal());
+      if (this.state.run?.id !== run.id) return;
+      this.state.screen = "step"; this.state.panelTitle = "Remembered approach";
+      this.state.detail = `${formatMemoryEntry(result.entry)}\n\n${result.state.enabled ? "Available to future planning through project memory." : "Project memory remains disabled. Use /memory on when you want planners to consult saved guidance."}\nEdit the guidance in browser Settings → Memory or with workflow memory update ${result.entry.id} entry.json.`;
+      this.state.notice = result.reused ? "This approach is already remembered." : "Approach remembered. No extra AI job was started.";
+      return;
+    }
+    const preview = await this.client.strategyPreview(run.id, this.signal());
+    if (this.state.run?.id !== run.id) return;
+    this.strategyPreview = preview;
+    this.state.screen = "step"; this.state.panelTitle = "Remember this approach · preview";
+    this.state.detail = `${formatStrategyPreview(preview)}\n\nPreview only; nothing has been saved.\n/remember save keeps this exact guidance. Edit before saving in the browser, or use workflow remember ${run.id} --input JSON --save.\nUse /memory to manage saved entries.`;
   }
   private async models(search = "") {
     const catalog = await this.client.request("/api/models/refresh", modelCatalogSchema, { method: "POST", body: {}, signal: this.signal(60_000) });

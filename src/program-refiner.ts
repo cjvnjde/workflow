@@ -10,6 +10,7 @@ import type { AvailableModel } from "./library-editor-schema.js";
 import { createAccountingContext, UsageStore } from "./usage-store.js";
 import type { AccountingContext } from "./usage-schema.js";
 import { planningMemory } from "./planning-memory.js";
+import { blockCatalogTools } from "./block-catalog.js";
 
 export async function refineProgram(options: {
   accounting?: AccountingContext;
@@ -37,17 +38,19 @@ export async function refineProgram(options: {
   });
   const settings = planningAgent(run.config.agent, run.config.coordinator, options.models);
   const memory = await planningMemory(project, signal);
+  const catalog = blockCatalogTools({ blocks: () => run.program!.catalog, signal });
   await session({
     price: run.config.budget?.prices[`${settings.provider}/${settings.model}`],
     accounting: options.accounting ?? await createAccountingContext(project, "refinement", { scopeId: (await new UsageStore(project).ensureRun(run)).id, runId: run.id }),
     project, settings, signal: AbortSignal.any([signal, AbortSignal.timeout(settings.timeoutMs)]), emit,
-    tools: [...memory.tools, submit],
+    tools: [...memory.tools, ...catalog.tools, submit],
     completion: { isComplete: () => !!result, prompt: () => `Submit the revised TypeScript with submit_workflow. Correct this error if present: ${rejected}` },
     systemPrompt: [
       "Refine the user's saved TypeScript workflow. Use only the supplied source, block catalog, models, instructions and task context, then submit complete source and input. Do not inspect files, Git, shell or MCP. Do not execute the workflow, implement its task, or mutate project files during refinement. Preserve the original request and unrelated behavior.",
       programInstructions, `Available models: ${JSON.stringify(options.models)}`,
       `Frozen model profiles: ${JSON.stringify(run.program.models)}`,
-      `Frozen Settings blocks: ${JSON.stringify(run.program.catalog)}`,
+      "Reusable block details are read from this workflow's frozen catalog.",
+      catalog.prompt(),
       `Project instructions: ${run.config.instructions}`,
       ...(memory.prompt ? [memory.prompt] : []),
     ].join("\n\n"),

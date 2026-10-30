@@ -12,8 +12,10 @@ import {
   MEMORY_ENTRY_LIMIT, MEMORY_PAGE_BYTES, MEMORY_STATE_BYTES,
   createMemoryEntrySchema, updateMemoryEntrySchema, deleteMemoryEntrySchema, memorySettingsUpdateSchema,
   memoryEntrySchema, memoryDescriptionSchema, memoryObservationSchema, memoryQuerySchema,
+  memoryTextSchema, rememberStrategySchema, strategyMetadataSchema,
   type MemoryEntry, type MemoryState, type MemoryCatalog, type MemoryMutation,
   type MemoryObservation, type MemoryQuery,
+  type StrategyMetadata, type RememberStrategyResult,
 } from "./memory-schema.js";
 
 const documentSchema = z.object({
@@ -68,7 +70,7 @@ export class MemoryStore {
       entries: this.order(document.entries).map(entry => memoryDescriptionSchema.parse({ id: entry.id, kind: entry.kind, title: entry.title, description: entry.description, tags: entry.tags, createdAt: entry.createdAt, updatedAt: entry.updatedAt })) };
   }
   private order(entries: MemoryEntry[]) {
-    const rank = { preference: 0, note: 1, observation: 2 };
+    const rank = { preference: 0, note: 1, strategy: 2, observation: 3 };
     return [...entries].sort((a, b) => rank[a.kind] - rank[b.kind] || b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
   }
   async state(): Promise<MemoryState> { const current = await this.read(); return this.stateOf(current.document, current.revision); }
@@ -112,10 +114,10 @@ export class MemoryStore {
   private assertRevision(actual: string, expected: string) {
     if (actual !== expected) throw Object.assign(new Error("Project memory changed in another session. Reload before saving; your edits have not been applied."), { statusCode: 409 });
   }
-  private async save(document: Document, revision: string) {
+  private async save(document: Document, revision: string, beforePublish?: () => void) {
     const text = JSON.stringify(documentSchema.parse(document), null, 2) + "\n";
     if (Buffer.byteLength(text) > MEMORY_STATE_BYTES) throw new Error("Project memory is too large. Shorten or remove entries to stay below 1 MiB.");
-    await atomicWrite(this.filename, text, 0o600, async () => this.assertRevision(hash(await this.contents()), revision));
+    await atomicWrite(this.filename, text, 0o600, async () => { this.assertRevision(hash(await this.contents()), revision); beforePublish?.(); });
     return this.stateOf(document, hash(text));
   }
   private ticketFile(runId: string) { return path.join(this.project, ".workflow", "runs", z.string().uuid().parse(runId), "memory-ticket.json"); }
@@ -186,6 +188,39 @@ export class MemoryStore {
       const { revision: _revision, ...fields } = input;
       Object.assign(entry, fields, { updatedAt: new Date().toISOString(), edited: true });
       return { state: await this.save(current.document, current.revision), entry: structuredClone(entry) };
+    });
+  }
+  /** Management snapshot; strategy preview must not enable or write memory. */
+  async strategyForRun(runId: string) {
+    z.string().uuid().parse(runId);
+    const current = await this.read();
+    return { state: this.stateOf(current.document, current.revision),
+      entry: structuredClone(current.document.entries.find(entry => entry.kind === "strategy" && entry.strategy?.sourceRunId === runId) ?? null) };
+  }
+  async rememberStrategy(value: unknown, rawMetadata: StrategyMetadata, assertSource: () => void, signal?: AbortSignal): Promise<RememberStrategyResult> {
+    signal?.throwIfAborted();
+    const input = rememberStrategySchema.parse(value), metadata = strategyMetadataSchema.parse(rawMetadata);
+    if (input.sourceRunRevision !== metadata.sourceRunRevision) throw Object.assign(new Error("Source workflow changed. Review a fresh strategy preview before saving."), { statusCode: 409 });
+    const fields = memoryTextSchema.parse({ title: input.title, description: input.description, details: input.details, tags: input.tags });
+    return this.writeLock(async () => {
+      signal?.throwIfAborted(); assertSource();
+      const current = await this.read();
+      const existing = current.document.entries.find(entry => entry.kind === "strategy" && entry.strategy?.sourceRunId === metadata.sourceRunId);
+      if (existing) {
+        const saved = memoryTextSchema.parse({ title: existing.title, description: existing.description, details: existing.details, tags: existing.tags });
+        if (existing.strategy!.sourceRunRevision !== metadata.sourceRunRevision || JSON.stringify(saved) !== JSON.stringify(fields)) {
+          throw Object.assign(new Error("This workflow already has a saved strategy with different content. Review and edit the existing entry in Memory settings."), { statusCode: 409 });
+        }
+        signal?.throwIfAborted(); assertSource();
+        return { state: this.stateOf(current.document, current.revision), entry: structuredClone(existing), reused: true };
+      }
+      this.assertRevision(current.revision, input.memoryRevision); await this.finalize(current.document);
+      if (current.document.entries.length >= MEMORY_ENTRY_LIMIT) throw new Error("Project memory is full (100 entries). Remove an entry before remembering this approach.");
+      const now = new Date().toISOString();
+      const entry = memoryEntrySchema.parse({ ...fields, id: randomUUID(), kind: "strategy", createdAt: now, updatedAt: now, edited: true, strategy: metadata });
+      current.document.entries.push(entry);
+      const state = await this.save(current.document, current.revision, () => { signal?.throwIfAborted(); assertSource(); });
+      return { state, entry, reused: false };
     });
   }
   async remove(id: string, value: unknown): Promise<MemoryState> {
@@ -286,7 +321,7 @@ function observationText(facts: MemoryObservation) {
   const coverage = facts.usageIncomplete ? "Pricing or attribution is incomplete; zero reported cost does not establish zero cost." : "Reported provider usage only; this is not a billing guarantee.";
   return {
     title: clip(`${facts.taskCaseName} · ${facts.blockId} · ${model}`, 100),
-    description: clip(`${facts.runs} runs, ${facts.visits} visits associated with ${model}. ${facts.checks.matched}/${facts.checks.total} configured check conditions matched. $${facts.usage.costUsd.toFixed(6)} reported${facts.usageIncomplete ? "; coverage incomplete" : ""}.`, 300),
+    description: clip(facts.runs + (facts.runs === 1 ? " run, " : " runs, ") + facts.visits + (facts.visits === 1 ? " visit associated with " : " visits associated with ") + model + ". " + facts.checks.matched + "/" + facts.checks.total + " configured check conditions matched. $" + facts.usage.costUsd.toFixed(6) + " reported" + (facts.usageIncomplete ? "; coverage incomplete" : "") + ".", 300),
     details: [
       `Task case: ${facts.taskCaseName} (${facts.taskCaseId}). Block: ${facts.blockId}. Model: ${model}.`,
       `Associated run states: ${facts.runStatuses.completed} completed, ${facts.runStatuses.failed} failed, ${facts.runStatuses.cancelled} cancelled.`,

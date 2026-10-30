@@ -9,6 +9,7 @@ import { WorkflowApiError } from "../../src/client.js";
 import { client } from "../api.js";
 import { usageCost, usageTokens } from "../usage-presentation.js";
 import Field from "../components/Field.vue";
+import StrategyFacts from "../components/StrategyFacts.vue";
 
 const emit = defineEmits<{ dirty: [value: boolean]; busy: [value: boolean] }>();
 const state = ref<MemoryState>();
@@ -57,12 +58,15 @@ const changed = computed(
       ?.updatedAt !== selected.value.updatedAt,
 );
 const observation = computed(() => selected.value?.observation);
+const strategy = computed(() => selected.value?.strategy);
 const caption = (kind: string) =>
   kind === "preference"
     ? "Explicit preference"
     : kind === "observation"
       ? "Observed work"
-      : "Project note";
+      : kind === "strategy"
+        ? "Remembered strategy"
+        : "Project note";
 const date = (value: string) => new Date(value).toLocaleString();
 watch(dirty, (value) => emit("dirty", value));
 watch(busy, (value) => emit("busy", value));
@@ -348,6 +352,7 @@ onScopeDispose(() => {
             <option value="note">Project notes</option>
             <option value="preference">Explicit preferences</option>
             <option value="observation">Observed work</option>
+            <option value="strategy">Remembered strategies</option>
           </select></Field
         >
       </div>
@@ -414,6 +419,11 @@ onScopeDispose(() => {
               }}: you can edit this guidance. The recorded facts below remain
               unchanged.
             </p>
+            <p v-if="selected?.kind === 'strategy'">
+              You chose to remember this approach. Edit the reusable guidance;
+              source facts stay unchanged. Future planning composes a fresh
+              workflow under the current models and permissions.
+            </p>
             <fieldset class="settings-fields" :disabled="busy">
               <Field v-slot="{ id }" label="Memory title"
                 ><input
@@ -442,7 +452,9 @@ onScopeDispose(() => {
                 :label="
                   selected?.kind === 'observation'
                     ? 'Your annotation'
-                    : 'Memory details'
+                    : selected?.kind === 'strategy'
+                      ? 'Reusable guidance'
+                      : 'Memory details'
                 "
                 help="Up to 4,000 characters. Keep reusable guidance focused; current requests and project permissions still apply."
               >
@@ -626,6 +638,9 @@ onScopeDispose(() => {
               </li>
             </ul>
           </section>
+          <div v-if="strategy" class="settings-card">
+            <StrategyFacts :metadata="strategy" />
+          </div>
         </div>
       </div>
     </template>

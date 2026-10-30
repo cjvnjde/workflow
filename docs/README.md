@@ -12,6 +12,8 @@ Workflow turns a development request into an inspectable TypeScript graph, then 
 
 **Optional learning:** [Project memory](memory.md) covers explicit preferences and compact observations from ordinary runs, with description-first access and no extra AI jobs.
 
+**Reuse useful work:** [Reusing an approach](reusing-approaches.md) explains the explicit Remember action and how planners load selected block definitions and strategy guidance.
+
 **Unattended GitHub work:** [Triggers](triggers.md) → [Running and recovering workflows](operations.md). Test a saved workflow, then enable issue or PR triggers.
 
 **Working on the application:** [Architecture](architecture.md) → [Development](development.md) → [CLI and local API](reference.md).

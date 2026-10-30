@@ -162,6 +162,7 @@ export const commands = [
   ["/setup", "Project setup: status, start, resume, cancel, regenerate"],
   ["/data", "Inspect a step visit's inputs, outputs and AI context"],
   ["/memory", "Inspect project memory or turn it on / off"],
+  ["/remember", "Preview a completed approach; save explicitly with /remember save"],
   ["/login", "Connect a provider"], ["/logout", "Disconnect a provider"], ["/source", "Read workflow source"],
   ["/step", "Inspect a step and its results"], ["/help", "Commands and keyboard shortcuts"], ["/quit", "Close the terminal workspace"],
 ] as const;

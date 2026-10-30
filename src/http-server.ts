@@ -135,6 +135,8 @@ export async function createHttpServer(app: WorkflowApplication, port = 4310) {
   server.put<{ Params: { id: string } }>("/api/runs/:id/plan", async request => app.updatePlan(request.params.id, request.body, expectedRevision(request.headers)));
   server.delete<{ Params: { id: string } }>("/api/runs/:id", async request => app.removeRun(request.params.id));
   server.get<{ Params: { id: string } }>("/api/runs/:id/events", async request => app.events(request.params.id));
+  server.get<{ Params: { id: string } }>("/api/runs/:id/strategy-preview", (request, reply) => cancellable(reply, signal => app.strategyPreview(request.params.id, signal)));
+  server.post<{ Params: { id: string } }>("/api/runs/:id/remember", (request, reply) => cancellable(reply, signal => app.rememberStrategy(request.params.id, request.body, signal)));
   server.get<{ Params: { id: string; nodeId: string; visit: string } }>("/api/runs/:id/attempts/:nodeId/:visit/evidence", request =>
     app.attemptEvidence(request.params.id, request.params.nodeId, z.coerce.number().int().positive().parse(request.params.visit)));
   server.get<{ Params: { id: string; nodeId: string; visit: string; contentId: string }; Querystring: { download?: string } }>("/api/runs/:id/attempts/:nodeId/:visit/content/:contentId", async (request, reply) => {

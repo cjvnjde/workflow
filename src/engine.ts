@@ -244,6 +244,15 @@ export class WorkflowEngine {
     return run;
   }
 
+  /** Keep source edits/deletion serialized with explicit writes derived from it. */
+  async withRunRevision<T>(id: string, revision: number, action: (run: WorkflowRun) => Promise<T>): Promise<T> {
+    return this.mutate(async () => {
+      const run = this.requireRun(id);
+      this.assertRevision(run, revision);
+      return action(structuredClone(run));
+    });
+  }
+
   /** Hide a settled run, retaining recovery journals and Temporal history. */
   async remove(id: string) {
     return await this.mutate(async () => {

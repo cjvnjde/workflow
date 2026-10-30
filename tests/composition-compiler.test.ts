@@ -341,6 +341,8 @@ export default workflow({name:"Review",flow:sequence(review)});`;
       assert.deepEqual(session.tools.map((tool) => tool.name).sort(), [
         "ask_user",
         "choose_task_case",
+        "list_blocks",
+        "load_block",
         "submit_plan",
         "submit_workflow",
         "suggest_block",

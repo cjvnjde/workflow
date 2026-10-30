@@ -28,6 +28,7 @@ async function main() {
       server: { type: "string" },
       wait: { type: "boolean", default: false },
       json: { type: "boolean", default: false },
+      save: { type: "boolean", default: false },
       "temporal-address": { type: "string" },
       "temporal-namespace": { type: "string", default: "default" },
       "temporal-workflow-bundle": { type: "string" },
@@ -55,6 +56,7 @@ async function main() {
   workflow usage [task-or-run-id] [--json]  Inspect persisted project/session spending
   workflow data <run-id> <step-id> [visit] [--json]  Inspect exact saved step data and AI context
   workflow memory [list|on|off|show ID|add entry.json|update ID entry.json|remove ID] [--json]
+  workflow remember <run-id> [--save] [--input JSON] [--json]  Preview or explicitly save reusable guidance
   workflow tasks               List tasks
   workflow task-show <task-id>  Inspect planning, questions, and the linked run
   workflow answer <task-id> "Answer"
@@ -87,6 +89,7 @@ watch/--wait/exec exit 0 on completion, 1 on failure/cancellation, 2 when attent
 Provider credentials belong to Workflow, outside the project; Pi does not need to be installed.`);
     return;
   }
+  if (values.save && command !== "remember") throw new Error("--save applies only to workflow remember; it does not approve execution.");
   if (["login", "logout", "model", "thinking", "auth"].includes(command)) {
     if (positionals.length > 2) { throw new Error("Expected a command and an optional provider/model search"); }
     const { runTerminalCommand } = await import("./terminal-commands.js");
@@ -140,6 +143,7 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
       project, port: values.port, server: values.server, input: values.input,
       approve: values.approve, wait: values.wait, json: values.json,
       maxTaskCostUsd,
+      save: values.save,
     });
     return;
   }

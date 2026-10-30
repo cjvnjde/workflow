@@ -21,6 +21,7 @@ const WorkflowGraph = defineAsyncComponent(() => import("./WorkflowGraph.vue"));
 const PlanEditor = defineAsyncComponent(() => import("./PlanEditor.vue"));
 const ProgramEditor = defineAsyncComponent(() => import("./ProgramEditor.vue"));
 const DataInspector = defineAsyncComponent(() => import("./DataInspector.vue"));
+const RememberApproach = defineAsyncComponent(() => import("./RememberApproach.vue"));
 const props = defineProps<{
   run: WorkflowRun;
   draft: PlanDraft;
@@ -487,6 +488,12 @@ function selectStep(id: string) {
         <strong>{{ resultTitle }}</strong>
         <MarkdownView :content="resultSummary" />
         <div class="result-links">
+          <RememberApproach
+            v-if="run.status === 'completed'"
+            :key="run.id"
+            :run-id="run.id"
+            @settings="emit('settings')"
+          />
           <button @click="tab = 'results'">
             View full results<span v-if="artifacts.length">
               · {{ artifacts.length }} artifacts</span

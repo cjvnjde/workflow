@@ -14,6 +14,7 @@ All routine setup is available under **Settings**. Changes apply to future propo
 | **Blocks** | Reusable TypeScript functions, prompts, model calls, checks, and outputs. |
 | **Skills & MCP** | Explicit instruction resources and enabled tool servers. |
 | **Execution** | Approval mode, project instructions, total steps, spending limits, and named commands. |
+| **Memory** | Enable optional project memory and manage preferences, notes, observations and remembered approaches. [Memory controls](memory.md). |
 
 Unsaved forms have discard/cancel controls. Saves carry revisions, so a stale browser cannot silently overwrite newer settings. Save or discard form changes before applying an AI proposal.
 

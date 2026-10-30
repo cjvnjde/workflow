@@ -6,8 +6,9 @@ import type { CreateProgram, RunAction, WorkflowRun } from "./contracts.js";
 import { discoverProjectServer } from "./host-discovery.js";
 import { exportAttemptEvidence, formatEvidenceExport } from "./evidence-export.js";
 import { runMemoryCommand } from "./memory-client.js";
+import { runRememberCommand } from "./strategy-client.js";
 
-export const clientCommands = ["run", "runs", "show", "events", "watch", "approve", "reject", "pause", "resume", "cancel", "recover", "tasks", "task", "task-show", "answer", "usage", "data", "memory"];
+export const clientCommands = ["run", "runs", "show", "events", "watch", "approve", "reject", "pause", "resume", "cancel", "recover", "tasks", "task", "task-show", "answer", "usage", "data", "memory", "remember"];
 export async function readProgram(project: string, filename: string | undefined, inputJson: string): Promise<CreateProgram> {
   if (!filename?.endsWith(".ts")) throw new Error("Expected a project-relative TypeScript file (*.ts)");
   const relative = path.relative(project, path.resolve(project, filename));
@@ -27,6 +28,7 @@ export function executionExitCode(run: WorkflowRun) {
 export async function runClientCommand(command: string, args: string[], options: {
   project: string; port?: string; server?: string; input: string; approve: boolean; wait: boolean; json: boolean;
   maxTaskCostUsd?: number;
+  save?: boolean;
 }) {
   const port = Number(options.port ?? "4310");
   if (!options.server && (!Number.isInteger(port) || port < 1 || port > 65535)) throw new Error("Port must be between 1 and 65535");
@@ -44,6 +46,7 @@ export async function runClientCommand(command: string, args: string[], options:
   // An explicit endpoint selects that server's project, including over an SSH tunnel.
   if (!options.server && await realpath(served.project) !== await realpath(options.project)) throw new Error("The local server belongs to another project");
   if (command === "memory") { await runMemoryCommand(client, args, options); return; }
+  if (command === "remember") { await runRememberCommand(client, args, options); return; }
   if (command === "data") {
     if (args.length < 2 || args.length > 3) throw new Error("Use workflow data <run-id> <step-id> [visit] [--json].");
     const signal = AbortSignal.timeout(60_000);

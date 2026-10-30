@@ -56,6 +56,8 @@ Project setup is separate from execution: `init` writes deterministic defaults, 
 
 The core owns setup jobs and their cancellation signals. Clients submit a job and read saved stage progress, so disconnecting a client does not stop generation. Accepted proposals and the usage scope persist across explicit resumes. A settings publication journal holds the previous complete configuration while generated files are being written; the commit point switches readers to the completed configuration. Compound planning reads pin one snapshot without holding a file lock during model work. Ordinary source files remain authoritative after publication.
 
+Planning starts with bounded descriptions of blocks, task instructions and enabled memory. Read-only tools load selected definitions and guidance; refinement uses the run's frozen block catalog. Project memory is off by default. When enabled, ordinary runs can record compact observations without additional model sessions. An explicit Remember action saves editable strategy guidance and bounded provenance, leaving graph composition and model choice to future planning. See [project memory](memory.md) and [reusing an approach](reusing-approaches.md).
+
 ## Why Pi is embedded
 
 Pi supplies model/provider integration, tool sessions, authentication integration, and terminal UI components. Workflow chooses which tools/resources a session gets, where credentials live, and how its result connects to the workflow.
@@ -118,6 +120,7 @@ Paths below are relative to the repository checkout. The packaged CLI includes c
 | Client contract and transport | `src/contracts.ts`, `src/client.ts` |
 | Optional GUI serving / compatibility | `src/web-server.ts`, `src/server.ts` |
 | Task persistence and planning | `src/tasks.ts`, `src/task-planner.ts`, `src/task-schema.ts` |
+| Lazy catalogs and optional memory | `src/block-catalog.ts`, `src/planning-memory.ts`, `src/memory-store.ts`, `src/workflow-strategy.ts` |
 | External triggers and queued dispatch | `src/triggers.ts`, `src/trigger-store.ts`, `src/trigger-template.ts`, `src/github-trigger-source.ts`, `src/trigger-schema.ts` |
 | Public authoring API | `src/workflow-sdk.ts`, `src/composition-sdk.ts` |
 | Source validation and preview | `src/program-compiler.ts`, `src/composition-plan.ts`, `src/source-format.ts` |
