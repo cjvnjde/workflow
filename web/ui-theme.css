@@ -293,15 +293,6 @@
 .legacy-vue-app .home-symbol svg {
   transform: none;
 }
-.legacy-vue-app .task-composer {
-  border-color: var(--ui-control-edge);
-  border-radius: 16px;
-  box-shadow: 0 8px 32px #11111b25;
-}
-.legacy-vue-app .prompt-suggestions button {
-  border-color: var(--ui-edge);
-  border-radius: var(--ui-radius);
-}
 .legacy-vue-app .result-banner,
 .legacy-vue-app .run-workspace,
 .legacy-vue-app .progress-step {

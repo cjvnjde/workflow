@@ -542,136 +542,10 @@
   font-size: 14px;
   margin-bottom: 32px;
 }
-.legacy-vue-app .composer-wrap {
-  text-align: left;
-}
-.legacy-vue-app .task-composer {
-  background: var(--ctp-base);
-  border: 1px solid var(--ctp-surface1);
-  border-radius: 18px;
-  box-shadow:
-    0 15px 50px color-mix(in srgb, var(--ctp-crust) 12.5%, transparent),
-    inset 0 1px color-mix(in srgb, var(--ctp-subtext1) 6.3%, transparent);
-  position: relative;
-  overflow: hidden;
-}
-.legacy-vue-app .task-composer:focus-within {
-  border-color: var(--ctp-subtext0);
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--ctp-mauve) 3.9%, transparent),
-    0 15px 50px color-mix(in srgb, var(--ctp-crust) 12.5%, transparent);
-}
-.legacy-vue-app .task-composer > textarea {
-  border: none;
-  background: transparent;
-  padding: 23px 24px 7px;
-  border-radius: 0;
-  min-height: 146px;
-  font-size: 15px;
-  resize: none;
-  box-shadow: none;
-  color: var(--ctp-text);
-}
-.legacy-vue-app .task-composer > textarea:focus {
-  outline: none;
-}
-.legacy-vue-app .task-composer > textarea::placeholder {
-  color: var(--ctp-subtext0);
-}
-.legacy-vue-app .composer-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 16px 14px;
-}
-.legacy-vue-app .attach-button {
-  background: transparent;
-  border: 0;
-  color: var(--ctp-subtext1);
-  padding: 7px;
-}
-.legacy-vue-app .composer-hint {
-  color: var(--ctp-overlay1);
-  font-size: 10px;
-  margin-right: auto;
-}
-.legacy-vue-app .send-button {
-  width: 38px;
-  height: 38px;
-  margin-left: auto;
-  padding: 7px;
-  border-radius: 11px;
-  background: var(--ctp-mauve);
-  color: var(--ctp-surface0);
-  border-color: var(--ctp-mauve);
-}
-.legacy-vue-app .send-button:disabled {
-  background: var(--ctp-subtext0);
-  opacity: 0.55;
-}
-.legacy-vue-app .composer-footer {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 7px;
-  margin: 15px 0 27px;
-  font-size: 10px;
-  color: var(--ctp-overlay1);
-}
-.legacy-vue-app .composer-footer > span {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.legacy-vue-app .composer-footer > button {
-  border: none;
-  padding: 2px 3px;
-  color: var(--ctp-subtext0);
-  background: transparent;
-  font-size: 10px;
-}
-.legacy-vue-app .prompt-suggestions {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-.legacy-vue-app .prompt-suggestions button {
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  gap: 10px;
-  color: var(--ctp-subtext1);
-  background: var(--ctp-base);
-  border-color: var(--ctp-surface0);
-  padding: 13px 12px;
-  text-align: left;
-  font-size: 11px;
-  line-height: 1.5;
-  border-radius: 10px;
-}
-.legacy-vue-app .prompt-suggestions svg {
-  color: var(--ctp-subtext0);
-  margin-top: 2px;
-}
 .legacy-vue-app .task-home > .demo-note {
   margin: 28px 0 0;
   font-size: 10px;
   color: var(--ctp-overlay1);
-}
-.legacy-vue-app .drop-overlay {
-  position: absolute;
-  inset: 0;
-  background: color-mix(in srgb, var(--ctp-surface0) 94.9%, transparent);
-  color: var(--ctp-mauve);
-  border: 2px dashed var(--ctp-mauve);
-  border-radius: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
 }
 .legacy-vue-app .attachment-tray {
   display: flex;
@@ -2498,32 +2372,6 @@
     font-size: 12px;
     margin-bottom: 27px;
   }
-  .legacy-vue-app .task-composer > textarea {
-    font-size: 14px;
-    padding: 18px 16px 6px;
-    min-height: 150px;
-  }
-  .legacy-vue-app .composer-controls {
-    padding: 8px 12px 12px;
-  }
-  .legacy-vue-app .composer-hint {
-    display: none;
-  }
-  .legacy-vue-app .composer-footer {
-    font-size: 9px;
-    margin: 14px 0 22px;
-  }
-  .legacy-vue-app .prompt-suggestions {
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
-  .legacy-vue-app .prompt-suggestions button {
-    align-items: center;
-    padding: 11px 12px;
-  }
-  .legacy-vue-app .prompt-suggestions svg {
-    margin: 0;
-  }
   .legacy-vue-app .task-main,
   .legacy-vue-app .settings-main {
     padding: 22px 17px 45px;
@@ -2705,26 +2553,19 @@
 .legacy-vue-app .workspace-topbar {
   border-color: var(--ctp-surface0);
 }
-.legacy-vue-app button.primary,
-.legacy-vue-app .send-button {
+.legacy-vue-app button.primary {
   color: var(--ctp-base);
   background: var(--ctp-mauve);
   border-color: var(--ctp-mauve);
 }
-.legacy-vue-app button.primary:hover:not(:disabled),
-.legacy-vue-app .send-button:hover:not(:disabled) {
+.legacy-vue-app button.primary:hover:not(:disabled) {
   background: var(--ctp-lavender);
   border-color: var(--ctp-lavender);
 }
-.legacy-vue-app .task-composer,
 .legacy-vue-app .settings-card,
 .legacy-vue-app .setup-card {
   background: var(--ctp-mantle);
   border-color: var(--ctp-surface1);
-}
-.legacy-vue-app .task-composer:focus-within {
-  border-color: var(--ctp-mauve);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ctp-mauve) 8%, transparent);
 }
 .legacy-vue-app .new-task-button,
 .legacy-vue-app .task-item.selected,
@@ -3846,42 +3687,13 @@
   font-family: monospace;
   font-size: 12px;
 }
-.legacy-vue-app .program-import {
-  margin-top: 20px;
-  text-align: left;
-  width: 100%;
-}
-.legacy-vue-app .program-import > summary {
-  color: var(--muted);
-  cursor: pointer;
-  text-align: center;
-  padding: 12px;
-}
-.legacy-vue-app .program-import[open] {
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 20px;
-  background: var(--surface);
-}
-.legacy-vue-app .program-import fieldset {
-  border: 0;
-  padding: 0;
-  margin: 0;
-  min-width: 0;
-}
-.legacy-vue-app .program-import .editor-field {
-  margin-top: 16px;
-}
-.legacy-vue-app .program-editor > .editor-field,
-.legacy-vue-app .program-import .editor-field {
+.legacy-vue-app .program-editor > .editor-field {
   display: block;
   color: var(--ctp-subtext1);
   font-size: 12px;
   margin-top: 20px;
 }
-.legacy-vue-app .program-editor label textarea,
-.legacy-vue-app .program-import label textarea,
-.legacy-vue-app .program-import label input {
+.legacy-vue-app .program-editor label textarea {
   display: block;
   margin-top: 8px;
 }
