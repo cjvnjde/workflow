@@ -1,7 +1,3 @@
-import { fileURLToPath } from "node:url";
-import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
-import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
 
 // Build-free suites: no Temporal service, HTTP listener, browser, or dist imports.
@@ -51,34 +47,6 @@ export default defineConfig({
           include: ["tests/*.test.ts"],
           exclude: unitSuites,
           testTimeout: 30_000,
-        },
-      },
-      {
-        test: {
-          ...runtime,
-          name: "e2e",
-          include: ["tests/e2e/*.e2e.ts"],
-          globalSetup: ["./tests/e2e/global-setup.ts"],
-          testTimeout: 30_000,
-          expect: { poll: { timeout: 5_000 } },
-        },
-      },
-      {
-        plugins: [react(), tailwindcss()],
-        resolve: { alias: { "@": fileURLToPath(new URL("./web", import.meta.url)) } },
-        test: {
-          name: "browser",
-          include: ["tests/browser/*.browser.test.tsx"],
-          browser: {
-            enabled: true,
-            headless: true,
-            provider: playwright({
-              launchOptions: process.env.WORKFLOW_CHROMIUM_PATH
-                ? { executablePath: process.env.WORKFLOW_CHROMIUM_PATH }
-                : {},
-            }),
-            instances: [{ browser: "chromium" }],
-          },
         },
       },
     ],

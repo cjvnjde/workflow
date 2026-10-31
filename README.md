@@ -212,8 +212,8 @@ Usage totals cover planning, setup, design, and execution, including failed requ
 bun run workflow init  # once per checkout; creates local configuration
 bun run dev        # live backend + Vite at http://127.0.0.1:5173
 bun run test       # build + Vitest backend/integration tests
-bun run test:e2e   # build + Vitest browser journeys
-bun run test:browser # Vitest Browser Mode visual regression tests
+bun run test:e2e   # build + native Playwright browser journeys and visuals
+bun run test:visual # build + Playwright screenshot tests tagged @visual
 ```
 
 `dev` and `start` use real AI. Paid/subscription integration testing is a separate opt-in command, `bun run test:live`. See [Development](docs/development.md) for prerequisites, focused checks, and live-test scenarios.

@@ -1,6 +1,4 @@
-import { expect } from "vitest";
-import { test } from "./fixtures.js";
-import type { Route } from "playwright";
+import { expect, test } from "@playwright/test";
 
 test("a terminal-created session opens by ID, shares links, and survives browser reload", async ({
   page,
@@ -16,11 +14,9 @@ test("a terminal-created session opens by ID, shares links, and survives browser
   await page.getByRole("button", { name: "Open session by ID", exact: true }).click();
   await page.getByLabel("Session ID or Workflow link", { exact: true }).fill(task.id);
   await page.getByRole("button", { name: "Open session", exact: true }).click();
-  await expect.poll(() => page.url()).toMatch(new RegExp(`\\?task=${task.id}$`));
-  await expect
-    .poll(() => page.getByLabel("Shared session", { exact: true }).textContent())
-    .toContain(task.id);
-  await expect.poll(() => page.locator(".task-request > p").textContent()).toBe(task.prompt);
+  await expect(page).toHaveURL(new RegExp(`\\?task=${task.id}$`));
+  await expect(page.getByLabel("Shared session", { exact: true })).toContainText(task.id);
+  await expect(page.locator(".task-request > p")).toHaveText(task.prompt);
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.getByRole("button", { name: "Copy link", exact: true }).click();
   await expect
@@ -31,12 +27,10 @@ test("a terminal-created session opens by ID, shares links, and survives browser
     .poll(() => page.evaluate(() => navigator.clipboard.readText()))
     .toBe(`workflow attach ${task.id} --server http://127.0.0.1:4311`);
   await page.reload();
-  await expect.poll(() => page.locator(".task-request > p").textContent()).toBe(task.prompt);
+  await expect(page.locator(".task-request > p")).toHaveText(task.prompt);
   await page.goto(`/?session=${task.id}`);
-  await expect.poll(() => page.url()).toMatch(new RegExp(`\\?task=${task.id}$`));
-  await expect
-    .poll(() => page.getByLabel("Shared session", { exact: true }).textContent())
-    .toContain(task.id);
+  await expect(page).toHaveURL(new RegExp(`\\?task=${task.id}$`));
+  await expect(page.getByLabel("Shared session", { exact: true })).toContainText(task.id);
 });
 
 test("invalid and missing session IDs stay in the dialog without replacing the workspace", async ({
@@ -47,18 +41,14 @@ test("invalid and missing session IDs stay in the dialog without replacing the w
   const dialog = page.getByRole("dialog", { name: "Continue in this workspace" });
   await dialog.getByLabel("Session ID or Workflow link").fill("not-an-id");
   await dialog.getByRole("button", { name: "Open session", exact: true }).click();
-  await expect.poll(() => dialog.getByRole("alert").textContent()).toContain("full task or run ID");
+  await expect(dialog.getByRole("alert")).toContainText("full task or run ID");
   await dialog
     .getByLabel("Session ID or Workflow link")
     .fill("task:00000000-0000-4000-8000-000000000000");
   await dialog.getByRole("button", { name: "Open session", exact: true }).click();
-  await expect
-    .poll(() => dialog.getByRole("alert").textContent())
-    .toContain("Session not found in this project");
+  await expect(dialog.getByRole("alert")).toContainText("Session not found in this project");
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect
-    .poll(() => page.getByLabel("What should we work on?", { exact: true }).isVisible())
-    .toBe(true);
+  await expect(page.getByLabel("What should we work on?", { exact: true })).toBeVisible();
 });
 
 test("dismissing a delayed session lookup cancels navigation and preserves a newer task draft", async ({
@@ -74,17 +64,12 @@ test("dismissing a delayed session lookup cancels navigation and preserves a new
   const tasks = await (await request.get("/api/tasks")).json();
   const runs = await (await request.get("/api/runs")).json();
   await page.goto("/");
-  await expect
-    .poll(() =>
-      page
-        .getByRole("button", { name: /Session lookup cancellation fixture/ })
-        .first()
-        .isVisible(),
-    )
-    .toBe(true);
+  await expect(
+    page.getByRole("button", { name: /Session lookup cancellation fixture/ }).first(),
+  ).toBeVisible();
   const dialog = page.getByRole("dialog", { name: "Continue in this workspace" });
   const composer = page.getByLabel("What should we work on?", { exact: true });
-  let delayed: Route[] | undefined;
+  let delayed: import("@playwright/test").Route[] | undefined;
   await page.route(/\/api\/(tasks|runs)$/, async (route) => {
     if (delayed) delayed.push(route);
     else await route.continue();
@@ -95,9 +80,7 @@ test("dismissing a delayed session lookup cancels navigation and preserves a new
     await dialog.getByLabel("Session ID or Workflow link").fill(task.id);
     delayed = [];
     await dialog.getByRole("button", { name: "Open session", exact: true }).click();
-    await expect
-      .poll(() => dialog.getByRole("button", { name: "Opening…", exact: true }).isDisabled())
-      .toBe(true);
+    await expect(dialog.getByRole("button", { name: "Opening…", exact: true })).toBeDisabled();
     await expect.poll(() => delayed!.length).toBeGreaterThanOrEqual(2);
     const pending = delayed;
     const aborted = page.waitForEvent("requestfailed", {
@@ -105,7 +88,7 @@ test("dismissing a delayed session lookup cancels navigation and preserves a new
     });
     if (dismissal === "Escape") await page.keyboard.press("Escape");
     else await dialog.getByRole("button", { name: dismissal, exact: true }).click();
-    await expect.poll(() => dialog.isVisible()).toBe(false);
+    await expect(dialog).not.toBeVisible();
     await aborted;
     delayed = undefined;
     const draft = `Keep this unsent request after ${dismissal}.`;
@@ -122,8 +105,8 @@ test("dismissing a delayed session lookup cancels navigation and preserves a new
           }),
       ),
     );
-    await expect.poll(() => page.url()).toMatch(/\/$/);
-    await expect.poll(() => composer.inputValue()).toBe(draft);
-    await expect.poll(() => page.getByLabel("Shared session", { exact: true }).count()).toBe(0);
+    await expect(page).toHaveURL(/\/$/);
+    await expect(composer).toHaveValue(draft);
+    await expect(page.getByLabel("Shared session", { exact: true })).toHaveCount(0);
   }
 });

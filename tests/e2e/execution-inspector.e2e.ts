@@ -1,6 +1,4 @@
-import { expect } from "vitest";
-import { test } from "./fixtures.js";
-import { matchesText, matchesValue } from "./text.js";
+import { test, expect } from "@playwright/test";
 import { projectOperations, type RunEvent } from "../../src/contracts/index.js";
 
 const source = `import {workflow,block,step,repeatUntil} from "workflow";
@@ -24,15 +22,9 @@ test("timeline selects historical visits and opens persisted call details", asyn
   const created = await response.json();
   await page.goto(`/#run=${created.id}`);
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
-  await expect
-    .poll(
-      async () =>
-        matchesText(await page.locator(".status-pill").allTextContents(), "Completed", false),
-      {
-        timeout: 20000,
-      },
-    )
-    .toBe(true);
+  await expect(page.locator(".status-pill")).toHaveText("Completed", {
+    timeout: 20000,
+  });
   const run = await (await request.get(`/api/runs/${created.id}`)).json();
   const events: RunEvent[] = run.attempts.flatMap(
     (attempt: { visit: number; startedAt: string; finishedAt: string }) => [
@@ -145,11 +137,7 @@ test("timeline selects historical visits and opens persisted call details", asyn
     name: "Execution inspector",
     exact: true,
   });
-  await expect
-    .poll(async () =>
-      matchesText(await inspector.allTextContents(), "4 recorded operation attempts", true),
-    )
-    .toBe(true);
+  await expect(inspector).toContainText("4 recorded operation attempts");
   await expect
     .poll(() =>
       inspector.locator(".timeline-span").evaluateAll(
@@ -165,34 +153,18 @@ test("timeline selects historical visits and opens persisted call details", asyn
     .toBe(true);
   await inspector.getByRole("combobox", { name: "Visit", exact: true }).selectOption("1");
   await inspector.getByRole("button", { name: "Fold calls", exact: true }).click();
-  await expect.poll(() => inspector.locator(".call-select").count()).toBe(1);
+  await expect(inspector.locator(".call-select")).toHaveCount(1);
   await inspector
     .getByRole("searchbox", { name: "Search calls", exact: true })
     .fill("Run verification");
-  await expect.poll(() => inspector.locator(".call-select").count()).toBe(1);
+  await expect(inspector.locator(".call-select")).toHaveCount(1);
   await inspector.locator(".call-select").click();
-  await expect
-    .poll(async () =>
-      matchesText(
-        await inspector
-          .getByRole("complementary", { name: "Selected call details" })
-          .allTextContents(),
-        "Recorded output visit 1",
-        true,
-      ),
-    )
-    .toBe(true);
-  await expect
-    .poll(async () =>
-      matchesText(
-        await inspector
-          .getByRole("complementary", { name: "Selected call details" })
-          .allTextContents(),
-        "Exit 1",
-        true,
-      ),
-    )
-    .toBe(true);
+  await expect(
+    inspector.getByRole("complementary", { name: "Selected call details" }),
+  ).toContainText("Recorded output visit 1");
+  await expect(
+    inspector.getByRole("complementary", { name: "Selected call details" }),
+  ).toContainText("Exit 1");
   const notification = page.getByRole("button", {
     name: "Dismiss notification",
     exact: true,
@@ -207,25 +179,14 @@ test("timeline selects historical visits and opens persisted call details", asyn
     name: "Step data inspector",
     exact: true,
   });
-  await expect
-    .poll(async () =>
-      matchesValue(
-        await data.getByRole("combobox", { name: "Visit", exact: true }).inputValue(),
-        "1",
-      ),
-    )
-    .toBe(true);
-  await expect
-    .poll(async () =>
-      matchesText(await data.allTextContents(), "Inspection fixture · visit 1", true),
-    )
-    .toBe(true);
+  await expect(data.getByRole("combobox", { name: "Visit", exact: true })).toHaveValue("1");
+  await expect(data).toContainText("Inspection fixture · visit 1");
   await page.setViewportSize({ width: 390, height: 844 });
   await page
     .getByRole("navigation", { name: "Workflow views" })
     .getByRole("button", { name: "Timeline", exact: true })
     .click();
-  await expect.poll(() => inspector.isVisible()).toBe(true);
+  await expect(inspector).toBeVisible();
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2),
   ).toBe(true);
@@ -276,32 +237,14 @@ test("raw history loads earlier records beyond the live event tail", async ({ pa
     .getByRole("navigation", { name: "Workflow views" })
     .getByRole("button", { name: "Activity", exact: true })
     .click();
-  await expect
-    .poll(async () =>
-      matchesText(
-        await page
-          .locator(".activity-feed .event")
-          .filter({ hasText: "Historical update" })
-          .first()
-          .allTextContents(),
-        "Historical update 599",
-        true,
-      ),
-    )
-    .toBe(true);
+  await expect(
+    page.locator(".activity-feed .event").filter({ hasText: "Historical update" }).first(),
+  ).toContainText("Historical update 599");
   await page.getByRole("button", { name: "Load earlier events", exact: true }).click();
   await page.getByRole("button", { name: "Load earlier events", exact: true }).click();
   await page.getByRole("searchbox", { name: "Search activity" }).fill("Early retained diagnostic");
-  await expect
-    .poll(async () =>
-      matchesText(
-        await page.locator(".activity-feed").allTextContents(),
-        "Early retained diagnostic",
-        true,
-      ),
-    )
-    .toBe(true);
-  await expect
-    .poll(() => page.getByRole("button", { name: "Load earlier events", exact: true }).count())
-    .toBe(0);
+  await expect(page.locator(".activity-feed")).toContainText("Early retained diagnostic");
+  await expect(page.getByRole("button", { name: "Load earlier events", exact: true })).toHaveCount(
+    0,
+  );
 });

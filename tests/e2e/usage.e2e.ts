@@ -1,6 +1,4 @@
-import { expect } from "vitest";
-import { test } from "./fixtures.js";
-import { matchesText } from "./text.js";
+import { expect, test } from "@playwright/test";
 import {
   usageReportSchema,
   type UsageReport,
@@ -122,76 +120,22 @@ test("task totals include planning and execution once, with model and failed-ses
   const task = await created.json();
   await page.goto(`/#task=${task.id}`);
   const usage = page.getByRole("region", { name: "Task cost", exact: true });
-  await expect
-    .poll(async () =>
-      matchesText(await usage.locator(".usage-total").allTextContents(), "$0.1250", false),
-    )
-    .toBe(true);
-  await expect
-    .poll(async () =>
-      matchesText(
-        await usage.getByLabel("Cost by phase").allTextContents(),
-        "Planning$0.0250",
-        true,
-      ),
-    )
-    .toBe(true);
-  await expect
-    .poll(async () =>
-      matchesText(
-        await usage.getByLabel("Cost by phase").allTextContents(),
-        "Execution$0.1000",
-        true,
-      ),
-    )
-    .toBe(true);
-  await expect
-    .poll(async () => matchesText(await usage.allTextContents(), "Remaining $0.8750", true))
-    .toBe(true);
+  await expect(usage.locator(".usage-total")).toHaveText("$0.1250");
+  await expect(usage.getByLabel("Cost by phase")).toContainText("Planning$0.0250");
+  await expect(usage.getByLabel("Cost by phase")).toContainText("Execution$0.1000");
+  await expect(usage).toContainText("Remaining $0.8750");
   await usage.getByText(/Usage details ·/).click();
-  await expect
-    .poll(async () =>
-      matchesText(
-        await usage.getByRole("table", { name: "Cost by model" }).allTextContents(),
-        "careful-planner",
-        true,
-      ),
-    )
-    .toBe(true);
-  await expect
-    .poll(async () =>
-      matchesText(await usage.allTextContents(), "$0.0200 is already included in this total", true),
-    )
-    .toBe(true);
+  await expect(usage.getByRole("table", { name: "Cost by model" })).toContainText(
+    "careful-planner",
+  );
+  await expect(usage).toContainText("$0.0200 is already included in this total");
   await usage.getByText("Model sessions · latest 1 of 2", { exact: true }).click();
-  await expect
-    .poll(async () =>
-      matchesText(await usage.allTextContents(), "Totals include all retained sessions", true),
-    )
-    .toBe(true);
-  await expect
-    .poll(async () =>
-      matchesText(
-        await usage.locator(".usage-session").allTextContents(),
-        "Execution · failed · implementation · visit 2",
-        true,
-      ),
-    )
-    .toBe(true);
-  await expect
-    .poll(async () =>
-      matchesText(await usage.locator(".usage-session").allTextContents(), "$0.0800", true),
-    )
-    .toBe(true);
-  await expect
-    .poll(async () =>
-      matchesText(
-        await usage.allTextContents(),
-        "The check failed after model work completed.",
-        true,
-      ),
-    )
-    .toBe(true);
+  await expect(usage).toContainText("Totals include all retained sessions");
+  await expect(usage.locator(".usage-session")).toContainText(
+    "Execution · failed · implementation · visit 2",
+  );
+  await expect(usage.locator(".usage-session")).toContainText("$0.0800");
+  await expect(usage).toContainText("The check failed after model work completed.");
   await usage.screenshot({ path: "/tmp/workflow-feature2-usage.png" });
 });
 
@@ -220,49 +164,13 @@ test("project setup and design usage keep missing prices visible on narrow scree
     name: "Project AI usage",
     exact: true,
   });
-  await expect
-    .poll(async () =>
-      matchesText(await usage.locator(".usage-total").allTextContents(), "Unknown", false),
-    )
-    .toBe(true);
-  await expect
-    .poll(async () =>
-      matchesText(
-        await usage.getByLabel("Cost by phase").allTextContents(),
-        "Project setupUnknown",
-        true,
-      ),
-    )
-    .toBe(true);
-  await expect
-    .poll(async () =>
-      matchesText(
-        await usage.getByLabel("Cost by phase").allTextContents(),
-        "Settings design",
-        true,
-      ),
-    )
-    .toBe(true);
-  await expect
-    .poll(async () =>
-      matchesText(
-        await usage.allTextContents(),
-        "Missing usage or pricing is not counted as free",
-        true,
-      ),
-    )
-    .toBe(true);
+  await expect(usage.locator(".usage-total")).toHaveText("Unknown");
+  await expect(usage.getByLabel("Cost by phase")).toContainText("Project setupUnknown");
+  await expect(usage.getByLabel("Cost by phase")).toContainText("Settings design");
+  await expect(usage).toContainText("Missing usage or pricing is not counted as free");
   await usage.getByText(/Usage details ·/).click();
-  await expect
-    .poll(async () =>
-      matchesText(await usage.allTextContents(), "2 model requests have no recorded price", true),
-    )
-    .toBe(true);
-  await expect
-    .poll(async () =>
-      matchesText(await usage.allTextContents(), "Older planning activity was not recorded", true),
-    )
-    .toBe(true);
+  await expect(usage).toContainText("2 model requests have no recorded price");
+  await expect(usage).toContainText("Older planning activity was not recorded");
   expect(
     await usage.evaluate((element) => element.getBoundingClientRect().right <= innerWidth),
   ).toBe(true);
@@ -286,26 +194,14 @@ test("usage load failures keep the last total and offer refresh", async ({ page 
     name: "Project AI usage",
     exact: true,
   });
-  await expect
-    .poll(async () =>
-      matchesText(await usage.locator(".usage-total").allTextContents(), "$0.5000", false),
-    )
-    .toBe(true);
+  await expect(usage.locator(".usage-total")).toHaveText("$0.5000");
   fail = true;
   await usage.getByRole("button", { name: "Refresh project ai usage", exact: true }).click();
-  await expect
-    .poll(async () =>
-      matchesText(await usage.allTextContents(), "Showing the last loaded usage", true),
-    )
-    .toBe(true);
-  await expect
-    .poll(async () =>
-      matchesText(await usage.locator(".usage-total").allTextContents(), "$0.5000", false),
-    )
-    .toBe(true);
+  await expect(usage).toContainText("Showing the last loaded usage");
+  await expect(usage.locator(".usage-total")).toHaveText("$0.5000");
   fail = false;
   await usage.getByRole("button", { name: "Refresh project ai usage", exact: true }).click();
-  await expect.poll(() => usage.getByRole("status").count()).toBe(0);
+  await expect(usage.getByRole("status")).toHaveCount(0);
 });
 
 test("task, setup and execution spending defaults save independently and can be cleared", async ({
@@ -323,9 +219,7 @@ test("task, setup and execution spending defaults save independently and can be 
     await page.getByLabel("Project setup spending limit (USD)", { exact: true }).fill("2.5");
     await page.getByLabel("Execution spending limit (USD)", { exact: true }).fill("0.75");
     await page.getByRole("button", { name: "Save settings", exact: true }).click();
-    await expect
-      .poll(() => page.getByText("Execution settings saved.", { exact: true }).isVisible())
-      .toBe(true);
+    await expect(page.getByText("Execution settings saved.", { exact: true })).toBeVisible();
     expect((await (await request.get("/api/settings/execution")).json()).budget).toMatchObject({
       maxTaskCostUsd: 1.25,
       maxSetupCostUsd: 2.5,
@@ -338,9 +232,7 @@ test("task, setup and execution spending defaults save independently and can be 
     );
     await page.getByRole("button", { name: "Save settings", exact: true }).click();
     expect((await cleared).ok()).toBe(true);
-    await expect
-      .poll(() => page.getByRole("button", { name: "Save settings", exact: true }).isDisabled())
-      .toBe(true);
+    await expect(page.getByRole("button", { name: "Save settings", exact: true })).toBeDisabled();
     const budget = (await (await request.get("/api/settings/execution")).json()).budget;
     expect(budget.maxTaskCostUsd).toBeUndefined();
     expect(budget.maxSetupCostUsd).toBe(2.5);

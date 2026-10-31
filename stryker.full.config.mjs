@@ -6,7 +6,7 @@ export default {
   // Explicit opt-in: every mutant runs the complete runtime suite. The command
   // runner cannot select tests by coverage, so this can take days.
   commandRunner: {
-    command: "bun run vitest run --project unit --project integration --bail 1",
+    command: "bun run test:run --bail 1",
   },
   buildCommand: "bun run build",
   mutate: ["src/**/*.ts", "web/**/*.ts", "!src/**/*.d.ts", "!src/legacy/**"],

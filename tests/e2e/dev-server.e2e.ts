@@ -1,6 +1,4 @@
-import { expect } from "vitest";
-import { test } from "./fixtures.js";
-import { matchesValue } from "./text.js";
+import { expect, test } from "@playwright/test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -52,28 +50,20 @@ test("Vite serves client modules as JavaScript and proxies only API routes", asy
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(origin);
-    await expect
-      .poll(() =>
-        page.getByRole("heading", { name: "What should we work on?", exact: true }).isVisible(),
-      )
-      .toBe(true);
+    await expect(
+      page.getByRole("heading", { name: "What should we work on?", exact: true }),
+    ).toBeVisible();
     await page.getByRole("button", { name: "Settings", exact: true }).click();
-    await expect
-      .poll(() =>
-        page.getByRole("heading", { name: "Providers & models", exact: true }).isVisible(),
-      )
-      .toBe(true);
+    await expect(
+      page.getByRole("heading", { name: "Providers & models", exact: true }),
+    ).toBeVisible();
     await page.reload();
-    await expect
-      .poll(() =>
-        page.getByRole("heading", { name: "Providers & models", exact: true }).isVisible(),
-      )
-      .toBe(true);
+    await expect(
+      page.getByRole("heading", { name: "Providers & models", exact: true }),
+    ).toBeVisible();
     expect(errors).toEqual([]);
     const favicon = page.locator('link[rel="icon"]');
-    await expect
-      .poll(async () => matchesValue(await favicon.getAttribute("href"), "/favicon.svg"))
-      .toBe(true);
+    await expect(favicon).toHaveAttribute("href", "/favicon.svg");
     const icon = await page.request.get(`${origin}/favicon.svg`);
     expect(icon.ok()).toBe(true);
     expect(icon.headers()["content-type"]).toMatch(/image\/svg\+xml/);

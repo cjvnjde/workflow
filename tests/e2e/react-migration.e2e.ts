@@ -1,6 +1,4 @@
-import { expect } from "vitest";
-import { test } from "./fixtures.js";
-import { matchesText, matchesValue } from "./text.js";
+import { expect, test } from "@playwright/test";
 
 test("React task composer preserves typing position", async ({ page }) => {
   await page.goto("/");
@@ -8,12 +6,8 @@ test("React task composer preserves typing position", async ({ page }) => {
   await composer.pressSequentially("Fix this bug");
   await composer.press("Home");
   await composer.pressSequentially("Please ");
-  await expect
-    .poll(async () => matchesValue(await composer.inputValue(), "Please Fix this bug"))
-    .toBe(true);
-  await expect
-    .poll(() => page.getByRole("button", { name: "Start task", exact: true }).isEnabled())
-    .toBe(true);
+  await expect(composer).toHaveValue("Please Fix this bug");
+  await expect(page.getByRole("button", { name: "Start task", exact: true })).toBeEnabled();
 });
 
 test("TypeScript imports can select the same file again without an unhandled error", async ({
@@ -31,16 +25,12 @@ test("TypeScript imports can select the same file again without an unhandled err
       mimeType: "text/plain",
       buffer: Buffer.from(`export default ${value};`),
     });
-    await expect
-      .poll(async () =>
-        matchesText(await editor.allTextContents(), `export default ${value};`, true),
-      )
-      .toBe(true);
-    await expect.poll(async () => matchesValue(await picker.inputValue(), "")).toBe(true);
+    await expect(editor).toContainText(`export default ${value};`);
+    await expect(picker).toHaveValue("");
   }
   expect(errors).toEqual([]);
   const editors = page.getByRole("textbox", { name: /^New workflow / });
-  await expect.poll(() => editors.count()).toBe(2);
+  await expect(editors).toHaveCount(2);
   const ids = await editors.evaluateAll((elements) => elements.map((element) => element.id));
   expect(new Set(ids).size).toBe(ids.length);
   for (const id of ids) {
@@ -67,9 +57,7 @@ test("composer validation errors stay readable without horizontal overflow on mo
     buffer: Buffer.alloc(6_000_001),
   });
   const attachmentError = page.getByRole("alert").filter({ hasText: name });
-  await expect
-    .poll(async () => matchesText(await attachmentError.allTextContents(), "exceeds 6 MB", true))
-    .toBe(true);
+  await expect(attachmentError).toContainText("exceeds 6 MB");
   expect(
     await attachmentError.evaluate((element) => element.scrollWidth <= element.clientWidth),
   ).toBe(true);
@@ -81,7 +69,7 @@ test("composer validation errors stay readable without horizontal overflow on mo
   await page.keyboard.insertText("not valid JSON");
   await page.getByRole("button", { name: "Create workflow draft", exact: true }).click();
   const inputError = page.getByRole("alert").filter({ hasText: "JSON" });
-  await expect.poll(() => inputError.isVisible()).toBe(true);
+  await expect(inputError).toBeVisible();
   expect(await inputError.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
     true,
   );
