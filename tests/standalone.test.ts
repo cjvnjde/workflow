@@ -71,7 +71,7 @@ test(
     await command(["init"]);
     const config = JSON.parse(await readFile(path.join(project, ".workflow/config.json"), "utf8"));
     assert.equal(config.instructions, "");
-    const host = JSON.parse((await command(["--port", "0", "--json"])).stdout);
+    const host = JSON.parse((await command(["--background", "--port", "0", "--json"])).stdout);
     assert.equal(host.background, true);
     const html = await (await fetch(host.url)).text();
     assert.match(html, /<title>Workflow/);

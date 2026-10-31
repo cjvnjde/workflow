@@ -31,6 +31,8 @@ async function main() {
       input: { type: "string", default: "{}" },
       approve: { type: "boolean", default: false },
       "no-web": { type: "boolean", default: false },
+      web: { type: "boolean", default: false },
+      background: { type: "boolean", default: false },
       server: { type: "string" },
       wait: { type: "boolean", default: false },
       "no-wait": { type: "boolean", default: false },
@@ -42,7 +44,7 @@ async function main() {
       help: { type: "boolean", short: "h" },
     },
   });
-  const command = positionals[0] ?? "start";
+  let command = positionals[0] ?? "start";
   if (values.help || command === "help") {
     console.log(`Usage:
   workflow init [--instructions "Project constraints"]  Create local configuration; no AI call
@@ -51,7 +53,9 @@ async function main() {
   workflow setup-resume <setup-id> [--no-wait]  Continue saved stages without repeating accepted work
   workflow setup-cancel <setup-id>          Explicitly stop active generation
   workflow profiles [--instructions "Model preferences"]
-  workflow [start] [--port 4310] [--no-web] [--demo] [--json]  Start or reuse a background host
+  workflow [start] [--port 4310] [--demo]  Open the terminal workspace (default)
+  workflow [start] --web [--port 4310] [--demo]  Open the browser UI; new host runs in the foreground
+  workflow [start] --background [--web] [--no-web] [--json]  Start or reuse a detached host
   workflow status [--json]      Inspect this project's host
   workflow stop [--json]        Stop the verified host and drain its worker
   workflow serve [--port 4310] [--no-web] [--demo]  Foreground host
@@ -84,6 +88,8 @@ async function main() {
   workflow auth
 
 Run workflow from your project folder. State lives in .workflow/ in the current directory.
+workflow and workflow start open the TUI; --web selects the browser instead.
+--background returns after host readiness; add --web to also open the browser.
 serve includes the web UI; --no-web starts only the API and worker.
 tui starts or attaches to a detached project host; execution continues after every client closes.
 Use /web for the browser URL, and workflow stop to shut down the host.
@@ -103,6 +109,24 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
   if (values.wait && values["no-wait"]) throw new Error("Choose --wait or --no-wait, not both.");
   if (values["no-wait"] && !["setup", "generate", "setup-resume"].includes(command))
     throw new Error("--no-wait applies only to workflow setup, generate, or setup-resume.");
+  if (values.background && command !== "start")
+    throw new Error("--background applies only to workflow or workflow start.");
+  if (values.web && command !== "start")
+    throw new Error("--web applies only to workflow or workflow start.");
+  if (values.web && values["no-web"]) throw new Error("Choose --web or --no-web, not both.");
+  if (command === "start") {
+    if (positionals.length > 1)
+      throw new Error(
+        "Use workflow [start] with --web or --background, or workflow tui <session-id>.",
+      );
+    if ((values.background || values.web) && (values.server || values.session))
+      throw new Error(
+        "--server and --session select the terminal workspace; omit --web and --background.",
+      );
+    if (values.json && !values.background)
+      throw new Error("Use workflow --background --json for machine-readable startup.");
+    if (!values.background) command = values.web ? "serve" : "tui";
+  }
   if (["login", "logout", "model", "thinking", "auth"].includes(command)) {
     if (positionals.length > 2) {
       throw new Error("Expected a command and an optional provider/model search");
@@ -167,7 +191,7 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
             project,
             port,
             mode: values.demo ? "demo" : "live",
-            web: values["no-web"] ? false : undefined,
+            web: values["no-web"] ? false : values.web ? true : undefined,
             temporal: {
               address: values["temporal-address"],
               namespace: values["temporal-namespace"],
@@ -181,8 +205,12 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
     else if (result.status === "stopped") console.log(`Workflow stopped · ${project}`);
     else
       console.log(
-        `Workflow ${result.mode.toUpperCase()} · ${result.status} · ${result.url} · ${result.background ? "background" : "foreground"}\nProject: ${project}\nHost: ${result.hostId} · PID ${result.pid}\nUse workflow stop to shut down the host.`,
+        `Workflow ${result.mode.toUpperCase()} · ${result.status} · ${result.url}\n${result.background ? "Host is running in the background. Closing this terminal will not stop it." : "Host is running in the foreground in another process."}\nProject: ${project}\nHost: ${result.hostId} · PID ${result.pid}\nUse workflow to open the TUI, workflow status to inspect the host, or workflow stop to shut it down.`,
       );
+    if (command === "start" && values.web && result.status !== "stopped") {
+      const { openBrowser } = await import("./open-browser.js");
+      await openBrowser(result.url);
+    }
     return;
   }
   if (command === "tui" || command === "attach") {
@@ -204,6 +232,7 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
       port: values.port === undefined ? undefined : Number(values.port),
       server: values.server,
       demo: values.demo,
+      web: values["no-web"] ? false : undefined,
       session,
       temporal: {
         address: values["temporal-address"],
@@ -318,6 +347,28 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
   if (!Number.isInteger(port) || port < 0 || port > 65535) {
     throw new Error("Port must be an integer between 0 and 65535");
   }
+  if (values.web) {
+    const { projectHostStatus } = await import("../host/host-lifecycle.js");
+    const existing = await projectHostStatus(project, values.port === undefined ? undefined : port);
+    if (existing.status !== "stopped") {
+      if (existing.status !== "running")
+        throw new Error("The project's host is stopping. Retry after shutdown completes.");
+      if (existing.mode !== (values.demo ? "demo" : "live"))
+        throw new Error(
+          `The running host is ${existing.mode}. Run workflow stop before switching modes.`,
+        );
+      if (!existing.web)
+        throw new Error(
+          "The running host is API-only. Run workflow stop before starting with --web.",
+        );
+      console.log(
+        `Opening Workflow web UI · ${existing.url}\nReusing the existing ${existing.background ? "background" : "foreground"} host. Use workflow stop to shut it down.`,
+      );
+      const { openBrowser } = await import("./open-browser.js");
+      await openBrowser(existing.url);
+      return;
+    }
+  }
   try {
     await loadLibrary(project);
   } catch (error) {
@@ -337,6 +388,12 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
     web: !values["no-web"],
     background: command === "__host",
     hostId: values["host-id"],
+    onReady: values.web
+      ? async (host) => {
+          const { openBrowser } = await import("./open-browser.js");
+          await openBrowser(host.url);
+        }
+      : undefined,
     temporal: {
       address: values["temporal-address"],
       namespace: values["temporal-namespace"],

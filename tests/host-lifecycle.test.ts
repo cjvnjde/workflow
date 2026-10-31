@@ -42,7 +42,9 @@ async function context(t: TestContext, source = false) {
 test("packaged background start is concurrent/idempotent, survives callers, executes work, and stops/restarts", async (t) => {
   const { project, command, json } = await context(t);
   const replies = await Promise.all(
-    Array.from({ length: 3 }, (_, i) => json([...(i ? ["start"] : []), "--demo", "--port", "0"])),
+    Array.from({ length: 3 }, (_, i) =>
+      json([...(i ? ["start"] : []), "--background", "--demo", "--port", "0"]),
+    ),
   );
   const host = hostInfoSchema.parse(replies[0]);
   assert.equal(new Set(replies.map((reply) => reply.hostId)).size, 1);
@@ -53,13 +55,16 @@ test("packaged background start is concurrent/idempotent, survives callers, exec
   await assert.rejects(command(["status", "--port", wrongPort]), /already running/);
   await assert.rejects(command(["stop", "--port", wrongPort]), /already running/);
   assert.equal(
-    (await json(["start", "--demo"])).started,
+    (await json(["start", "--background", "--demo"])).started,
     false,
-    "The default command reuses the discovered ephemeral port",
+    "Background startup reuses the discovered ephemeral port",
   );
-  await assert.rejects(command(["start", "--port", "0"]), /running host is demo; requested live/);
   await assert.rejects(
-    command(["start", "--demo", "--no-web"]),
+    command(["start", "--background", "--port", "0"]),
+    /running host is demo; requested live/,
+  );
+  await assert.rejects(
+    command(["start", "--background", "--demo", "--no-web"]),
     /Stop it before changing --no-web/,
   );
   const receiptPath = path.join(project, ".workflow/server.json");
@@ -104,7 +109,7 @@ test("packaged background start is concurrent/idempotent, survives callers, exec
   assert.equal((await json(["stop"])).stopped, true);
   assert.equal((await json(["status", "--port", "0"])).status, "stopped");
   assert.equal((await json(["stop", "--port", "0"])).stopped, false);
-  const restarted = await json(["start", "--demo", "--port", "0"]);
+  const restarted = await json(["start", "--background", "--demo", "--port", "0"]);
   assert.notEqual(restarted.hostId, host.hostId);
   assert.equal(
     (await new WorkflowClient({ baseUrl: restarted.url }).run(draft.id)).status,
@@ -116,7 +121,9 @@ test("packaged background start is concurrent/idempotent, survives callers, exec
 test("source CLI starts its own detached host, refuses wrong projects and safely replaces unreachable receipts", async (t) => {
   const first = await context(t, true);
   const second = await context(t, true);
-  const host = hostInfoSchema.parse(await first.json(["start", "--demo", "--port", "0"]));
+  const host = hostInfoSchema.parse(
+    await first.json(["start", "--background", "--demo", "--port", "0"]),
+  );
   const receiptPath = path.join(second.project, ".workflow/server.json");
   const firstReceipt = JSON.parse(
     await readFile(path.join(first.project, ".workflow/server.json"), "utf8"),
@@ -125,7 +132,7 @@ test("source CLI starts its own detached host, refuses wrong projects and safely
   try {
     await assert.rejects(second.command(["stop"]), /another project/);
     await assert.rejects(
-      second.command(["start", "--demo", "--port", String(new URL(host.url).port)]),
+      second.command(["start", "--background", "--demo", "--port", String(new URL(host.url).port)]),
       /another project/,
     );
     assert.equal((await first.json(["status"])).hostId, host.hostId);
@@ -139,7 +146,7 @@ test("source CLI starts its own detached host, refuses wrong projects and safely
     JSON.stringify({ ...firstReceipt, project: second.project, pid: process.pid }),
   );
   assert.equal((await second.json(["stop", "--port", "0"])).stopped, false);
-  const replacement = await second.json(["start", "--demo", "--port", "0"]);
+  const replacement = await second.json(["start", "--background", "--demo", "--port", "0"]);
   assert.notEqual(replacement.hostId, host.hostId);
   assert.equal((await projectHostStatus(second.project, 0)).status, "running");
   await second.json(["stop"]);
@@ -147,7 +154,7 @@ test("source CLI starts its own detached host, refuses wrong projects and safely
 
 test("stopping a host with active work drains it before reporting stopped", async (t) => {
   const { project, json } = await context(t);
-  const host = hostInfoSchema.parse(await json(["start", "--port", "0"]));
+  const host = hostInfoSchema.parse(await json(["start", "--background", "--port", "0"]));
   const client = new WorkflowClient({ baseUrl: host.url });
   const draft = await client.createProgram({
     title: "Long-running command",
@@ -168,7 +175,7 @@ test("stopping a host with active work drains it before reporting stopped", asyn
   assert.equal((await projectHostStatus(project, 0)).status, "stopped");
   await assert.rejects(readFile(path.join(project, ".workflow/server.json")), /ENOENT/);
   await assert.rejects(stat(path.join(project, ".workflow/server-lease")), /ENOENT/);
-  const restarted = await json(["start", "--port", "0"]);
+  const restarted = await json(["start", "--background", "--port", "0"]);
   const run = await new WorkflowClient({ baseUrl: restarted.url }).run(draft.id);
   assert.equal(
     run.status,
@@ -184,7 +191,15 @@ test(
   async (t) => {
     const { project, command, json } = await context(t, true);
     await assert.rejects(
-      command(["start", "--demo", "--port", "0", "--temporal-address", "127.0.0.1:not-a-port"]),
+      command([
+        "start",
+        "--background",
+        "--demo",
+        "--port",
+        "0",
+        "--temporal-address",
+        "127.0.0.1:not-a-port",
+      ]),
       /Background host could not start: Could not connect to Temporal/,
     );
     assert.equal((await projectHostStatus(project, 0)).status, "stopped");
@@ -193,6 +208,7 @@ test(
     await assert.rejects(
       command([
         "start",
+        "--background",
         "--demo",
         "--port",
         "0",
@@ -201,11 +217,13 @@ test(
       ]),
       /missing-custom-bundle\.js/,
     );
-    const apiOnly = await json(["start", "--demo", "--port", "0", "--no-web"]);
+    const apiOnly = await json(["start", "--background", "--demo", "--port", "0", "--no-web"]);
     assert.equal(apiOnly.started, true);
     assert.equal(apiOnly.web, false);
+    await assert.rejects(command(["--web", "--demo"]), /running host is API-only/);
+    await assert.rejects(command(["--background", "--web", "--demo"]), /running host is API-only/);
     assert.equal(
-      (await json(["start", "--demo"])).hostId,
+      (await json(["start", "--background", "--demo"])).hostId,
       apiOnly.hostId,
       "Omitting --no-web should reuse an existing API-only host",
     );

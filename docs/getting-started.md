@@ -47,12 +47,12 @@ workflow login openai
 cd /path/to/your/project
 workflow init
 workflow setup
-workflow                       # returns after the background host is ready
+workflow                       # opens the interactive terminal workspace
 ```
 
 Login opens the model selector if no default is saved. `workflow model` is optional: use it to change the model later or finish selection if you skipped it.
 
-Open **http://127.0.0.1:4310**. The current directory is the project; there is no positional project-path argument and no parent-directory configuration search.
+Use `workflow --web` to open the browser UI instead. A new web host runs in the foreground until Ctrl+C; an existing host is reused. Use `workflow --background` to start or reuse a detached host and return immediately, or add `--web` to also open its browser UI. Scripts requesting startup JSON must use `workflow --background --json`. The current directory is the project; there is no positional project-path argument and no parent-directory configuration search.
 
 Initialization creates `.workflow/`, starter blocks, task instructions, and defaults. No custom instructions are required: the starter blocks already describe requirements, reproduction, implementation, checks, and review. Add `--instructions "..."` only for extra project constraints, or edit them later in Settings. If `package.json` has a `test` script, the starter checks use the detected package manager's test command. Otherwise, configure an appropriate check in Settings before relying on test-based completion.
 

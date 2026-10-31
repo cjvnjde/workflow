@@ -10,6 +10,7 @@ export interface TerminalOptions {
   port?: number;
   server?: string;
   demo?: boolean;
+  web?: boolean;
   temporal?: TemporalOptions;
   session?: string;
   signal?: AbortSignal;
@@ -63,6 +64,15 @@ export async function connectTerminal(options: TerminalOptions) {
         throw new Error(
           `The running host is ${project.mode}. Use the matching --demo mode, or workflow stop before switching modes.`,
         );
+      if (options.web !== undefined) {
+        const response = await fetch(`${baseUrl}/api/host`, {
+          signal: AbortSignal.timeout(5000),
+        });
+        const { hostInfoSchema } = await import("../host/host-discovery.js");
+        const host = hostInfoSchema.parse(await response.json());
+        if (host.web !== options.web)
+          throw new Error("The running host serves the web GUI. Stop it before changing --no-web.");
+      }
       return { client, owned: false, started: false, close: async () => {} };
     }
   }
@@ -71,6 +81,7 @@ export async function connectTerminal(options: TerminalOptions) {
     project: options.project,
     port: options.port,
     mode: options.demo ? "demo" : "live",
+    web: options.web,
     temporal: options.temporal,
     signal: options.signal,
   });
@@ -85,7 +96,7 @@ export async function connectTerminal(options: TerminalOptions) {
 export async function runTerminalWorkspace(options: TerminalOptions) {
   if (!process.stdin.isTTY || !process.stdout.isTTY)
     throw new Error(
-      "workflow tui requires an interactive terminal. Use workflow run/exec for scripts.",
+      "The Workflow TUI requires an interactive terminal. Use workflow --web for a browser, workflow --background for a detached host, or workflow run/exec for scripts.",
     );
   let stop!: () => void;
   const finished = new Promise<void>((resolve) => {

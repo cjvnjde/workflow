@@ -18,7 +18,7 @@ flowchart LR
 
 The web GUI and [OpenTUI terminal workspace](terminal.md) use these boundaries today. Desktop and mobile GUIs can be built against the same interfaces.
 
-`workflow tui` opens the interactive terminal workspace and attaches to the project's existing server when available, otherwise starting a detached background host. Use `workflow tui --server URL` to select a remote engine. The terminal guide explains ownership, session controls, approval, and login.
+`workflow` (also `workflow start` or `workflow tui`) opens the interactive terminal workspace and attaches to the project's existing server when available, otherwise starting a detached background host. Use `workflow tui --server URL` to select a remote engine. The terminal guide explains ownership, session controls, approval, and login.
 
 ## Run without a GUI
 
@@ -40,11 +40,11 @@ Exit codes for `exec`, `watch`, and `--wait`: **0** completed, **1** failed/canc
 
 ```sh
 # Start once; the command returns after readiness is verified.
-workflow start
+workflow start --background
 workflow status
 
 # Or start API and worker without browser assets.
-workflow start --no-web
+workflow start --background --no-web
 
 # In another terminal:
 workflow run verify.ts
@@ -64,15 +64,15 @@ workflow answer <task-id> "Answer to the planner's question"
 
 Task planning uses the project's approval setting, just like the web GUI. `task-show` exposes the linked run ID, planning failures, and any question. Inspect a review-mode draft with `show` and start it with `approve`. CLI control commands accept `--json` for machine-readable responses. `workflow run verify.ts --approve --wait` combines import, explicit approval, and waiting.
 
-Bare `workflow` is equivalent to `workflow start`. The host stays running after the starter, TUI, and browser close. A repeated start reuses the same project and mode, including a discovered ephemeral port. Use `workflow stop` to drain the worker and stop its managed Temporal process; saved tasks and runs remain. Start again in the same mode and explicitly resume interrupted work.
+Bare `workflow` is equivalent to `workflow start`: both open the TUI. Use `workflow --background` for a detached start that returns immediately, or `workflow --background --web` to also open the browser. These hosts stay running after the starter, TUI, and browser close. Repeated startup reuses the same project and mode, including a discovered ephemeral port. Startup JSON requires `--background --json`. Use `workflow stop` to drain the worker and stop its managed Temporal process; saved tasks and runs remain. Start again in the same mode and explicitly resume interrupted work.
 
-`workflow serve` runs the same host in the foreground until Ctrl+C or `workflow stop`. It is useful for development and external process supervisors. `--no-web` omits browser assets in either hosting mode. The HTTP routes, revisions, concurrency guards, and event format remain shared.
+`workflow --web` opens the browser UI after readiness and runs a new host in the foreground until Ctrl+C or `workflow stop`; if a host already exists, it opens that host’s UI and returns. `workflow serve` runs the same foreground host without opening a browser. It is useful for development and external process supervisors. `--no-web` omits browser assets in either hosting mode. The HTTP routes, revisions, concurrency guards, and event format remain shared.
 
 Host status and startup failures are available through `workflow status --json` and `.workflow/host.log`. Startup captures the caller's environment; stop and start the host to apply changed environment variables. Background hosting is local process detachment, not automatic restart after a crash or machine reboot.
 
 ## A server on another machine
 
-Run `workflow start --no-web` in the project on that machine. The API remains loopback-only and single-user. A terminal client can select an explicit endpoint, for example through an SSH tunnel:
+Run `workflow start --background --no-web` in the project on that machine. The API remains loopback-only and single-user. A terminal client can select an explicit endpoint, for example through an SSH tunnel:
 
 ```sh
 ssh -L 4312:127.0.0.1:4310 your-server
@@ -170,4 +170,4 @@ bun run build:web      # only dist/web; leaves engine artifacts alone
 bun run build          # full build, including typechecking
 ```
 
-An engine-only build does not invoke Vite and preserves existing `dist/web` if present. Typechecking still checks the whole repository. The core application does not import a GUI; the CLI loads the native OpenTUI renderer only for `tui` or `attach`. The repository's single package still lists presentation dependencies, so this is not yet a separately published minimal backend package.
+An engine-only build does not invoke Vite and preserves existing `dist/web` if present. Typechecking still checks the whole repository. The core application does not import a GUI; the CLI loads the native OpenTUI renderer for the default workspace, `tui`, or `attach`. The repository's single package still lists presentation dependencies, so this is not yet a separately published minimal backend package.

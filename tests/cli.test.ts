@@ -43,7 +43,7 @@ async function commandFixture(t: TestContext) {
   const run = async (args: string[]) =>
     await execute("workflow", args, { cwd: project, env, timeout: 15_000 });
 
-  return { project, env, run };
+  return { project, bin, env, run };
 }
 
 test("the executable on PATH documents current-directory usage without a project argument", async (t) => {
@@ -52,11 +52,36 @@ test("the executable on PATH documents current-directory usage without a project
   assert.match(result.stdout, /workflow init/);
   assert.match(result.stdout, /workflow setup/);
   assert.match(result.stdout, /workflow attach/);
+  assert.match(result.stdout, /Open the terminal workspace \(default\)/);
+  assert.match(result.stdout, /--web/);
+  assert.match(result.stdout, /--background/);
   assert.match(result.stdout, /current directory/);
   assert.ok(!result.stdout.includes("--project"));
   await assert.rejects(access(path.join(project, ".workflow")), {
     code: "ENOENT",
   });
+});
+
+test("default startup requires a terminal and invalid startup flags never start a host", async (t) => {
+  const { run, project } = await commandFixture(t);
+  await run(["init"]);
+  for (const args of [[], ["start"]]) {
+    await assert.rejects(run(args), /requires an interactive terminal/);
+  }
+  for (const [args, message] of [
+    [["--json"], /--background --json/],
+    [["start", "--json"], /--background --json/],
+    [["--web", "--no-web"], /Choose --web or --no-web/],
+    [["status", "--background"], /--background applies only/],
+    [["tui", "--web"], /--web applies only/],
+    [["--background", "--server", "http://127.0.0.1:4310"], /--server and --session/],
+    [["--web", "--session", "saved-id"], /--server and --session/],
+    [["start", "unexpected-session"], /workflow tui <session-id>/],
+  ] as const) {
+    await assert.rejects(run([...args]), message);
+  }
+  await assert.rejects(access(path.join(project, ".workflow/server.json")), { code: "ENOENT" });
+  await assert.rejects(access(path.join(project, ".workflow/host.log")), { code: "ENOENT" });
 });
 
 test("workflow init creates policy in the caller's project without installing anything there", async (t) => {
@@ -153,10 +178,20 @@ test("the package ships a Bun executable and UI, not project state or a developm
   );
 });
 
-test("workflow serves the bundled UI from the install location while using the caller's project", async (t) => {
-  const { run, project, env } = await commandFixture(t);
+test("--web opens the ready browser UI in the foreground and reuses it on repeated starts", async (t) => {
+  const { run, project, bin, env } = await commandFixture(t);
   await run(["init"]);
-  const child = spawn("workflow", ["serve", "--demo", "--port", "0"], {
+  const browserRecord = path.join(project, "opened-browser.json");
+  await writeFile(
+    path.join(bin, process.platform === "darwin" ? "open" : "xdg-open"),
+    `#!/usr/bin/env bun
+const url = process.argv[2];
+const response = await fetch(url + "/api/health");
+await Bun.write(${JSON.stringify(browserRecord)}, JSON.stringify({url, status: response.status}));
+`,
+    { mode: 0o755 },
+  );
+  const child = spawn("workflow", ["--web", "--demo", "--port", "0"], {
     cwd: project,
     env,
     stdio: ["ignore", "pipe", "pipe"],
@@ -199,6 +234,27 @@ test("workflow serves the bundled UI from the install location while using the c
   });
   try {
     const address = await ready;
+    for (let i = 0; i < 100; i++) {
+      if (
+        await access(browserRecord).then(
+          () => true,
+          () => false,
+        )
+      )
+        break;
+      await Bun.sleep(50);
+    }
+    assert.deepEqual(JSON.parse(await readFile(browserRecord, "utf8")), {
+      url: address,
+      status: 200,
+    });
+    assert.equal(child.exitCode, null, "The web host must stay in the foreground");
+    assert.match(output, /foreground.*Ctrl\+C/);
+    const host = JSON.parse((await run(["status", "--json"])).stdout);
+    assert.equal(host.background, false);
+    const reopened = await run(["start", "--web", "--demo"]);
+    assert.match(reopened.stdout, /Reusing the existing foreground host/);
+    assert.equal(JSON.parse((await run(["status", "--json"])).stdout).hostId, host.hostId);
     const response = await fetch(`${address}/api/project`, {
       headers: { origin: address },
       signal: AbortSignal.timeout(5000),
@@ -225,6 +281,30 @@ test("workflow serves the bundled UI from the install location while using the c
     code: "ENOENT",
   });
   await assert.rejects(access(path.join(project, "dist")), { code: "ENOENT" });
+  assert.equal(JSON.parse((await run(["status", "--json"])).stdout).status, "stopped");
+});
+
+test("--background is explicit, explains detachment, and browser launch failure preserves the host", async (t) => {
+  const { run } = await commandFixture(t);
+  await run(["init"]);
+  try {
+    const started = await run(["--background", "--demo", "--port", "0"]);
+    assert.match(started.stdout, /Host is running in the background/);
+    assert.match(started.stdout, /Closing this terminal will not stop it/);
+    const host = JSON.parse((await run(["status", "--json"])).stdout);
+    assert.equal(host.background, true);
+    for (const args of [["--web"], ["--background", "--web", "--json"]]) {
+      const reopened = await run([...args, "--demo"]);
+      assert.match(reopened.stderr, /Could not open the browser automatically/);
+      assert.match(reopened.stderr, new RegExp(host.url));
+      const current = JSON.parse((await run(["status", "--json"])).stdout);
+      assert.equal(current.hostId, host.hostId);
+      if (args.includes("--json")) assert.equal(JSON.parse(reopened.stdout).hostId, host.hostId);
+      else assert.match(reopened.stdout, /Reusing the existing background host/);
+    }
+  } finally {
+    await run(["stop"]);
+  }
 });
 
 test("a killed CLI recovers its lease and Temporal server, then resumes without replaying a completed step", async (t) => {

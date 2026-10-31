@@ -14,12 +14,13 @@ export async function runHost(options: {
   web: boolean;
   background?: boolean;
   hostId?: string;
+  onReady?: (host: HostInfo) => Promise<void>;
   temporal?: TemporalOptions;
 }) {
   const hostId = options.hostId ?? randomUUID();
   z.string().uuid().parse(hostId);
   if (options.background && (!process.send || !process.connected))
-    throw new Error("Background hosts must be started with workflow start.");
+    throw new Error("Background hosts must be started with workflow --background.");
   const token = randomUUID();
   const startedAt = new Date().toISOString();
   const controller = new AbortController();
@@ -83,8 +84,11 @@ export async function runHost(options: {
     );
     if (options.mode === "demo")
       console.log("DEMO: agents and checks are simulated. No task files are changed.");
+    if (!options.background)
+      console.log("Host is running in the foreground. Press Ctrl+C to stop.");
     ready = true;
     if (options.background && process.connected) process.send?.({ type: "ready", host: info() });
+    if (!controller.signal.aborted) await options.onReady?.(info());
     if (!controller.signal.aborted)
       await new Promise<void>((resolve) =>
         controller.signal.addEventListener("abort", () => resolve(), { once: true }),

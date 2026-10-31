@@ -43,7 +43,7 @@ Requires **Bun 1.4.2+** and Bash to build. Your project's build and test tools m
    workflow
    ```
 
-5. Open [the local UI](http://127.0.0.1:4310), review the generated **Settings**, then select **New task → describe your request → review the graph → Approve & start**. Open **Results** when it finishes.
+5. Describe your request in the terminal workspace, inspect `/graph`, and use `/approve` to start. Use `workflow --web` to open the browser UI instead; review **Settings**, then select **New task → describe your request → review the graph → Approve & start**.
 
 Repeat steps **3–5** for each project. Custom instructions are optional, and setup waits by default. See the [getting-started guide](docs/getting-started.md) for details and troubleshooting.
 
@@ -101,8 +101,11 @@ Request traces distinguish observed first-token timing, streaming, retry backoff
 ## Choose an interface
 
 ```sh
-workflow                       # start/reuse background engine, API, and web GUI
-workflow tui                   # full terminal workspace: chat, graph, tools, approval
+workflow                       # open the terminal workspace (also: workflow start)
+workflow --web                 # open browser UI; new host runs in the foreground
+workflow --background          # start/reuse detached host and return
+workflow --background --web    # detached host and open browser UI
+workflow tui                   # explicit terminal workspace alias
 workflow attach <session-id>   # reopen a task or run from either interface
 workflow status                # show the running host and URL
 workflow stop                  # stop the host; retain saved work
@@ -119,7 +122,7 @@ The terminal screenshot shows a separate disposable demo task. Browser and termi
 
 The engine's application API is independent of presentation. The web GUI, terminal workspace, and CLI commands share a validated HTTP client; embedded hosts can call the application directly. [Engine and clients](docs/clients.md) covers server access, integration APIs, and separate builds. Desktop and mobile GUIs can use the same interfaces; those additional clients are not included yet.
 
-The public modules are `predictable-workflow/core` (planning, execution, persistence), `/web` (HTTP and browser hosting), and `/terminal` (terminal client and UI). They are shipped in one package; older `/engine` and `/http` imports remain supported. The background host outlives all browser and terminal clients. Use `workflow stop` to shut it down; `workflow serve` remains available for an explicit foreground host.
+The public modules are `predictable-workflow/core` (planning, execution, persistence), `/web` (HTTP and browser hosting), and `/terminal` (terminal client and UI). They are shipped in one package; older `/engine` and `/http` imports remain supported. TUI and `--background` hosts outlive browser and terminal clients; use `workflow stop` to shut them down. `--web` starts a foreground host that Ctrl+C stops, or opens an existing host’s browser UI. `workflow serve` runs a foreground host without opening a browser.
 
 ## Workflows are TypeScript
 

@@ -40,7 +40,7 @@ Deleting a settled workflow removes it and its linked task from the visible hist
 
 ## Pause, restart, and resume
 
-Pause lets active steps finish before admitting more work. For a parallel group, all active branches drain. Queued branches wait. Closing the browser or TUI does not pause or cancel execution. Bare `workflow`, `workflow start`, and an initial TUI launch use a background host that outlives the clients.
+Pause lets active steps finish before admitting more work. For a parallel group, all active branches drain. Queued branches wait. Closing the browser or TUI does not pause or cancel execution. `workflow` and `workflow start` open the TUI, using a host that outlives clients. `workflow --background` starts or reuses that host without opening the TUI. `workflow --web` opens the browser and runs a new host in the foreground until Ctrl+C; an existing host is reused.
 
 `workflow status` reports the running host. `workflow stop` requests authenticated shutdown, waits for the application and project lease to close, and stops its worker and managed local Temporal process, while execution history remains on disk. `workflow serve` is the explicit foreground alternative and also stops on Ctrl+C. Restart in the same project and mode. Completed recorded operations are replayed from history rather than executed again. An activity that was in progress when its worker disappeared may leave the run interrupted.
 

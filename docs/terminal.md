@@ -6,7 +6,7 @@ For a completed run, `/remember` previews reusable guidance and `/remember save`
 
 [Documentation](README.md) → Terminal workspace
 
-`workflow tui` opens a full-screen [OpenTUI](https://opentui.com/packages/opentui-core/) workspace with a conversation, live AI responses and tool activity, a workflow graph, and execution controls. It uses the same engine and HTTP client as the browser.
+`workflow` (also `workflow start` or `workflow tui`) opens a full-screen [OpenTUI](https://opentui.com/packages/opentui-core/) workspace with a conversation, live AI responses and tool activity, a workflow graph, and execution controls. It uses the same engine and HTTP client as the browser.
 
 ![Terminal workspace showing a shared demo session](screenshots/terminal-workspace.png)
 
@@ -15,7 +15,8 @@ For a completed run, `/remember` previews reusable guidance and `/remember save`
 Run from the project you want Workflow to work on:
 
 ```sh
-workflow tui
+workflow                       # default: full-screen terminal workspace
+workflow tui                   # explicit alias
 workflow attach <task-or-run-id>
 workflow tui --session <task-or-run-id>
 
@@ -32,7 +33,7 @@ By default, the workspace discovers the running host through `.workflow/server.j
 
 Closing the TUI always detaches its presentation and leaves the host running, including when the TUI started it. Work continues after all browser and terminal clients close. The welcome notice identifies a newly started background host or an existing server.
 
-Use `workflow status` to see the host and URL, and `workflow stop` when you want to stop the worker. Saved history remains; restart in the same mode and explicitly resume interrupted work. `workflow serve` remains an explicit foreground host for development or a process supervisor. `workflow start --no-web` and `workflow serve --no-web` provide API-only hosting.
+Use `workflow status` to see the host and URL, and `workflow stop` when you want to stop the worker. Saved history remains; restart in the same mode and explicitly resume interrupted work. `workflow serve` remains an explicit foreground host for development or a process supervisor. `workflow --background --no-web` and `workflow serve --no-web` provide API-only hosting. `workflow --web` opens the browser instead of the TUI; a new web host runs in the foreground until Ctrl+C, while an existing host is reused. `workflow --background` explicitly starts or reuses a host without a terminal workspace.
 
 `/web` shows a browser link to the selected task/run. The browser's **Continue in terminal** copies the corresponding `workflow attach` command. IDs refer to persisted project tasks/runs, not a terminal process or an inherited model conversation. Opening a saved session never approves a draft or retries an interrupted operation; use `/approve` or `/resume` explicitly.
 
