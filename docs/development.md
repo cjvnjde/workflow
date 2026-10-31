@@ -15,6 +15,14 @@ bun run dev
 
 Run `bun run workflow init` once per checkout to create local `.workflow/` configuration; Git ignores this directory. The development script starts the live API, waits for readiness, then starts Vite at **http://127.0.0.1:5173**. The backend uses **4310** and that local configuration. `bun run dev:live` is a compatibility alias. Both `dev` and `start` use real AI when tasks request it; they do not silently substitute demo responses.
 
+### Web hot reload
+
+`bun run dev` already uses Vite's built-in hot module replacement and React Fast Refresh. Open **http://127.0.0.1:5173** while editing `web/`: CSS updates in place, and compatible React component edits preserve local state. Changes outside a Fast Refresh boundary may reload the page.
+
+If the backend is already running on **4310**, run `bun run dev:web` to start only Vite against it. This avoids starting a competing backend for the same project. Vite proxies `/api/` requests to that backend.
+
+The web UI served directly by the backend on **4310** uses built assets; it does **not** hot reload. `bun run start` is also a built-distribution command, not a development server. Backend source changes require a backend restart; Vite only reloads the web app.
+
 Use `bun run workflow --help` for the source CLI. `bun run start` serves the built distribution. Run `bun run compile` to rebuild a portable executable after changing the tool, then replace your installed copy.
 
 An existing background host keeps the code it started with. After rebuilding or upgrading, use `workflow stop` and `workflow start --background` when ready to restart it; saved tasks remain available. Refresh the browser after the host restarts.

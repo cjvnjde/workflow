@@ -210,7 +210,8 @@ Usage totals cover planning, setup, design, and execution, including failed requ
 
 ```sh
 bun run workflow init  # once per checkout; creates local configuration
-bun run dev        # live backend + Vite at http://127.0.0.1:5173
+bun run dev        # backend + Vite with web hot reload at http://127.0.0.1:5173
+bun run dev:web    # Vite only, using an already-running backend on port 4310
 bun run test       # build + Vitest backend/integration tests
 bun run test:e2e   # build + native Playwright browser journeys and visuals
 bun run test:visual # build + Playwright screenshot tests tagged @visual
