@@ -65,6 +65,8 @@ See [the command reference](reference.md) for ports and options.
 
 Project setup runs in the shared core host. Closing a browser or terminal detaches that client; it does not cancel generation. Open setup in either interface to see the same job and its progress through model profiles, task instructions, reusable blocks, validation, and publication.
 
+The CLI commands `workflow setup` and `workflow setup-resume <job-id>` wait until generation finishes and report failures through their exit status. Add `--no-wait` to return after starting. Ctrl+C stops following progress; use `workflow setup-cancel <job-id>` to cancel the job itself. `workflow setup-status` returns a snapshot without waiting. Explicit `--wait` is still supported for compatibility and to follow a status query.
+
 Accepted stages are saved immediately. After a provider failure or host restart, explicitly resume the job to continue from its unfinished stage. Earlier accepted proposals and their usage remain attached to the same job. Resuming can make another model request for an unfinished stage, but does not regenerate completed stages. Starting the host alone never resumes paid setup work.
 
 The current library stays usable during generation. Setup publishes the complete validated configuration together. Concurrent settings or source edits cause a conflict instead of being silently overwritten. A failed regeneration leaves the previous successful setup available. Cancellation is available during generation; the short publication step must finish or be recovered.

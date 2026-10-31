@@ -6,7 +6,7 @@ This guide takes you from a checkout of Workflow to an approved task in your own
 
 ## Requirements
 
-- Bun **1.4.2 or newer** and Bash.
+- Bun **1.4.2 or newer** to build the executable, plus Bash. The executable includes Bun for runtime use.
 - Git for workflows that inspect, commit, or push repository changes.
 - The tools your project uses: for example, its test runner or compiler. A block invoking `node`, Python, or another runtime needs that executable installed.
 - A terminal or browser. ChatGPT sign-in or another provider's API key is needed for AI planning and execution; code-only imported workflows can run without a model.
@@ -18,26 +18,27 @@ Workflow includes its UI and manages a local Temporal development server. The fi
 From the Workflow checkout:
 
 ```sh
-bun install --frozen-lockfile --ignore-scripts
-bun run build
-bun link
+bun install
+bun run compile
+mkdir -p ~/.local/bin
+mv dist/workflow ~/.local/bin/workflow
 ```
 
-`bun link` registers the `workflow` command. If the shell cannot find it, `bun pm bin -g` prints the directory that needs to be on PATH.
+This builds one executable for your current OS and architecture. Keep `~/.local/bin` on PATH; if needed, add `export PATH="$HOME/.local/bin:$PATH"` to your shell configuration. You can move the executable elsewhere or copy it to another machine with the same OS and architecture. Keep it outside the clone's `dist/` directory, which subsequent builds replace.
 
-You do not install Workflow's dependencies in every target project. The command serves the bundled UI from its own installation and works on the folder where you run it.
+The executable includes its runtime dependencies, UI, compiler and workers. On first use it unpacks runtime files into Workflow's private user cache; later invocations reuse them. The source checkout and a separate Bun/Node.js installation are not needed to run it. You do not install Workflow's dependencies in target projects. Project commands still need their own tools installed.
 
-### Run without linking
+### Run directly from a folder
 
-After building, call the CLI by its absolute path from the target project:
+You can move `dist/workflow` directly into the target project and run it there:
 
 ```sh
 cd /path/to/your/project
-bun /path/to/workflow/dist/cli.js init
-bun /path/to/workflow/dist/cli.js
+./workflow init
+./workflow
 ```
 
-To work on the Workflow repository itself, run `bun run start` from its checkout. Its example `.workflow/` configuration is already present. `bun run dev` starts the live backend and a hot-reloading frontend at **http://127.0.0.1:5173**; [development mode](development.md) is for editing the application.
+To work on the Workflow repository itself, run `bun run build` and `bun run start` from its checkout. Its example `.workflow/` configuration is already present. `bun run dev` starts the live backend and a hot-reloading frontend at **http://127.0.0.1:5173**; [development mode](development.md) is for editing the application.
 
 ## Initialize your project
 
@@ -45,20 +46,20 @@ To work on the Workflow repository itself, run `bun run start` from its checkout
 workflow login openai
 workflow model
 cd /path/to/your/project
-workflow init --instructions "Preserve public APIs. Use the existing test framework."
+workflow init
 workflow setup
 workflow                       # returns after the background host is ready
 ```
 
 Open **http://127.0.0.1:4310**. The current directory is the project; there is no positional project-path argument and no parent-directory configuration search.
 
-Initialization creates `.workflow/`, starter blocks, task instructions, and defaults. If `package.json` has a `test` script, the starter checks use `bun run test`. Otherwise, configure an appropriate check in Settings before relying on test-based completion.
+Initialization creates `.workflow/`, starter blocks, task instructions, and defaults. No custom instructions are required: the starter blocks already describe requirements, reproduction, implementation, checks, and review. Add `--instructions "..."` only for extra project constraints, or edit them later in Settings. If `package.json` has a `test` script, the starter checks use the detected package manager's test command. Otherwise, configure an appropriate check in Settings before relying on test-based completion.
 
 Initialization never calls a model and refuses to overwrite existing configuration. `--no-ai` is still accepted for older scripts but is no longer needed.
 
 `workflow setup` is the explicit AI bootstrap. Your saved default inspects the repository and proposes model profiles, task instructions, and reusable TypeScript blocks. All three proposals are validated before publishing; generated block source is typechecked. Task instructions describe review, bug-fix, feature, and documentation work without forcing every request through a fixed graph. The default planner composes the actual graph later.
 
-The command starts a saved background job and prints its ID. Follow it in Settings, with `/setup` in the TUI, or with `workflow setup --wait`. `workflow setup-status` reports progress and spending. After a failure or host restart, `workflow setup-resume <job-id> --wait` retries the unfinished stage while keeping earlier accepted proposals. Closing either interface leaves the core job running.
+`workflow setup` starts or attaches to a saved background job and follows progress until it finishes. Use `workflow setup --no-wait` to start it and return immediately. Ctrl+C stops waiting without cancelling generation; use `workflow setup-cancel <job-id>` to cancel. `workflow setup-status` reports progress and spending; Settings and `/setup` in the TUI show the same job. After a failure or host restart, `workflow setup-resume <job-id>` retries the unfinished stage and waits, keeping earlier accepted proposals. Add `--no-wait` to resume in the background. The older `--wait` flag is still accepted but is no longer necessary for setup.
 
 Choose a project-specific default with `workflow setup --model openai/gpt-6.1-sol --thinking medium`, or select it in Settings before running setup. Omit those flags to use the existing project/shared default. Setup uses the connected model catalog; a model name in a guide is not a guarantee of account access. Repeating completed setup keeps the saved library; use `--regenerate` to redesign it. Check the generated commands and blocks in Settings before using them on consequential work.
 

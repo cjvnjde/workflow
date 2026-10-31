@@ -33,6 +33,7 @@ async function main() {
       "no-web": { type: "boolean", default: false },
       server: { type: "string" },
       wait: { type: "boolean", default: false },
+      "no-wait": { type: "boolean", default: false },
       json: { type: "boolean", default: false },
       save: { type: "boolean", default: false },
       "temporal-address": { type: "string" },
@@ -45,9 +46,9 @@ async function main() {
   if (values.help || command === "help") {
     console.log(`Usage:
   workflow init [--instructions "Project constraints"]  Create local configuration; no AI call
-  workflow setup [--model provider/id] [--thinking level] [--instructions "Preferences"] [--regenerate] [--max-setup-cost USD]
+  workflow setup [--model provider/id] [--thinking level] [--instructions "Preferences"] [--regenerate] [--max-setup-cost USD] [--no-wait]
   workflow setup-status [setup-id] [--json]
-  workflow setup-resume <setup-id> [--wait]  Continue saved stages without repeating accepted work
+  workflow setup-resume <setup-id> [--no-wait]  Continue saved stages without repeating accepted work
   workflow setup-cancel <setup-id>          Explicitly stop active generation
   workflow profiles [--instructions "Model preferences"]
   workflow [start] [--port 4310] [--no-web] [--demo] [--json]  Start or reuse a background host
@@ -87,6 +88,8 @@ serve includes the web UI; --no-web starts only the API and worker.
 tui starts or attaches to a detached project host; execution continues after every client closes.
 Use /web for the browser URL, and workflow stop to shut down the host.
 Session IDs open saved work; workflow resume <run-id> explicitly restarts paused execution.
+setup and setup-resume follow progress until finished; --no-wait returns after starting the job.
+Ctrl+C stops waiting for setup without cancelling it; use setup-cancel to cancel generation.
 exec explicitly approves and executes a TypeScript workflow without an HTTP server or GUI.
 run creates a draft on a running server; inspect it with show, then approve it.
 Client commands accept --port, --server URL (explicitly selects that server's project), and --json.
@@ -97,6 +100,9 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
   }
   if (values.save && command !== "remember")
     throw new Error("--save applies only to workflow remember; it does not approve execution.");
+  if (values.wait && values["no-wait"]) throw new Error("Choose --wait or --no-wait, not both.");
+  if (values["no-wait"] && !["setup", "generate", "setup-resume"].includes(command))
+    throw new Error("--no-wait applies only to workflow setup, generate, or setup-resume.");
   if (["login", "logout", "model", "thinking", "auth"].includes(command)) {
     if (positionals.length > 2) {
       throw new Error("Expected a command and an optional provider/model search");
@@ -134,7 +140,9 @@ Provider credentials belong to Workflow, outside the project; Pi does not need t
       regenerate: values.regenerate,
       maxSetupCostUsd,
       json: values.json,
-      wait: values.wait,
+      wait:
+        values.wait ||
+        (["setup", "generate", "setup-resume"].includes(command) && !values["no-wait"]),
       demo: values.demo,
       web: values["no-web"] ? false : undefined,
       temporal: {

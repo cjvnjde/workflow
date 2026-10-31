@@ -1,0 +1,145 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out tag
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version-file: package.json
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Lint and check formatting
+        run: |
+          bun run lint
+          bun run format:check
+
+      - name: Run quick unit tests
+        run: bun run test:unit
+
+      - name: Typecheck and build
+        run: bun run build
+
+  build:
+    name: Build ${{ matrix.platform }}
+    needs: check
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Linux x64
+            runner: ubuntu-24.04
+            package: workflow-linux-x64.tar.gz
+          - platform: Linux ARM64
+            runner: ubuntu-24.04-arm
+            package: workflow-linux-arm64.tar.gz
+          - platform: macOS x64
+            runner: macos-15-intel
+            package: workflow-macos-x64.tar.gz
+          - platform: macOS ARM64
+            runner: macos-15
+            package: workflow-macos-arm64.tar.gz
+
+    steps:
+      - name: Check out tag
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version-file: package.json
+
+      - name: Install dependencies
+        run: bun install
+
+      # Compile on the target platform so the runtime archive contains the
+      # matching native dependencies as well as the embedded Bun interpreter.
+      - name: Build standalone executable
+        run: |
+          bun run compile
+          test -s dist/workflow
+          file dist/workflow
+
+      - name: Test relocated executable
+        run: bun test --timeout 120000 tests/standalone.test.ts
+
+      - name: Package executable and write checksum
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          mkdir -p packages
+          tar -C dist -czf "packages/$PACKAGE" workflow
+          (cd packages && shasum -a 256 "$PACKAGE" > "$PACKAGE.sha256")
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: ${{ matrix.package }}
+          path: |
+            packages/${{ matrix.package }}
+            packages/${{ matrix.package }}.sha256
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: workflow-*.tar.gz
+          path: packages
+          merge-multiple: true
+
+      - name: Verify package checksums
+        run: (cd packages && sha256sum --check ./*.sha256)
+
+      - name: Create release and attach packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" packages/*.tar.gz packages/*.sha256 --clobber
+          else
+            release_flags=()
+            if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+              release_flags+=(--prerelease --latest=false)
+            fi
+            gh release create "$GITHUB_REF_NAME" packages/*.tar.gz packages/*.sha256 \
+              --verify-tag \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes "${release_flags[@]}"
+          fi

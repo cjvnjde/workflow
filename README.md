@@ -4,6 +4,48 @@
 
 Workflow is an AI development engine with a browser workspace and terminal clients. Describe a task, attach files or screenshots, and the orchestrator composes a TypeScript workflow from your reusable blocks, task instructions, and model profiles. Review the graph, then start it—or enable automatic execution.
 
+## Get started
+
+Requires **Bun 1.4.2+** and Bash to build. Your project's build and test tools must also be installed.
+
+1. **Build and install the executable once:**
+
+   ```sh
+   git clone https://github.com/cjvnjde/workflow.git
+   cd workflow
+   bun install
+   bun run compile
+   mkdir -p ~/.local/bin
+   mv dist/workflow ~/.local/bin/workflow
+   ```
+
+   Keep `~/.local/bin` on PATH, or move the executable to any folder and run it as `./workflow`.
+
+2. **Connect your account and choose a default model once:**
+
+   ```sh
+   workflow login openai
+   workflow model
+   ```
+
+3. **Initialize your project and let setup finish:**
+
+   ```sh
+   cd /path/to/your/project
+   workflow init
+   workflow setup
+   ```
+
+4. **Start Workflow from that project:**
+
+   ```sh
+   workflow
+   ```
+
+5. Open [the local UI](http://127.0.0.1:4310), review the generated **Settings**, then select **New task → describe your request → review the graph → Approve & start**. Open **Results** when it finishes.
+
+Repeat steps **3–5** for each project. Custom instructions are optional, and setup waits by default. See the [getting-started guide](docs/getting-started.md) for details and troubleshooting.
+
 ![Execution timeline showing step visits, model requests, and nested tool calls](docs/screenshots/execution-timeline.png)
 
 The execution screenshots use deterministic demo data in the real browser UI, with illustrative timings.
@@ -54,47 +96,6 @@ In **Activity → Grouped calls**, expand a model session or shared tool to foll
 ![Nested tool calls with a recorded file edit and its before-and-after contents](docs/screenshots/tool-calls.png)
 
 Request traces distinguish observed first-token timing, streaming, retry backoff, context compaction, and budget waits. Costs continue to come from the usage ledger. See [the execution inspection guide](docs/execution-inspection.md) for timing semantics, output retention limits, and optional bounded parallel reads.
-
-## Get started
-
-Requires **Bun 1.4.2+** and Bash. Git and your project's build/test tools must be available for blocks that use them. Workflow itself does not require a separate Node.js installation.
-
-Install from this repository:
-
-```sh
-git clone https://github.com/cjvnjde/workflow.git
-cd workflow
-bun install --frozen-lockfile --ignore-scripts
-bun run build
-bun link
-```
-
-Connect once, then initialize and configure each project:
-
-```sh
-workflow login openai           # account login; API-key login is also available
-workflow model                  # shared default, saved in your home directory
-cd /path/to/your/project
-workflow init --instructions "Preserve public APIs and use the existing test framework."
-workflow setup                  # AI inspects this project and tailors its library
-workflow
-```
-
-`init` only creates configuration and starter TypeScript blocks. `setup` uses your chosen default model to inspect the repository and generate model profiles, reusable blocks, and task instructions for review, bug fixes, features, and documentation. It refreshes the connected catalog and asks for suitable current models with different costs and capabilities. To choose a project default during setup, use `workflow setup --model openai/gpt-6.1-sol --thinking medium`. Only models available through your connection can be selected.
-
-Setup runs as a saved background job shared by the browser and terminal. `workflow setup-status` or `/setup` in the TUI shows its stages and usage. If generation fails or the host restarts, `workflow setup-resume <job-id>` continues from the unfinished stage, retaining completed proposals and their costs. Add `--wait` to `workflow setup` to follow it in the CLI; closing that client leaves the job running.
-
-Open **http://127.0.0.1:4310** (or use `workflow tui`):
-
-1. The setup checklist shows your connection, default model, and library status.
-2. Review or edit the generated configuration in **Settings**. Provider login and model selection are also available there.
-3. Create a **New task**, describe the desired result, and attach useful context.
-4. Inspect the proposed graph and select **Approve & start**.
-5. Follow active blocks in **Timeline**, inspect calls in **Activity**, and open **Results** for the outcome, checks, and downloadable artifacts.
-
-The current directory is the project; there is no project-path argument. Credentials are shared across projects in `~/.config/workflow/` by default. Setup is explicit: ordinary startup does not regenerate configuration or spend AI usage on setup. Use `workflow setup --regenerate` when you want a fresh project-specific library. Review is the default approval mode.
-
-[The getting-started guide](docs/getting-started.md) covers running without a PATH installation, development mode, first-task examples, and setup troubleshooting.
 
 ## Choose an interface
 

@@ -7,14 +7,14 @@
 From the repository root:
 
 ```sh
-bun install --frozen-lockfile --ignore-scripts
+bun install
 bun run build
 bun run dev
 ```
 
 The development script starts the live API, waits for readiness, then starts Vite at **http://127.0.0.1:5173**. The backend uses **4310** and the checkout's `.workflow/` configuration. `bun run dev:live` is a compatibility alias. Both `dev` and `start` use real AI when tasks request it; they do not silently substitute demo responses.
 
-Use `bun run workflow --help` for the source CLI. `bun run start` serves the built distribution. Rebuild after changing the tool when using a `bun link` installation, since the linked command runs `dist/cli.js`.
+Use `bun run workflow --help` for the source CLI. `bun run start` serves the built distribution. Run `bun run compile` to rebuild a portable executable after changing the tool, then replace your installed copy.
 
 An existing background host keeps the code it started with. After rebuilding or upgrading, use `workflow stop` and `workflow start` when ready to restart it; saved tasks remain available. Refresh the browser after the host restarts.
 
@@ -73,7 +73,7 @@ bun test --timeout 30000 tests/composition.test.ts
 
 Tests use disposable projects. They cover SDK behavior, API validation, approval, commands/files, parallel execution, spending, worker loss, restart/recovery, CLI packaging, and terminal setup. Model integration fixtures use local fake providers or mocks; ordinary test suites do not need paid model credentials. Engine tests use real local Temporal services.
 
-GitHub Actions runs only `bun run test:unit` on pushes to `main`, every pull request, and manual dispatch. The fast suites are listed in `scripts/test-unit.ts`; they use source imports, in-memory doubles and disposable files without a build, Temporal service, HTTP listener or browser. Keep new CI suites within those limits. Dependencies are installed from `bun.lock` without the prepare hook, and superseded runs are cancelled. Full integration, browser and mutation suites remain explicit local commands.
+The regular CI workflow runs `bun run test:unit` on pushes to `main`, every pull request, and manual dispatch. The fast suites are listed in `scripts/test-unit.ts`; they use source imports, in-memory doubles and disposable files without a build, Temporal service, HTTP listener or browser. Keep new CI suites within those limits. Dependencies are installed from `bun.lock` without building the application, and superseded runs are cancelled. Full integration, browser and mutation suites remain explicit local commands.
 
 The terminal tests render through OpenTUI's native test renderer and exercise typing, command completion, graph layout, resizing, and masked secret input. Controller tests use the real HTTP adapter, and a Bun pseudo-terminal test runs the packaged `tui` command through planning, approval, execution, and clean shutdown. Run them after building with `bun test --timeout 45000 tests/tui*.test.ts`. Markdown parser caches and credentials use isolated test directories. Source development uses `bun run workflow tui`.
 
@@ -165,17 +165,42 @@ WORKFLOW_LIVE_SCENARIO=composition WORKFLOW_CHROMIUM_PATH=/usr/bin/chromium bun 
 
 ## Packaging
 
-`bun.lock` is authoritative. Link a development checkout with `bun link`, or produce a package:
+Build a portable executable for the current OS and architecture:
 
 ```sh
-bun pm pack
-# Install the resulting archive:
-bun add --global --ignore-scripts ./predictable-workflow-0.1.0.tgz
+bun install
+bun run compile
+mkdir -p ~/.local/bin
+mv dist/workflow ~/.local/bin/workflow
 ```
 
-`pack` runs the prepare build unless scripts are disabled. After a separate successful build, `bun pm pack --ignore-scripts` can package that output without rebuilding it.
+`compile` runs the normal build, stages production dependencies using the committed lockfile, and embeds the runtime archive in a minified Bun executable. This preserves file paths used by Temporal's compiler, native libraries, and workers. On first launch, it publishes the runtime to `cache/runtime/<build-hash>/` under the Workflow user directory; concurrent invocations reuse a complete published runtime. Child hosts and Bun scripts use the executable's embedded Bun interpreter. No checkout or separate Bun/Node.js installation is needed at runtime.
 
-The package includes `dist/`, examples, README, and docs. It excludes this project's `.workflow/` state, source, and tests. Distribution still requires Bun and packaged runtime dependencies. The repository is not documented as an already-published registry package.
+Run `bun run test:standalone` to build and test the executable after moving it into a disposable directory, with no Bun or Node.js on PATH. The checks cover initialization, background host startup, UI assets, workflow compilation, shared tool workers, the embedded interpreter, and execution. `tests/setup-cli.test.ts` covers default setup waiting and detachment.
+
+For SDK consumers, `bun pm pack` still produces a package containing `dist/`, examples, README, and docs; its `prepack` hook builds the distribution. It excludes this project's `.workflow/` state, source, and tests. This package format requires Bun and its runtime dependencies. The repository is not documented as an already-published registry package.
+
+## Releases
+
+Push a tag beginning with `v` to create a GitHub Release automatically. Commit the release workflow and your changes before tagging the commit you want to publish:
+
+```sh
+git tag -a v0.1.0 -m "Release v0.1.0"
+git push origin v0.1.0
+```
+
+Tags with a prerelease suffix, such as `v0.0.1-alpha.1`, create a GitHub prerelease and are not marked as the latest stable release.
+
+[The release workflow](../.github/workflows/release.yml) checks lint, formatting, quick unit tests, and the build. It then compiles executables on native Linux and macOS runners for both x64 and ARM64 and tests each executable after relocation. Native builds include the matching runtime dependencies; the current release matrix covers the platforms supported by the managed Temporal server.
+
+After every build and executable test passes, the workflow publishes generated release notes and four archives, each containing a single `workflow` executable:
+
+- `workflow-linux-x64.tar.gz`
+- `workflow-linux-arm64.tar.gz`
+- `workflow-macos-x64.tar.gz`
+- `workflow-macos-arm64.tar.gz`
+
+Each archive has a companion `.sha256` checksum file. Download the archive for your OS and architecture from [GitHub Releases](https://github.com/cjvnjde/workflow/releases), extract it, and move `workflow` to a folder on PATH. Bun and the source checkout are not required. If a release job is rerun, it updates the assets on the existing release for that tag. Only the publication job has repository write permission; it uses GitHub's built-in token, with no additional secret to configure.
 
 ## Keeping documentation useful
 

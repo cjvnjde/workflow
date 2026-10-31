@@ -8,7 +8,7 @@ import { fixture, passingRunner } from "./helpers.js";
 
 const cli = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
 
-test("built setup CLI detaches by default and Ctrl+C stops waiting without cancelling the core job", async (t) => {
+test("built setup CLI waits by default, --no-wait detaches, and Ctrl+C leaves the core job running", async (t) => {
   const { project, cleanup } = await fixture(t);
   let generationSignal: AbortSignal | undefined;
   let calls = 0;
@@ -64,11 +64,11 @@ test("built setup CLI detaches by default and Ctrl+C stops waiting without cance
     assert.equal(code, 0, stderr);
     return JSON.parse(stdout);
   };
-  const started = await command("setup");
+  const started = await command("setup", "--no-wait");
   assert.match(started.id, /^[a-f0-9-]{36}$/);
   assert.ok(["queued", "running"].includes(started.status));
   assert.equal((await command("setup-status", started.id)).id, started.id);
-  const waiting = spawn("setup", "--wait");
+  const waiting = spawn("setup");
   cleanup(async () => {
     if (waiting.exitCode === null) waiting.kill();
     await waiting.exited;
@@ -88,6 +88,7 @@ test("built setup CLI detaches by default and Ctrl+C stops waiting without cance
       throw new Error("Setup waiter did not show progress");
     }),
   ]);
+  assert.equal(waiting.exitCode, null, "Setup must keep waiting while generation is active");
   waiting.kill("SIGINT");
   assert.equal(await waiting.exited, 0);
   reader.releaseLock();
@@ -96,7 +97,24 @@ test("built setup CLI detaches by default and Ctrl+C stops waiting without cance
   assert.equal(app.setupJobs.get(started.id).status, "running");
   assert.equal(generationSignal?.aborted, false);
   assert.equal(calls, 1, "Attaching another CLI must not repeat generation");
+  // An explicit --wait remains compatible, and a terminal job failure must
+  // become the waiter's exit status instead of an early successful return.
+  const finishing = spawn("setup", "--wait");
+  cleanup(async () => {
+    if (finishing.exitCode === null) finishing.kill();
+    await finishing.exited;
+  });
+  const finishingReader = finishing.stderr.getReader();
+  let finishingProgress = "";
+  while (!finishingProgress.includes(started.id)) {
+    const chunk = await finishingReader.read();
+    assert.equal(chunk.done, false, "Waiter exited before attaching to setup");
+    finishingProgress += new TextDecoder().decode(chunk.value);
+  }
+  finishingReader.releaseLock();
   const cancelled = await command("setup-cancel", started.id);
   assert.equal(cancelled.status, "cancelled");
   assert.equal(generationSignal?.aborted, true);
+  assert.equal(await finishing.exited, 1);
+  assert.equal(JSON.parse(await new Response(finishing.stdout).text()).status, "cancelled");
 });

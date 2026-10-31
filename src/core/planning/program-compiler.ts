@@ -1,5 +1,5 @@
 import { distributionUrl } from "../../infrastructure/package-paths.js";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -387,7 +387,9 @@ export async function compileProgram(
   catalog: Library["blocks"] = {},
 ) {
   const { source, compiled, structure } = await bundleProgram(project, value, catalog);
-  const directory = await mkdtemp(path.join(os.tmpdir(), "workflow-compile-"));
+  // Temporal's in-memory entrypoint and webpack must use the same spelling of
+  // this path (macOS exposes its temporary directory through /var -> /private/var).
+  const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), "workflow-compile-")));
   try {
     const entry = path.join(directory, "entry.js");
     await writeFile(
