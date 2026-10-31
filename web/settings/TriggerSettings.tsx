@@ -250,7 +250,9 @@ export default function TriggerSettings({ ref, onDirty, onBusy }: Props) {
     <section className="trigger-settings">
       <div className="settings-section-title">
         <div>
-          <h2>GitHub triggers</h2>
+          <h2>
+            GitHub triggers <span className="alpha-badge">Alpha</span>
+          </h2>
           <p>
             Run a saved workflow when new issues or pull requests appear. Workflow must remain
             running; the browser can be closed.

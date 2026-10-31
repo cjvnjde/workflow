@@ -87,12 +87,9 @@ function UsageDetails({
     );
   }
   return (
-    <section className="usage-summary" aria-label={title} aria-busy={loading}>
-      <div className="usage-heading">
-        <div className="usage-title">
-          <Icon name="chart" size={17} />
-          <span>{title}</span>
-        </div>
+    <details className="usage-summary" aria-label={title} aria-busy={loading}>
+      <summary className="usage-heading" title="Show usage details and pricing information">
+        <span className="usage-title">{title}:</span>
         {report ? (
           <strong className={`usage-total${partial ? " partial" : ""}`}>
             {usageCost(report.total, report.incomplete)}
@@ -100,6 +97,11 @@ function UsageDetails({
         ) : (
           <span className="usage-loading">{error ? "Unavailable" : "Loading usage…"}</span>
         )}
+        <span className="usage-info" aria-hidden="true">
+          ⓘ
+        </span>
+      </summary>
+      <div className="usage-content">
         <button
           className="quiet"
           disabled={loading}
@@ -108,147 +110,146 @@ function UsageDetails({
         >
           Refresh
         </button>
-      </div>
-      {report && (
-        <>
-          <p className="usage-scope-note">
-            {scope === "project"
-              ? "Recorded across this project, including setup, settings design and retained task history."
-              : scope === "setup"
-                ? "All recorded stages and retries in this setup operation share this total."
-                : report.scope.kind === "task"
-                  ? "Planning, refinement and execution for this task, including retries and recovery."
-                  : "Recorded planning, refinement and execution for this workflow."}
-          </p>
-          {!!report.phases.length && (
-            <div className="usage-phases" aria-label="Cost by phase">
-              {report.phases.map((phase) => (
-                <span key={phase.phase}>
-                  <span>{usagePhaseLabels[phase.phase]}</span>
-                  <strong>{usageCost(phase.usage, unfinished(phase.phase))}</strong>
-                </span>
-              ))}
-            </div>
-          )}
-          {(report.limits.totalCostUsd !== undefined ||
-            report.limits.executionCostUsd !== undefined) && (
-            <div className="usage-limits">
-              {report.limits.totalCostUsd !== undefined && (
-                <span>
-                  Total limit <strong>${report.limits.totalCostUsd.toFixed(4)}</strong>
-                </span>
-              )}
-              {report.limits.remainingCostUsd !== null ? (
-                <span>
-                  Remaining <strong>${report.limits.remainingCostUsd.toFixed(4)}</strong>
-                </span>
-              ) : (
-                report.limits.totalCostUsd !== undefined && (
-                  <span>Remaining amount unavailable</span>
-                )
-              )}
-              {report.limits.executionCostUsd !== undefined && (
-                <span>
-                  Execution limit <strong>${report.limits.executionCostUsd.toFixed(4)}</strong>
-                </span>
-              )}
-            </div>
-          )}
-          {partial && (
-            <p className="usage-warning">
-              <Icon name="alert" size={14} />
-              Incomplete cost coverage. Missing usage or pricing is not counted as free.
+        {report && (
+          <>
+            <p className="usage-scope-note">
+              {scope === "project"
+                ? "Recorded across this project, including setup, settings design and retained task history."
+                : scope === "setup"
+                  ? "All recorded stages and retries in this setup operation share this total."
+                  : report.scope.kind === "task"
+                    ? "Planning, refinement and execution for this task, including retries and recovery."
+                    : "Recorded planning, refinement and execution for this workflow."}
             </p>
-          )}
-          <details className="usage-breakdown">
-            <summary>
-              Usage details · {report.sessionCount} model{" "}
-              {report.sessionCount === 1 ? "session" : "sessions"} ·{" "}
-              {usageTokens(report.total).toLocaleString()} tokens
-            </summary>
-            <p>
-              Amounts use reported token usage and recorded model prices; they may differ from your
-              provider's invoice.
-            </p>
-            {!!uniqueWarnings.length && (
-              <ul className="usage-warnings">
-                {uniqueWarnings.map((warning) => (
-                  <li key={warning}>{warning}</li>
+            {!!report.phases.length && (
+              <div className="usage-phases" aria-label="Cost by phase">
+                {report.phases.map((phase) => (
+                  <span key={phase.phase}>
+                    <span>{usagePhaseLabels[phase.phase]}</span>
+                    <strong>{usageCost(phase.usage, unfinished(phase.phase))}</strong>
+                  </span>
                 ))}
-              </ul>
+              </div>
             )}
-            {!!report.models.length && <ModelUsageTable report={report} />}
-            {!!(
-              report.legacyExecution.requests ||
-              usageTokens(report.legacyExecution) ||
-              report.legacyExecution.costUsd
-            ) && (
-              <p className="usage-legacy">
-                Historical execution: {usageCost(report.legacyExecution)} is already included in
-                this total. Model session details were not recorded for that activity.
+            {(report.limits.totalCostUsd !== undefined ||
+              report.limits.executionCostUsd !== undefined) && (
+              <div className="usage-limits">
+                {report.limits.totalCostUsd !== undefined && (
+                  <span>
+                    Total limit <strong>${report.limits.totalCostUsd.toFixed(4)}</strong>
+                  </span>
+                )}
+                {report.limits.remainingCostUsd !== null ? (
+                  <span>
+                    Remaining <strong>${report.limits.remainingCostUsd.toFixed(4)}</strong>
+                  </span>
+                ) : (
+                  report.limits.totalCostUsd !== undefined && (
+                    <span>Remaining amount unavailable</span>
+                  )
+                )}
+                {report.limits.executionCostUsd !== undefined && (
+                  <span>
+                    Execution limit <strong>${report.limits.executionCostUsd.toFixed(4)}</strong>
+                  </span>
+                )}
+              </div>
+            )}
+            {partial && (
+              <p className="usage-warning">
+                <Icon name="alert" size={14} />
+                Incomplete cost coverage. Missing usage or pricing is not counted as free.
               </p>
             )}
-            {!report.sessionCount && !report.total.requests && !report.incomplete && (
-              <p>No model usage recorded yet.</p>
-            )}
-            {!!report.sessions.length && (
-              <details className="usage-sessions">
-                <summary>
-                  Model sessions
-                  {report.sessionsTruncated
-                    ? ` · latest ${report.sessions.length} of ${report.sessionCount}`
-                    : ""}
-                </summary>
-                {report.sessionsTruncated && <p>Totals include all retained sessions.</p>}
-                {report.sessions.map((session) => (
-                  <article key={session.id} className="usage-session">
-                    <div>
-                      <strong>{session.model}</strong>
-                      <span>
-                        {usageCost(
-                          session.usage,
-                          ["running", "interrupted"].includes(session.status),
+            <div className="usage-breakdown">
+              <p>
+                {report.sessionCount} model {report.sessionCount === 1 ? "session" : "sessions"} ·{" "}
+                {usageTokens(report.total).toLocaleString()} tokens
+              </p>
+              <p>
+                Amounts use reported token usage and recorded model prices; they may differ from
+                your provider's invoice.
+              </p>
+              {!!uniqueWarnings.length && (
+                <ul className="usage-warnings">
+                  {uniqueWarnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              )}
+              {!!report.models.length && <ModelUsageTable report={report} />}
+              {!!(
+                report.legacyExecution.requests ||
+                usageTokens(report.legacyExecution) ||
+                report.legacyExecution.costUsd
+              ) && (
+                <p className="usage-legacy">
+                  Historical execution: {usageCost(report.legacyExecution)} is already included in
+                  this total. Model session details were not recorded for that activity.
+                </p>
+              )}
+              {!report.sessionCount && !report.total.requests && !report.incomplete && (
+                <p>No model usage recorded yet.</p>
+              )}
+              {!!report.sessions.length && (
+                <details className="usage-sessions">
+                  <summary>
+                    Model sessions
+                    {report.sessionsTruncated
+                      ? ` · latest ${report.sessions.length} of ${report.sessionCount}`
+                      : ""}
+                  </summary>
+                  {report.sessionsTruncated && <p>Totals include all retained sessions.</p>}
+                  {report.sessions.map((session) => (
+                    <article key={session.id} className="usage-session">
+                      <div>
+                        <strong>{session.model}</strong>
+                        <span>
+                          {usageCost(
+                            session.usage,
+                            ["running", "interrupted"].includes(session.status),
+                          )}
+                        </span>
+                      </div>
+                      <p>
+                        {usagePhaseLabels[session.phase]} · {session.status}
+                        {session.nodeId && (
+                          <>
+                            {" "}
+                            · {session.nodeId}
+                            {!!session.visit && <> · visit {session.visit}</>}
+                          </>
                         )}
-                      </span>
-                    </div>
-                    <p>
-                      {usagePhaseLabels[session.phase]} · {session.status}
-                      {session.nodeId && (
-                        <>
-                          {" "}
-                          · {session.nodeId}
-                          {!!session.visit && <> · visit {session.visit}</>}
-                        </>
-                      )}
-                    </p>
-                    <small>
-                      {session.provider} · {session.thinking} thinking · {session.usage.requests}{" "}
-                      {session.usage.requests === 1 ? "request" : "requests"} ·{" "}
-                      {usageTokens(session.usage).toLocaleString()} tokens
-                    </small>
-                    <small>
-                      {new Date(session.startedAt).toLocaleString()} ·{" "}
-                      {session.pricing.source === "unknown"
-                        ? "Price unavailable"
-                        : session.pricing.source === "override"
-                          ? "Configured price"
-                          : "Model catalog price"}
-                    </small>
-                    {session.error && <p className="usage-session-error">{session.error}</p>}
-                  </article>
-                ))}
-              </details>
-            )}
-          </details>
-        </>
-      )}
-      {error && (
-        <p className="usage-fetch-error" role="status">
-          {report ? "Showing the last loaded usage. " : "Could not load usage. "}
-          {error}
-        </p>
-      )}
-    </section>
+                      </p>
+                      <small>
+                        {session.provider} · {session.thinking} thinking · {session.usage.requests}{" "}
+                        {session.usage.requests === 1 ? "request" : "requests"} ·{" "}
+                        {usageTokens(session.usage).toLocaleString()} tokens
+                      </small>
+                      <small>
+                        {new Date(session.startedAt).toLocaleString()} ·{" "}
+                        {session.pricing.source === "unknown"
+                          ? "Price unavailable"
+                          : session.pricing.source === "override"
+                            ? "Configured price"
+                            : "Model catalog price"}
+                      </small>
+                      {session.error && <p className="usage-session-error">{session.error}</p>}
+                    </article>
+                  ))}
+                </details>
+              )}
+            </div>
+          </>
+        )}
+        {error && (
+          <p className="usage-fetch-error" role="status">
+            {report ? "Showing the last loaded usage. " : "Could not load usage. "}
+            {error}
+          </p>
+        )}
+      </div>
+    </details>
   );
 }
 

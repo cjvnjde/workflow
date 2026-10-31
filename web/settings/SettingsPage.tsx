@@ -8,10 +8,8 @@ import {
   type Library,
   type AvailableModel,
   type OrchestrationState,
-  type DesignScope,
 } from "../../src/contracts/index.js";
 import { request } from "../shared/api.js";
-import Icon from "../shared/Icon.js";
 import ModelSettings from "./ModelSettings.js";
 import ModelProfiles from "./ModelProfiles.js";
 import TaskCases from "./TaskCases.js";
@@ -54,7 +52,6 @@ interface SettingsPageProps {
   setupController: SetupJobsController;
   demo: boolean;
   onDirty?: (dirty: boolean) => void;
-  onDesign?: (scope: DesignScope, prompt?: string) => void;
   onContext?: (value: SettingsContext) => void;
 }
 
@@ -67,7 +64,6 @@ export default function SettingsPage({
   setupController,
   demo,
   onDirty,
-  onDesign,
   onContext,
 }: SettingsPageProps) {
   const [tab, setTab] = useState<Section>("providers");
@@ -111,9 +107,6 @@ export default function SettingsPage({
     latest.current = { hasEdits, executionDirty };
   }, [hasEdits, executionDirty]);
   const refreshingDesign = loadedDesignRevision !== designRevision;
-  const designEditError = "Save or discard your form edits before designing with AI.";
-  const visibleError = error === designEditError && !hasEdits ? "" : error;
-  if (error === designEditError && !hasEdits) setError("");
 
   const emitContext = useEffectEvent((value: SettingsContext) => onContext?.(value));
   const emitDirty = useEffectEvent((value: boolean) => onDirty?.(value));
@@ -254,14 +247,6 @@ export default function SettingsPage({
       setNotice("Execution settings saved.");
     }
   }
-  function design(scope: DesignScope, prompt?: string) {
-    if (hasEdits) {
-      setError(designEditError);
-      return;
-    }
-    setError("");
-    onDesign?.(scope, prompt);
-  }
   function changeTab(id: Section) {
     if (id !== tab && (blockDirty || modelDirty || triggerDirty || memoryDirty)) {
       if (!window.confirm("Discard unsaved changes in this section?")) return;
@@ -301,7 +286,6 @@ export default function SettingsPage({
         <h1>Settings</h1>
         <p>Shape how your orchestrator plans, chooses models, and executes work.</p>
       </div>
-      <UsageSummary scope="project" revision={usageRevision} active />
       <nav className="settings-tabs" aria-label="Settings sections">
         {tabs.map(([id, label]) => (
           <button
@@ -311,12 +295,13 @@ export default function SettingsPage({
             onClick={() => changeTab(id)}
           >
             {label}
+            {(id === "triggers" || id === "memory") && <span className="alpha-badge">Alpha</span>}
           </button>
         ))}
       </nav>
-      {visibleError && (
+      {error && (
         <div className="inline-error" role="alert">
-          {visibleError}
+          {error}
         </div>
       )}
       {notice && (
@@ -329,17 +314,6 @@ export default function SettingsPage({
           Project settings changed while you were editing. Your unsaved edits are preserved.{" "}
           <button disabled={busy || applyingDesign} onClick={reload}>
             Reload saved settings
-          </button>
-        </div>
-      )}
-      {hasEdits && (
-        <div className="unsaved-bar" role="status">
-          <span>
-            <Icon name="file" size={15} />
-            You have unsaved edits.
-          </span>
-          <button disabled={busy || applyingDesign} onClick={discardAll}>
-            Discard all edits
           </button>
         </div>
       )}
@@ -375,7 +349,6 @@ export default function SettingsPage({
               onChange={updateSettings}
               models={models}
               busy={busy}
-              onGenerate={(prompt) => design("profiles", prompt)}
             />
           )}
           {tab === "cases" && <TaskCases value={state.settings} onChange={updateSettings} />}
@@ -399,12 +372,15 @@ export default function SettingsPage({
             />
           )}
           {tab === "execution" && execution && (
-            <ExecutionSettings
-              value={execution}
-              onChange={(value) => form.setFieldValue("execution", value)}
-              approval={state.settings.approval}
-              onUpdateApproval={(approval) => updateSettings({ ...state.settings, approval })}
-            />
+            <>
+              <ExecutionSettings
+                value={execution}
+                onChange={(value) => form.setFieldValue("execution", value)}
+                approval={state.settings.approval}
+                onUpdateApproval={(approval) => updateSettings({ ...state.settings, approval })}
+              />
+              <UsageSummary scope="project" revision={usageRevision} active />
+            </>
           )}
           {tab === "triggers" && (
             <TriggerSettings ref={triggerEditor} onDirty={setTriggerDirty} onBusy={setBusy} />

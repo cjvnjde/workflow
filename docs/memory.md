@@ -2,6 +2,8 @@
 
 [Documentation](README.md) → Project memory
 
+**Alpha:** Project memory is marked experimental in Settings.
+
 Memory is optional and **disabled by default**. Enable it in **Settings → Memory** when you want the planner to consult compact project notes, explicit preferences and observations from ordinary work. It does not run benchmarks, launch separate model sessions, automatically retry failed jobs, or start paid summarization. Descriptions and selected detail reads use context and tool turns within the ordinary planning session; that usage is included in its cost accounting.
 
 ![Project memory settings with descriptions and an editable preference](screenshots/project-memory.jpg)

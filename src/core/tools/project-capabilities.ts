@@ -1,6 +1,8 @@
+import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
-import { loadSkillsFromDir } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, loadSkillsFromDir } from "@earendil-works/pi-coding-agent";
 import {
   capabilitiesSchema,
   mcpServerSchema,
@@ -16,12 +18,27 @@ export async function discoverProjectCapabilities(project: string) {
   const capabilities: Capabilities = { skills: [], mcpServers: [] };
   const sources: { kind: "skill" | "mcp"; id: string; path: string }[] = [];
   const warnings: string[] = [];
-  for (const directory of skillDirectories) {
-    const loaded = loadSkillsFromDir({ dir: path.join(project, directory), source: "project" });
+  const directories = skillDirectories.map((directory) => path.resolve(project, directory));
+  let ancestor = path.resolve(project);
+  while (!existsSync(path.join(ancestor, ".git"))) {
+    const parent = path.dirname(ancestor);
+    if (parent === ancestor) break;
+    directories.push(path.join(parent, ".agents/skills"));
+    ancestor = parent;
+  }
+  directories.push(
+    path.join(process.env.HOME || homedir(), ".agents/skills"),
+    path.join(getAgentDir(), "skills"),
+  );
+  for (const directory of new Set(directories)) {
+    const loaded = loadSkillsFromDir({ dir: directory, source: "discovered" });
     for (const diagnostic of loaded.diagnostics)
       warnings.push(`${directory}: ${diagnostic.message}`);
     for (const skill of loaded.skills) {
-      if (capabilities.skills.some((item) => item.id === skill.name)) continue;
+      if (capabilities.skills.some((item) => item.id === skill.name)) {
+        warnings.push(`${skill.filePath}: duplicate skill “${skill.name}”; the first source wins.`);
+        continue;
+      }
       try {
         if ((await stat(skill.filePath)).size > 64_000) throw new Error("Skill exceeds 64 KB");
         const content = await readFile(skill.filePath, "utf8");
@@ -37,7 +54,9 @@ export async function discoverProjectCapabilities(project: string) {
         sources.push({
           kind: "skill",
           id: skill.name,
-          path: path.relative(project, skill.filePath),
+          path: skill.filePath.startsWith(path.resolve(project) + path.sep)
+            ? path.relative(project, skill.filePath)
+            : skill.filePath,
         });
       } catch {
         warnings.push(

@@ -1,42 +1,40 @@
 .usage-summary {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  background: var(--card);
-  padding: 16px 20px;
-  margin: 0 0 20px;
+  margin: 0 0 16px;
   min-width: 0;
 }
 .usage-summary .usage-heading {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 28px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--muted-foreground);
+  font-size: 12px;
 }
-.usage-summary .usage-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
+.usage-summary .usage-heading::-webkit-details-marker {
+  display: none;
 }
-.usage-summary .usage-title svg {
-  color: var(--primary);
+.usage-summary .usage-info {
+  font-size: 14px;
 }
+.usage-summary .usage-content {
+  padding: 12px 0;
+}
+.usage-summary .usage-title,
 .usage-summary .usage-total {
-  font-size: 20px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
-  margin-left: auto;
 }
 .usage-summary .usage-total.partial {
   color: var(--warning);
 }
-.usage-summary .usage-heading > button {
+.usage-summary .usage-content > button {
   font-size: 11px;
   padding: 4px 7px;
 }
 .usage-summary .usage-loading {
-  margin-left: auto;
   color: var(--muted-foreground);
   font-size: 12px;
 }
@@ -92,7 +90,6 @@
   padding-top: 10px;
   margin-top: 12px;
 }
-.usage-summary .usage-breakdown > summary,
 .usage-summary .usage-sessions > summary {
   cursor: pointer;
   color: var(--muted-foreground);
@@ -198,21 +195,6 @@
   margin: 10px 0 0;
 }
 @media (max-width: 600px) {
-  .usage-summary {
-    padding: 14px;
-  }
-  .usage-summary .usage-heading {
-    gap: 8px;
-  }
-  .usage-summary .usage-title {
-    font-size: 12px;
-  }
-  .usage-summary .usage-total {
-    font-size: 17px;
-  }
-  .usage-summary .usage-heading > button {
-    margin-left: auto;
-  }
   .usage-summary .usage-phases {
     gap: 8px 16px;
   }

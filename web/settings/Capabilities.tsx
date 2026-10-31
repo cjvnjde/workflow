@@ -6,13 +6,10 @@ import type {
   projectCapabilitiesSchema,
 } from "../../src/contracts/index.js";
 import { request } from "../shared/api.js";
-import { useAutosize } from "../shared/autosize.js";
-import Field from "../shared/Field.js";
 import Icon from "../shared/Icon.js";
 import McpSettings from "./McpSettings.js";
 
 type CapabilitiesValue = OrchestrationSettings["capabilities"];
-type Skill = CapabilitiesValue["skills"][number];
 export interface CapabilitiesProps {
   value: CapabilitiesValue;
   onChange: (value: CapabilitiesValue) => void;
@@ -21,68 +18,6 @@ export interface CapabilitiesProps {
 const inspectionSchema = z.object({
   tools: z.array(z.object({ name: z.string(), description: z.string(), readOnly: z.boolean() })),
 });
-
-function SkillSettings({
-  skill,
-  onChange,
-  onRemove,
-}: {
-  skill: Skill;
-  onChange: (value: Skill) => void;
-  onRemove: () => void;
-}) {
-  const instructionsRef = useAutosize(skill.content);
-  function update(patch: Partial<Skill>) {
-    onChange({ ...skill, ...patch });
-  }
-  return (
-    <article className="settings-card">
-      <div className="card-title">
-        <strong>{skill.name}</strong>
-        <label className="checkbox">
-          <input
-            checked={skill.enabled}
-            type="checkbox"
-            onChange={(event) => update({ enabled: event.target.checked })}
-          />
-          Enabled
-        </label>
-        <button className="icon-button" aria-label={`Remove ${skill.name}`} onClick={onRemove}>
-          <Icon name="close" />
-        </button>
-      </div>
-      <Field label="Skill name">
-        {({ id }) => (
-          <input
-            id={id}
-            value={skill.name}
-            onChange={(event) => update({ name: event.target.value })}
-          />
-        )}
-      </Field>
-      <Field label="Skill description">
-        {({ id }) => (
-          <input
-            id={id}
-            value={skill.description}
-            onChange={(event) => update({ description: event.target.value })}
-          />
-        )}
-      </Field>
-      <Field label="Skill instructions">
-        {({ id }) => (
-          <textarea
-            id={id}
-            value={skill.content}
-            ref={instructionsRef}
-            rows={6}
-            onChange={(event) => update({ content: event.target.value })}
-          />
-        )}
-      </Field>
-    </article>
-  );
-}
 
 export default function Capabilities({
   value: capabilities,
@@ -99,36 +34,24 @@ export default function Capabilities({
     [],
   );
 
-  function projectName(kind: string, id: string) {
-    const key = kind === "skill" ? "skills" : "mcpServers";
-    return projectCapabilities?.capabilities[key].find((item) => item.id === id)?.name ?? id;
-  }
-  function enabled(kind: string, id: string) {
-    const key = kind === "skill" ? "skills" : "mcpServers";
-    return (
-      capabilities[key].find((item) => item.id === id)?.enabled ??
-      projectCapabilities?.capabilities[key].find((item) => item.id === id)?.enabled ??
-      false
-    );
-  }
-  function override(kind: string, id: string) {
-    if (kind === "skill") {
-      if (capabilities.skills.some((item) => item.id === id)) return;
-      const item = projectCapabilities?.capabilities.skills.find((item) => item.id === id);
-      if (item)
-        onChange({
-          ...capabilities,
-          skills: [...capabilities.skills, structuredClone(item)],
-        });
-    } else {
-      if (capabilities.mcpServers.some((item) => item.id === id)) return;
-      const item = projectCapabilities?.capabilities.mcpServers.find((item) => item.id === id);
-      if (item)
-        onChange({
-          ...capabilities,
-          mcpServers: [...capabilities.mcpServers, structuredClone(item)],
-        });
-    }
+  const skills = [
+    ...new Map(
+      [...(projectCapabilities?.capabilities.skills ?? []), ...capabilities.skills].map((skill) => [
+        skill.id,
+        skill,
+      ]),
+    ).values(),
+  ];
+  const serverSources =
+    projectCapabilities?.sources.filter((source) => source.kind === "mcp") ?? [];
+  function overrideServer(id: string) {
+    if (capabilities.mcpServers.some((item) => item.id === id)) return;
+    const item = projectCapabilities?.capabilities.mcpServers.find((item) => item.id === id);
+    if (item)
+      onChange({
+        ...capabilities,
+        mcpServers: [...capabilities.mcpServers, structuredClone(item)],
+      });
   }
   async function inspect(id: string) {
     const server: McpServer | undefined =
@@ -162,21 +85,6 @@ export default function Capabilities({
       if (controller.current === active) controller.current = null;
     }
   }
-  function addSkill() {
-    onChange({
-      ...capabilities,
-      skills: [
-        ...capabilities.skills,
-        {
-          id: `skill-${crypto.randomUUID().slice(0, 8)}`,
-          name: "New skill",
-          description: "",
-          content: "Write the skill's instructions here.",
-          enabled: true,
-        },
-      ],
-    });
-  }
   function addServer() {
     onChange({
       ...capabilities,
@@ -198,34 +106,77 @@ export default function Capabilities({
   }
   return (
     <section>
+      <div className="settings-section-title">
+        <div>
+          <h2>Skills</h2>
+          <p>Available to planning and execution. Manage skills in their source files, not here.</p>
+        </div>
+      </div>
+      <details className="settings-card">
+        <summary>How to add skills</summary>
+        <p>
+          Use Pi-compatible SKILL.md files with name and description frontmatter. Put shared skills
+          in ~/.agents/skills or ~/.pi/agent/skills (PI_CODING_AGENT_DIR is respected). Project
+          skills load from .agents/skills, .claude/skills, .codex/skills and .pi/skills; ancestor
+          .agents/skills directories are searched up to the repository root.
+        </p>
+        <p>
+          New tasks reload these files; existing runs keep their snapshot. Reload settings to
+          refresh this list. Project definitions win name collisions; saved Workflow overrides still
+          apply. Skills marked disable-model-invocation are not automatically used.
+        </p>
+      </details>
+      {!skills.length ? (
+        <p className="muted">No skills found in the project or user skill directories.</p>
+      ) : (
+        <ul className="skill-list">
+          {skills.map((skill) => (
+            <li key={skill.id}>
+              <strong>{skill.name}</strong>
+              {!skill.enabled && <small> · Disabled</small>}
+              <p>{skill.description}</p>
+              <small>
+                {capabilities.skills.some((item) => item.id === skill.id)
+                  ? "Workflow settings"
+                  : projectCapabilities?.sources.find(
+                      (source) => source.kind === "skill" && source.id === skill.id,
+                    )?.path}
+              </small>
+            </li>
+          ))}
+        </ul>
+      )}
       <article className="settings-card">
-        <h2>From this project</h2>
+        <h2>Discovered MCP servers</h2>
         <p>
-          Skills are discovered from .agents/skills, .claude/skills, .codex/skills and .pi/skills.
-          MCP servers come from .mcp.json, .codex/config.toml, .vscode/mcp.json and .pi/mcp.json.
-          New runs reload these files; existing runs keep their snapshot.
+          Read from .mcp.json, .codex/config.toml, .vscode/mcp.json and .pi/mcp.json. Edit these
+          files directly or customize a server in Workflow. New runs reload the files; existing runs
+          keep their snapshot.
         </p>
-        <p>
-          Entries below with the same ID override project files, including disabling them. Edit
-          discovered entries in their source files.
-        </p>
-        {!projectCapabilities?.sources.length ? (
-          <p>No project skills or MCP servers found.</p>
+        {!serverSources.length ? (
+          <p>No project MCP servers found.</p>
         ) : (
           <ul>
-            {projectCapabilities.sources.map((source) => (
-              <li key={source.kind + source.id}>
-                <strong>{projectName(source.kind, source.id)}</strong> ·{" "}
-                {enabled(source.kind, source.id) ? "Enabled" : "Disabled"} · {source.kind} ·{" "}
-                {source.path}
-                <button onClick={() => override(source.kind, source.id)}>
-                  Customize in Workflow
+            {serverSources.map((source) => (
+              <li key={source.id}>
+                <strong>
+                  {
+                    projectCapabilities?.capabilities.mcpServers.find(
+                      (item) => item.id === source.id,
+                    )?.name
+                  }
+                </strong>{" "}
+                ·{" "}
+                {(capabilities.mcpServers.find((item) => item.id === source.id)?.enabled ??
+                projectCapabilities?.capabilities.mcpServers.find((item) => item.id === source.id)
+                  ?.enabled)
+                  ? "Enabled"
+                  : "Disabled"}{" "}
+                · {source.path}
+                <button onClick={() => overrideServer(source.id)}>Customize in Workflow</button>
+                <button disabled={!!inspecting} onClick={() => void inspect(source.id)}>
+                  Test connection
                 </button>
-                {source.kind === "mcp" && (
-                  <button disabled={!!inspecting} onClick={() => void inspect(source.id)}>
-                    Test connection
-                  </button>
-                )}
                 {connectionStatus[source.id] && <p role="status">{connectionStatus[source.id]}</p>}
               </li>
             ))}
@@ -237,37 +188,6 @@ export default function Capabilities({
           </p>
         ))}
       </article>
-      <div className="settings-section-title">
-        <div>
-          <h2>Skills</h2>
-          <p>
-            Explicit instructions available during planning and in execution steps. Enable only what
-            this project needs.
-          </p>
-        </div>
-        <button onClick={addSkill}>
-          <Icon name="plus" />
-          Add skill
-        </button>
-      </div>
-      {capabilities.skills.map((skill) => (
-        <SkillSettings
-          key={skill.id}
-          skill={skill}
-          onChange={(value) =>
-            onChange({
-              ...capabilities,
-              skills: capabilities.skills.map((item) => (item.id === skill.id ? value : item)),
-            })
-          }
-          onRemove={() =>
-            onChange({
-              ...capabilities,
-              skills: capabilities.skills.filter((item) => item.id !== skill.id),
-            })
-          }
-        />
-      ))}
       <div className="settings-section-title">
         <div>
           <h2>MCP servers</h2>

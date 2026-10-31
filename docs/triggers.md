@@ -2,6 +2,8 @@
 
 [Documentation](README.md) → GitHub triggers
 
+**Alpha:** Triggers are marked experimental in Settings.
+
 Triggers turn newly created GitHub issues and pull requests into runs of a saved workflow. The application polls GitHub in the background, persists matching events, and starts queued runs when the project is available. The browser can be closed. Temporal remains responsible for workflow execution.
 
 ## Configure and test

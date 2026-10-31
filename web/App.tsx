@@ -811,7 +811,6 @@ export default function App() {
                 demo={project.mode === "demo"}
                 onDirty={settingsChanged}
                 onContext={setSettingsContext}
-                onDesign={design}
               />
             </Suspense>
           ) : !selectedEntry ? (

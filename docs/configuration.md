@@ -13,8 +13,9 @@ All routine setup is available under **Settings**. Changes apply to future propo
 | **Task instructions**  | Shared planning guidance and editable cases such as bug, feature, or investigation.                                                 |
 | **Blocks**             | Reusable TypeScript functions, prompts, model calls, checks, and outputs.                                                           |
 | **Skills & MCP**       | Explicit instruction resources and enabled tool servers.                                                                            |
-| **Execution**          | Approval mode, project instructions, total steps, spending limits, and named commands.                                              |
-| **Memory**             | Enable optional project memory and manage preferences, notes, observations and remembered approaches. [Memory controls](memory.md). |
+| **Execution**          | Approval mode, project instructions, total steps, spending limits, named commands, and expandable project usage.                    |
+| **Triggers (Alpha)**   | Run saved workflows for matching GitHub issues and pull requests.                                                                   |
+| **Memory (Alpha)**     | Enable optional project memory and manage preferences, notes, observations and remembered approaches. [Memory controls](memory.md). |
 
 Unsaved forms have discard/cancel controls. Saves carry revisions, so a stale browser cannot silently overwrite newer settings. Save or discard form changes before applying an AI proposal.
 
@@ -40,7 +41,7 @@ A profile has an ID, name, description, provider, model, thinking level, and ena
 
 Several profiles can use the same model with different roles or thinking levels. A planning profile can be selected in Settings; users do not choose a coordinator for every task. Profiles available to execution are captured as `ctx.models[profileId]` when a workflow is created.
 
-Use `workflow setup` for a complete project bootstrap, or **Generate with AI** / **Regenerate with AI** for a reviewable profile design conversation. `workflow profiles --instructions "..."` explicitly regenerates only profiles. `workflow init` and ordinary application startup never make setup model requests.
+Use `workflow setup` for a complete project bootstrap, or **Design with AI** in the header while on Model profiles for a reviewable profile design conversation. `workflow profiles --instructions "..."` explicitly regenerates only profiles. `workflow init` and ordinary application startup never make setup model requests.
 
 Planning uses your configured project/shared default model and thinking level. An explicit coordinator or coordinator profile overrides it. Changing the default no longer silently selects a different model. If no model has ever been configured, the planner can choose an available fallback; explicit `workflow setup` asks you to select a default first. Model profile cards are configured roles, not the connected provider's full catalog.
 
@@ -78,13 +79,13 @@ Settings designers can inspect the project through tools to inform configuration
 
 ## Skills and MCP
 
-Workflow discovers project skills from `.agents/skills`, `.claude/skills`, `.codex/skills`, and `.pi/skills` (in that precedence order). It reads `SKILL.md` metadata and instructions, preserving the source directory for referenced resources. Skills marked `disable-model-invocation` remain disabled. Settings shows discovered source paths; edit those files to update them.
+Workflow uses Pi's `SKILL.md` loader for project and user skills. It searches `.agents/skills`, `.claude/skills`, `.codex/skills`, and `.pi/skills` in the project, then ancestor `.agents/skills` directories up to the repository root (or filesystem root outside a repository), then `~/.agents/skills` and Pi's user skills directory (`~/.pi/agent/skills`, respecting `PI_CODING_AGENT_DIR`). The first definition of a name wins; collisions produce a diagnostic. Source directories remain available for referenced resources. Skills marked `disable-model-invocation` remain disabled.
 
-Skills are instruction resources with names, descriptions, and content. Enable those relevant to your project. They provide guidance, not executable permission boundaries. Block-specific resource files can also be captured with a block.
+**Skills & MCP** lists each available skill's name, description, status and source without add/edit controls. To add a skill, create `<skills-directory>/<name>/SKILL.md` with YAML `name` and `description` frontmatter followed by instructions, as in [Pi's skills documentation](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/skills.md). Use **Reload settings** to refresh the list; new tasks discover the files automatically. Skills provide guidance, not executable permission boundaries. Block-specific resource files can also be captured with a block.
 
 MCP definitions are discovered from `.mcp.json` (`mcpServers`), `.codex/config.toml` (`mcp_servers`), `.vscode/mcp.json` (`servers`), and `.pi/mcp.json` (`mcpServers`), in that order. Disabled definitions remain disabled. `${workspaceFolder}` is resolved in local commands and arguments. JSON must be strict JSON. HTTP `bearer_token_env_var` references are supported; literal `env` values and custom headers are not imported and produce a visible diagnostic instead of copying credentials into run snapshots. Local servers inherit Workflow’s environment.
 
-Project discovery does not start servers. New tasks resolve and freeze capabilities; existing runs retain their snapshot. Manually configured entries with the same ID override discovered entries, including disabled overrides. Discovery is project-local and does not import global agent configuration or arbitrary extensions.
+Discovery does not start servers. New tasks resolve and freeze capabilities; existing runs retain their snapshot. Saved Workflow entries with the same ID override discovered entries, including disabled overrides. Existing saved skills remain visible read-only. MCP discovery stays project-local; skill discovery also includes the standard user directories. Arbitrary Pi extensions and package installation are not loaded.
 
 MCP servers support HTTP and local stdio transports. Configure an endpoint or command/arguments, inspect its tools, and enable it. Enabled servers expose their discovered tools to execution sessions. The task graph coordinator never invokes MCP tools.
 
@@ -96,7 +97,7 @@ Review approval is the default. **Automatic** mode starts an accepted plan witho
 
 The total step limit defaults to 30 and can be set from 1 to 500. Per-step visits, loop iterations, block time/operation limits, and model time/tool-call limits also apply. Choose bounds that allow the intended feedback loop while preventing indefinite work.
 
-The usage panel shows reported planning, setup, settings design, refinement, and execution costs, including failed attempts, provider retries, and compaction. Expand it for phase/model totals and individual model sessions. Settings shows the project lifetime total; a task or workflow shows its shared task scope. Recovery tasks retain their original scope and spending. `workflow usage [task-or-run-id] --json` exposes the same report.
+Cost appears as a compact, closed-by-default line with an information disclosure. Expand it for scope explanations, refresh, phase/model totals, limits, warnings and individual model sessions. The shared presentation covers task/workflow, setup and project usage, including failed attempts, provider retries and compaction. Project lifetime usage is in **Settings → Execution**, not above every settings tab; task/workflow cost uses its shared task scope. Recovery tasks retain their original scope and spending. Unknown or partial amounts remain marked in the collapsed line. `workflow usage [task-or-run-id] --json` exposes the same report.
 
 Three optional limits are available in **Execution**:
 

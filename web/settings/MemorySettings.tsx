@@ -325,7 +325,9 @@ export default function MemorySettings({ ref, onDirty, onBusy }: Props) {
     <section className="memory-settings" aria-label="Project memory">
       <div className="settings-section-title">
         <div>
-          <h2>Project memory</h2>
+          <h2>
+            Project memory <span className="alpha-badge">Alpha</span>
+          </h2>
           <p>
             Keep concise project guidance and recorded outcomes for future planning. Disabled by
             default.

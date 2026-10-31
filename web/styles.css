@@ -1462,24 +1462,6 @@
   font-size: 11px;
   color: var(--primary);
 }
-:where(.workflow-workspace) .unsaved-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin: 0 0 24px;
-  padding: 10px 14px;
-  border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--border));
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--warning) 6%, var(--card));
-  font-size: 12px;
-}
-:where(.workflow-workspace) .unsaved-bar > span {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  color: var(--warning);
-}
 :where(.workflow-workspace) .function-description {
   display: flex;
   align-items: flex-start;
@@ -1562,10 +1544,10 @@
 }
 :where(.workflow-workspace) .setup-grid {
   display: grid;
-  grid-template-columns: 1.15fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 22px;
   margin-top: 25px;
-  align-items: start;
+  align-items: stretch;
 }
 :where(.workflow-workspace) .setup-card {
   padding: 24px;
@@ -2763,54 +2745,15 @@
   font-size: 12px;
 }
 :where(.workflow-workspace) .ai-button {
+  min-height: 32px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1;
   color: var(--primary);
   border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
   background: color-mix(in srgb, var(--primary) 8%, var(--card));
-}
-:where(.workflow-workspace) .profile-generation {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin: 20px 0;
-  padding: 20px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: linear-gradient(
-    110deg,
-    color-mix(in srgb, var(--primary) 8%, var(--card)),
-    var(--card)
-  );
-}
-:where(.workflow-workspace) .profile-generation > svg {
-  color: var(--primary);
-  flex-shrink: 0;
-}
-:where(.workflow-workspace) .profile-generation > div {
-  flex: 1;
-}
-:where(.workflow-workspace) .profile-generation strong {
-  font-size: 13px;
-}
-:where(.workflow-workspace) .profile-generation p {
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--muted-foreground);
-  margin: 5px 0 0;
-}
-:where(.workflow-workspace) .profile-generation button {
-  flex-shrink: 0;
-}
-@media (max-width: 780px) {
-  :where(.workflow-workspace) .profile-generation {
-    flex-wrap: wrap;
-    padding: 17px;
-  }
-  :where(.workflow-workspace) .profile-generation > div {
-    min-width: 180px;
-  }
-  :where(.workflow-workspace) .profile-generation button {
-    width: 100%;
-  }
 }
 
 /* Workspaces use the available screen; reading surfaces keep a comfortable line length. */

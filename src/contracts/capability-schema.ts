@@ -3,9 +3,12 @@ import { z } from "zod";
 const id = z.string().regex(/^[a-z][a-z0-9-]{0,39}$/);
 export const skillSchema = z
   .object({
-    id,
+    id: z
+      .string()
+      .max(64)
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
     name: z.string().trim().min(1).max(100),
-    description: z.string().max(1000),
+    description: z.string().max(1024),
     content: z.string().min(1).max(64_000),
     enabled: z.boolean().default(true),
   })
@@ -59,7 +62,7 @@ export const mcpServerSchema = z
   });
 export const capabilitiesSchema = z
   .object({
-    skills: z.array(skillSchema).max(30).default([]),
+    skills: z.array(skillSchema).default([]),
     mcpServers: z.array(mcpServerSchema).max(15).default([]),
   })
   .strict();

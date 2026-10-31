@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
-import { test } from "vitest";
+import { tmpdir } from "node:os";
+import { beforeEach, test, vi } from "vitest";
 import { fixture } from "./helpers.js";
 import {
   discoverProjectCapabilities,
@@ -15,6 +16,78 @@ import {
 import { planningAgent } from "../src/core/planning/planning-model.js";
 import { resolveAgentSettings } from "../src/contracts/domain.js";
 import type { AvailableModel } from "../src/contracts/library-editor-schema.js";
+
+beforeEach(async (t) => {
+  const home = await mkdtemp(path.join(tmpdir(), "workflow-skills-home-"));
+  vi.stubEnv("HOME", home);
+  vi.stubEnv("PI_CODING_AGENT_DIR", path.join(home, ".pi/agent"));
+  t.onTestFinished(async () => {
+    vi.unstubAllEnvs();
+    await rm(home, { recursive: true, force: true });
+  });
+});
+
+test("user and ancestor skills are discovered with project precedence and repository boundaries", async (t) => {
+  const { project } = await fixture(t);
+  const nested = path.join(project, "packages/app");
+  await mkdir(nested, { recursive: true });
+  await mkdir(path.join(project, ".git"));
+  async function skill(directory: string, name: string, body: string, disabled = false) {
+    const base = path.join(directory, name);
+    await mkdir(base, { recursive: true });
+    await writeFile(
+      path.join(base, "SKILL.md"),
+      `---\nname: ${name}\ndescription: ${body}\ndisable-model-invocation: ${disabled}\n---\n${body}`,
+    );
+  }
+  const user = path.join(process.env.HOME!, ".agents/skills");
+  const pi = path.join(process.env.PI_CODING_AGENT_DIR!, "skills");
+  await skill(user, "shared", "User instructions");
+  await skill(pi, "pi-only", "Pi instructions", true);
+  await skill(path.join(project, ".agents/skills"), "shared", "Repository instructions");
+  await skill(path.join(nested, ".agents/skills"), "local", "Nested instructions");
+  const result = await discoverProjectCapabilities(nested);
+  const skills = new Map(result.capabilities.skills.map((item) => [item.id, item]));
+  assert.match(skills.get("shared")!.content, /Repository instructions/);
+  assert.doesNotMatch(skills.get("shared")!.content, /User instructions/);
+  assert.equal(skills.get("local")?.description, "Nested instructions");
+  assert.equal(skills.get("pi-only")?.enabled, false);
+  assert.equal(
+    result.sources.find((source) => source.id === "pi-only")?.path,
+    path.join(pi, "pi-only/SKILL.md"),
+  );
+  assert.ok(result.warnings.some((warning) => warning.includes("duplicate skill")));
+  await mkdir(path.join(nested, ".git"));
+  const bounded = await discoverProjectCapabilities(nested);
+  assert.equal(
+    bounded.capabilities.skills.find((item) => item.id === "shared")?.description,
+    "User instructions",
+  );
+});
+
+test("Pi-compatible long skill metadata and more than thirty user skills remain available", async (t) => {
+  const { project } = await fixture(t);
+  const directory = path.join(process.env.HOME!, ".agents/skills");
+  const name = "long-skill-name-".repeat(3) + "complete";
+  for (let index = 0; index < 31; index++) {
+    const id = index === 0 ? name : `skill-${index}`;
+    const base = path.join(directory, id);
+    await mkdir(base, { recursive: true });
+    await writeFile(
+      path.join(base, "SKILL.md"),
+      `---\nname: ${id}\ndescription: ${"x".repeat(1024)}\n---\nInstructions.`,
+    );
+  }
+  const result = await discoverProjectCapabilities(project);
+  assert.deepEqual(
+    new Set(result.capabilities.skills.map((item) => item.id)),
+    new Set([name, ...Array.from({ length: 30 }, (_, index) => `skill-${index + 1}`)]),
+  );
+  assert.equal(
+    result.capabilities.skills.find((item) => item.id === name)?.description,
+    "x".repeat(1024),
+  );
+});
 
 test("project skills and MCP files are discovered, refreshed and not copied into saved overrides", async (t) => {
   const { project } = await fixture(t);

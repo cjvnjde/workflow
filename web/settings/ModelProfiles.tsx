@@ -14,7 +14,6 @@ export interface ModelProfilesProps {
   models: AvailableModel[];
   busy: boolean;
   onChange: (value: OrchestrationSettings) => void;
-  onGenerate: (prompt: string) => void;
 }
 
 function ProfileCard({
@@ -200,7 +199,6 @@ export default function ModelProfiles({
   models,
   busy,
   onChange,
-  onGenerate,
 }: ModelProfilesProps) {
   function updateProfile(profile: Profile) {
     onChange({
@@ -232,11 +230,6 @@ export default function ModelProfiles({
       ],
     });
   }
-  function generate() {
-    onGenerate(
-      `${settings.profiles.length ? "Regenerate" : "Generate"} model profiles for this project. Inspect the project and connected catalog. Create a concise set of useful roles for coding, careful review, and routine work with cost-aware model choices. Preserve the project default as the planning model unless I explicitly ask to change it.`,
-    );
-  }
   return (
     <section>
       <div className="settings-section-title">
@@ -258,21 +251,6 @@ export default function ModelProfiles({
           Connect ChatGPT or another provider in Providers &amp; models first.
         </p>
       )}
-      <div className="profile-generation">
-        <Icon name="spark" size={23} />
-        <div>
-          <strong>
-            {settings.profiles.length ? "Refresh your model lineup" : "Let AI set up your models"}
-          </strong>
-          <p>
-            Use this project and the connected catalog to assign routine work to efficient models
-            and demanding work to stronger ones.
-          </p>
-        </div>
-        <button disabled={busy || !models.length} onClick={generate}>
-          {settings.profiles.length ? "Regenerate with AI" : "Generate with AI"}
-        </button>
-      </div>
       <div className="settings-card">
         <Field
           label="Planning model"

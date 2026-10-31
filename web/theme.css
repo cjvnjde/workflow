@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "shadcn/tailwind.css";
 @import "@xyflow/react/dist/style.css" layer(base);
-@import "./react-reset.css" layer(base);
+@import "./react-reset.css" layer(components);
 @import "./styles.css" layer(components);
 @import "./ui-theme.css" layer(components);
 

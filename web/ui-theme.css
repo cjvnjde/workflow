@@ -4,11 +4,17 @@
   letter-spacing: 1.2px;
 }
 :where(.workflow-workspace) .task-sidebar {
-  padding: 24px 12px 12px;
+  padding: 0 12px 12px;
 }
 :where(.workflow-workspace) .brand {
-  margin-bottom: 24px;
+  height: 65px;
+  flex-shrink: 0;
+  margin-bottom: 18px;
 }
+:where(.workflow-workspace) .icon-button {
+  border-radius: 50%;
+}
+
 :where(.workflow-workspace) .brand-mark {
   width: 36px;
   height: 36px;
@@ -61,6 +67,19 @@
   font-size: 13px;
   padding: 12px 0;
 }
+:where(.workflow-workspace) .alpha-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.4;
+  vertical-align: middle;
+  letter-spacing: 0;
+}
 
 :where(.workflow-workspace) .settings-section-title {
   margin: 0 0 24px;
@@ -77,6 +96,25 @@
 :where(.workflow-workspace) .setup-card {
   padding: 24px;
 }
+:where(.workflow-workspace) .skill-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 28px;
+}
+:where(.workflow-workspace) .skill-list li {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+:where(.workflow-workspace) .skill-list p {
+  margin: 6px 0;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .skill-list small {
+  overflow-wrap: anywhere;
+  color: var(--muted-foreground);
+}
+
 :where(.workflow-workspace) .card-title {
   margin-bottom: 24px;
 }
