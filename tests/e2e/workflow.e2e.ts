@@ -332,7 +332,9 @@ test("a user can edit a draft model and reject a graph without execution", async
   await expect(page.getByRole("heading", { name: edited.title })).toBeVisible();
   await page.getByRole("button", { name: "Reject", exact: true }).click();
   await expect(page.locator(".status-pill")).toHaveText("Rejected");
-  await expect(page.getByText("0/30 step visits", { exact: false })).toBeVisible();
+  const task = await page.request.get(`/api/tasks/${new URL(page.url()).searchParams.get("task")}`);
+  const run = await page.request.get(`/api/runs/${(await task.json()).runId}`);
+  expect((await run.json()).attempts).toEqual([]);
 });
 
 test("a user pauses a Temporal workflow, reloads the page, and resumes the remaining graph", async ({

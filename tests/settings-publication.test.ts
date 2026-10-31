@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import { fixture } from "./helpers.js";
 import { bundleSchema } from "../src/contracts/domain.js";
 import { loadLibrary } from "../src/core/library/library.js";
@@ -292,7 +292,7 @@ test("a process exit during source publication resumes from the journal without 
   // Parent and crash-recovery subprocess must observe the same isolated user defaults.
   const previousHome = process.env.WORKFLOW_HOME;
   process.env.WORKFLOW_HOME = path.join(project, "user-settings");
-  t.after(() => {
+  t.onTestFinished(() => {
     if (previousHome === undefined) delete process.env.WORKFLOW_HOME;
     else process.env.WORKFLOW_HOME = previousHome;
   });

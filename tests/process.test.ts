@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { runProcess } from "../src/infrastructure/process.js";
@@ -38,7 +38,7 @@ for (const reason of ["cancellation", "timeout"] as const) {
     const stopped =
       reason === "cancellation" ? assert.rejects(operation, /Cancelled check/) : operation;
     let childPid: number | undefined;
-    t.after(() => {
+    t.onTestFinished(() => {
       if (childPid) {
         try {
           process.kill(childPid, "SIGKILL");

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import test from "node:test";
+import { test, type TestContext } from "vitest";
 import { EvidenceStore } from "../src/core/storage/evidence-store.js";
 import {
   serializeEvidenceValue,
@@ -21,7 +21,7 @@ import type { WorkflowApplication } from "../src/core/application.js";
 import { WorkflowClient } from "../src/client/client.js";
 import { fixture } from "./helpers.js";
 
-async function sample(t: test.TestContext) {
+async function sample(t: TestContext) {
   const { project, library } = await fixture(t);
   const id = randomUUID();
   const run = runSchema.parse({
@@ -361,7 +361,7 @@ test("API and shared client expose complete content with download headers and sa
       store.content(await store.readAttempt(run, { runId: id, nodeId, visit }), contentId),
   } as unknown as WorkflowApplication;
   const server = await createHttpServer(app);
-  t.after(() => server.close());
+  t.onTestFinished(() => server.close());
   const prefix = `/api/runs/${run.id}/attempts/prepare/1`;
   const headers = { host: "127.0.0.1:4310" };
   assert.equal((await server.inject({ url: `${prefix}/evidence`, headers })).statusCode, 200);

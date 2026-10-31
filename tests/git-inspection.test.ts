@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, type TestContext } from "vitest";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, mkdir, writeFile, rm, symlink, access } from "node:fs/promises";
@@ -8,9 +8,9 @@ import path from "node:path";
 import { inspectGit } from "../src/infrastructure/git-inspection.js";
 import { Workspace } from "../src/core/storage/workspace.js";
 const execute = promisify(execFile);
-async function repo(t: test.TestContext) {
+async function repo(t: TestContext) {
   const root = await mkdtemp(path.join(os.tmpdir(), "workflow-git-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const git = (...args: string[]) =>
     execute(
       "git",

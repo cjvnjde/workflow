@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { fileURLToPath } from "node:url";
 import { attachApplication } from "../src/core/application.js";
 import { WorkflowEngine } from "../src/core/engine.js";

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { validateCompositionOwnership } from "../src/core/execution/composition-ownership.js";
 import { bundleSchema, type Library } from "../src/contracts/domain.js";
 import type { FlowStructure } from "../src/sdk/composition-sdk.js";

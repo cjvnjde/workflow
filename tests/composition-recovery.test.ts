@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { WorkflowEngine } from "../src/core/engine.js";

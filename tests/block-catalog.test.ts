@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import {
   BLOCK_CATALOG_BYTES,

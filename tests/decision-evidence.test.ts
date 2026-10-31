@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { block, step, repeatUntil, when, describeFlow } from "../src/sdk/workflow-sdk.js";
 import { executeFlow, type GroupState } from "../src/core/execution/composition-runtime.js";

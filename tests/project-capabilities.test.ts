@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import { fixture } from "./helpers.js";
 import {
   discoverProjectCapabilities,

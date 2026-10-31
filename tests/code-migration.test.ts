@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { bundleSchema } from "../src/contracts/domain.js";
 import { codeBundle } from "../src/core/library/code-migration.js";
 import { validateComposition } from "../src/core/planning/program-compiler.js";

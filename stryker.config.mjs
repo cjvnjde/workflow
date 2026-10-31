@@ -2,10 +2,9 @@
 export default {
   testRunner: "command",
   commandRunner: {
-    // The command runner cannot select tests or bail for us. Keep this focused
-    // and stop Bun as soon as an assertion kills the active mutant.
+    // Bun is the application runtime; Vitest owns these unit tests.
     command:
-      "bun test --bail --timeout 5000 ./tests/budget.test.ts ./tests/engine-approval.test.ts ./tests/usage-presentation.test.ts",
+      "bun run test:unit --bail 1 tests/budget.test.ts tests/engine-approval.test.ts tests/usage-presentation.test.ts",
   },
   coverageAnalysis: "off",
   // Match the source scope to the focused tests above. These tests need no build,
@@ -29,6 +28,7 @@ export default {
     "reports",
     "test-results",
     "playwright-report",
+    ".vitest",
   ],
   reporters: ["clear-text", "progress", "html", "json"],
   htmlReporter: { fileName: "reports/mutation/index.html" },

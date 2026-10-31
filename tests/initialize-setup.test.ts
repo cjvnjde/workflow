@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import { initializeSetup } from "../src/core/setup/initialize-setup.js";
 import { initializeProject, loadLibrary } from "../src/core/library/library.js";
 import {
@@ -296,7 +296,7 @@ test("setup stages share one cap and retain failed generation spending without p
 
 test("new projects run detected checks with code and honor their declared package manager", async (t) => {
   const project = await mkdtemp(path.join(os.tmpdir(), "workflow-setup-init-"));
-  t.after(() => rm(project, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(project, { recursive: true, force: true }));
   await writeFile(
     path.join(project, "package.json"),
     JSON.stringify({ packageManager: "pnpm@10.0.0", scripts: { test: "vitest run" } }),

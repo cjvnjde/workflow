@@ -164,7 +164,8 @@ test("saving composition source refreshes the reviewed graph before approval", a
     .locator(".composition-heading")
     .click();
   await expect(page.locator(".step-inspector")).toContainText("up to 1 independent branch");
-  await expect(page.locator(".workflow-counts")).toContainText("0/30 step visits");
+  const run = await page.request.get(`/api/runs/${new URL(page.url()).searchParams.get("run")}`);
+  expect((await run.json()).attempts).toEqual([]);
   await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
 });
 

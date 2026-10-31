@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import { setImmediate } from "node:timers/promises";
 import { asyncLocalStorage, type Context } from "@temporalio/activity";
 import type { Worker } from "@temporalio/worker";

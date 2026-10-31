@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import test from "node:test";
+import { test } from "vitest";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 
@@ -24,7 +24,7 @@ test("published package entry points retain runtime exports and resolvable decla
   }
 
   const directory = await mkdtemp(path.join(os.tmpdir(), "workflow-public-types-"));
-  t.after(() => rm(directory, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(directory, { recursive: true, force: true }));
   const consumer = path.join(directory, "consumer.ts");
   await writeFile(
     consumer,

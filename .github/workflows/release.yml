@@ -87,7 +87,7 @@ jobs:
           file dist/workflow
 
       - name: Test relocated executable
-        run: bun test --timeout 120000 tests/standalone.test.ts
+        run: bun run test:standalone:run
 
       - name: Package executable and write checksum
         env:

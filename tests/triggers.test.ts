@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import test, { type TestContext } from "node:test";
+import { test, type TestContext } from "vitest";
 import { runSchema, type WorkflowRun } from "../src/contracts/domain.js";
 import { createTemplate } from "../src/core/library/templates.js";
 import { Triggers } from "../src/core/triggers/triggers.js";

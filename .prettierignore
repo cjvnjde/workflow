@@ -6,6 +6,7 @@ reports/mutation/
 reports/mutation-smoke/
 test-results/
 playwright-report/
+.vitest/
 .workflow/
 .agents/
 .codex/

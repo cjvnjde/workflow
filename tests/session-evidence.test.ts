@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { runAgentSession } from "../src/core/models/agent-session.js";
@@ -87,7 +87,7 @@ test("actual AI dispatches capture application context, prompts, images and comp
   );
   const previous = process.env.WORKFLOW_HOME;
   process.env.WORKFLOW_HOME = home;
-  t.after(() => {
+  t.onTestFinished(() => {
     if (previous === undefined) delete process.env.WORKFLOW_HOME;
     else process.env.WORKFLOW_HOME = previous;
   });

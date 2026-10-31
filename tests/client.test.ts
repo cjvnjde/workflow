@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { z } from "zod";
 import { WorkflowClient, WorkflowApiError, waitForRun } from "../src/client/client.js";
 import type { WorkflowRun } from "../src/contracts/index.js";

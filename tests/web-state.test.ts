@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { z } from "zod";
 import { type runSchema } from "../src/contracts/domain.js";
 import { createTemplate } from "../src/core/library/templates.js";

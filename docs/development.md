@@ -80,40 +80,50 @@ Do not rebuild or remove `dist` while tests or live runs are loading it. Build o
 ## Automated checks
 
 ```sh
-bun run test:unit            # quick source-level tests; no build or services
-bun run test                 # build, then backend and integration tests
-bun run typecheck            # native TypeScript 7 and React TSX checks without rebuilding dist
+bun run test:unit             # quick Vitest source-level tests; no build or services
+bun run test                  # build, then Vitest backend and integration tests
+bun run typecheck             # native TypeScript 7 and React TSX checks without rebuilding dist
 
 # After a build, run a focused suite without rebuilding:
-bun test --timeout 30000 tests/composition.test.ts
+bun run test:run tests/composition.test.ts
 ```
+
+Vitest owns backend, unit, and integration tests in `tests/*.test.ts`; `@playwright/test` owns all browser journeys and screenshot visual tests. Runtime suites execute on Bun because the application uses Bun APIs. Their launcher invokes Vitest's entry point directly with Bun: `bun --bun` would shadow `node` on `PATH` and break fixtures that deliberately exercise Node.js. `bun run test` builds before running the runtime suites; `bun run test:run` runs the same suites without rebuilding. `bun run test:unit` is also build-free. Both build-free commands accept file filters and Vitest options, for example `bun run test:unit tests/budget.test.ts --bail 1`. Use these package scripts, not `bun test`, which invokes Bun's separate test runner.
 
 Tests use disposable projects. They cover SDK behavior, API validation, approval, commands/files, parallel execution, spending, worker loss, restart/recovery, CLI packaging, and terminal setup. Model integration fixtures use local fake providers or mocks; ordinary test suites do not need paid model credentials. Engine tests use real local Temporal services.
 
-The regular CI workflow runs `bun run test:unit` on pushes to `main`, every pull request, and manual dispatch. The fast suites are listed in `scripts/test-unit.ts`; they use source imports, in-memory doubles and disposable files without a build, Temporal service, HTTP listener or browser. Keep new CI suites within those limits. Dependencies are installed from `bun.lock` without building the application, and superseded runs are cancelled. Full integration, browser and mutation suites remain explicit local commands.
+The regular CI workflow runs `bun run test:unit` on pushes to `main`, every pull request, and manual dispatch. The fast suites are listed in the `unit` project in `vitest.config.ts`; they use source imports, in-memory doubles and disposable files without a build, Temporal service, HTTP listener or browser. Keep new CI suites within those limits. Dependencies are installed from `bun.lock` without building the application, and superseded runs are cancelled. Full integration, browser and mutation suites remain explicit local commands.
 
-The terminal tests render through OpenTUI's native test renderer and exercise typing, command completion, graph layout, resizing, and masked secret input. Controller tests use the real HTTP adapter, and a Bun pseudo-terminal test runs the packaged `tui` command through planning, approval, execution, and clean shutdown. Run them after building with `bun test --timeout 45000 tests/tui*.test.ts`. Markdown parser caches and credentials use isolated test directories. Source development uses `bun run workflow tui`.
+The terminal tests render through OpenTUI's native test renderer and exercise typing, command completion, graph layout, resizing, and masked secret input. Controller tests use the real HTTP adapter, and a Bun pseudo-terminal test runs the packaged `tui` command through planning, approval, execution, and clean shutdown. Run them after building with `bun run test:run tests/tui --testTimeout 45000`. Markdown parser caches and credentials use isolated test directories. Source development uses `bun run workflow tui`.
 
 For browser checks:
 
 ```sh
-bunx --bun playwright install chromium
-bun run test:e2e
+bun run test:browser:install  # install Playwright's Chromium
+bun run test:e2e             # build + all Playwright journeys and visual tests
+bun run test:visual          # build + screenshot tests tagged @visual
+bun run test:visual:update   # build + deliberately regenerate visual baselines
 
 # Or use an installed Chromium executable:
 WORKFLOW_CHROMIUM_PATH=/usr/bin/chromium bun run test:e2e
 
-# Focused browser check after a build:
-WORKFLOW_CHROMIUM_PATH=/usr/bin/chromium bun --bun run playwright test tests/e2e/composition.e2e.ts
+# Focused browser journey after a build, without rebuilding:
+bun run test:e2e:run tests/e2e/composition.e2e.ts
 ```
 
-Browser tests run headlessly against an isolated fixture server on port 4311. Keep that port free. They cover graph previews, editing, active states, parallel streams, results, settings, and responsive controls.
+Native Playwright Test runs on Node.js and owns browser fixtures, assertions, and journeys. Visual tests are tagged `@visual` and compare the real application UI using Playwright's `toHaveScreenshot`. Review and commit the macOS/Chromium golden baselines when deliberately updating visuals. Compare and regenerate them on macOS with the same Chromium revision; rendering can differ across platforms. `test:e2e:run` accepts file filters and Playwright options, for example `bun run test:e2e:run --grep @visual`; unlike `test:e2e`, it does not rebuild.
+
+Browser tests run headlessly against an isolated fixture backend started with `bun tests/e2e/server.ts` on port 4311. Keep that port free. Journeys cover graph previews, editing, active states, parallel streams, results, settings, and responsive controls. They honor `WORKFLOW_CHROMIUM_PATH`; otherwise they use Playwright's installed Chromium.
+
+For executable packaging checks, `bun run test:standalone` compiles and then tests the standalone executable. After compilation, `bun run test:standalone:run` tests the built executable without rebuilding; release CI uses this build-free command.
 
 The pinned Temporal SDK may print `v8.promiseHooks.createHook is not available` on Bun. Workflow stack-trace collection is unavailable there; the execution and replay tests still exercise real Temporal behavior.
 
 ## Mutation testing
 
-Stryker requires Node.js 22+ for its coordinator; tests still run on Bun through its built-in command runner. See the [Stryker configuration reference](https://stryker-mutator.io/docs/stryker-js/configuration/).
+Stryker requires Node.js 22.12+ for its coordinator; tests run through Vitest on Bun using Stryker's built-in command runner. See the [Stryker configuration reference](https://stryker-mutator.io/docs/stryker-js/configuration/).
+
+The current Stryker 10.1.1 coordinator still expects the legacy TypeScript compiler API (`parseConfigFileTextToJson`), which TypeScript 7 no longer exports. Mutation startup is blocked by that incompatibility before Vitest runs; it needs an upstream-compatible coordinator. The normal Vitest runtime and Playwright browser commands do not use that API.
 
 ```sh
 bun run test:mutation        # focused budget, approval and usage mutations; fast tests only
@@ -122,9 +132,9 @@ bun run test:mutation:smoke  # smaller approval/usage scope with a 100% score ga
 bun run test:mutation:full   # explicit whole-repository sweep; potentially days
 ```
 
-The default configuration mutates budget calculation, snapshot/activity approval guards and usage display functions. It runs only their source-level tests, with no build or local services. Two independent runners execute mutants in parallel. Bun receives `--bail` so the first failing assertion kills the mutant without waiting for unrelated tests. This is a focused mutation score for the listed source ranges.
+The default configuration mutates budget calculation, snapshot/activity approval guards and usage display functions. It runs only their source-level tests, with no build or local services. Two independent runners execute mutants in parallel. Vitest receives `--bail 1` so the first failing assertion kills the mutant without waiting for unrelated tests. This is a focused mutation score for the listed source ranges.
 
-The command runner cannot select tests by coverage, so `coverageAnalysis` is off and every mutant runs the entire configured test command. It reports that command as one aggregate test: `Ran 1 tests` is not the number of Bun test cases, and `3/N Mutants tested` means three mutated versions completed. Select matching source and tests together when adding mutation targets. All mutation testing remains opt-in and separate from `check` and CI. Both the default and smoke runs require a 100% mutation score for their focused scopes.
+The command runner cannot select tests by coverage, so `coverageAnalysis` is off and every mutant runs the entire configured test command. It reports that command as one aggregate test: `Ran 1 tests` is not the number of Vitest test cases, and `3/N Mutants tested` means three mutated versions completed. Select matching source and tests together when adding mutation targets. All mutation testing remains opt-in and separate from `check` and CI. Both the default and smoke runs require a 100% mutation score for their focused scopes.
 
 Two equivalent budget mutants have line-specific Stryker comments with reasons: a string in the fallback tier array never matches a numeric threshold, and changing the default mode to another non-demo value still takes the live path. They stay visible as ignored in reports. Tests cover missing block definitions, absent/empty tiers, pricing boundaries, snapshot immutability and default live behavior. Mutants that decrement the visit counter or remove the loop body produce infinite loops; their bounded process timeouts count as detected mutations.
 
@@ -231,7 +241,7 @@ The installed CLI and `bun run start` default to a detached host. Use `bun run s
 
 ## Code quality
 
-Run `bun run check` before submitting changes. It runs ESLint with zero warnings, checks Prettier formatting, typechecks TypeScript and React TSX, builds the distributable artifacts, and runs the unit and integration tests. CI runs only the quick unit suite (`bun run test:unit`). Run browser journeys (`bun run test:e2e`) and mutation checks (`bun run test:mutation:smoke`) explicitly when needed.
+Run `bun run check` before submitting changes. It runs ESLint with zero warnings, checks Prettier formatting, typechecks TypeScript and React TSX, builds the distributable artifacts, and runs the unit and integration tests. CI runs only the quick unit suite (`bun run test:unit`). Run visual regression tests (`bun run test:visual`), all browser tests (`bun run test:e2e`), and mutation checks (`bun run test:mutation:smoke`) explicitly when needed.
 
 Use `bun run lint:fix` for safe lint fixes and `bun run format` to format supported repository files. `bun run format:web` limits formatting to the browser application. ESLint uses its flat config with recommended JavaScript, TypeScript, React, Hooks/Compiler, and Fast Refresh rules; Prettier owns formatting. Prefer type-only imports, `const`, explicit module ownership, and meaningful error causes. Narrow, documented exceptions cover heterogeneous SDK generics, control-character validation and integrity checks during cleanup. Historical workflow sources are excluded from automated lint and formatting rewrites to preserve replay behavior.
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdir, writeFile, readFile, stat } from "node:fs/promises";

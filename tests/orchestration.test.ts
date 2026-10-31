@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile, symlink, unlink } from "node:fs/promises";
 import path from "node:path";
@@ -562,7 +562,7 @@ test("enabled MCP servers expose every discovered tool, regardless of legacy sel
       return Response.json({ jsonrpc: "2.0", id: input.id, result });
     },
   });
-  t.after(() => server.stop(true));
+  t.onTestFinished(() => server.stop(true));
   const config = mcpServerSchema.parse({
     id: "fixture",
     name: "Fixture",
@@ -672,7 +672,7 @@ for await (const line of readline.createInterface({ input: process.stdin })) {
   const originalPrivate = process.env.WORKFLOW_TEST_PRIVATE;
   process.env.WORKFLOW_TEST_MCP_TOKEN = "fixture-token";
   process.env.WORKFLOW_TEST_PRIVATE = "inherited-fixture-value";
-  t.after(() => {
+  t.onTestFinished(() => {
     if (originalToken === undefined) {
       delete process.env.WORKFLOW_TEST_MCP_TOKEN;
     } else {

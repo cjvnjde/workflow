@@ -5,6 +5,9 @@ export default defineConfig({
   testMatch: "**/*.e2e.ts",
   fullyParallel: false,
   workers: 1,
+  projects: [{ name: "chromium", use: { browserName: "chromium" } }],
+  snapshotPathTemplate:
+    "{testDir}/__screenshots__/{testFilePath}/{arg}-{projectName}-{platform}{ext}",
   use: {
     baseURL: "http://127.0.0.1:4311",
     headless: true,

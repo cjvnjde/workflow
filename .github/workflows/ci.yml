@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   unit:
-    name: Quick unit tests
+    name: Quick Vitest unit tests
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -25,5 +25,5 @@ jobs:
           bun-version: "1.4.4"
       - name: Install locked dependencies
         run: bun install --frozen-lockfile --ignore-scripts
-      - name: Run quick unit tests
+      - name: Run quick Vitest unit tests
         run: bun run test:unit

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
 import path from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { planningMemory } from "../src/core/planning/planning-memory.js";
 import { MemoryStore } from "../src/core/memory/memory-store.js";

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { usageCost, usageTokens } from "../web/features/usage/usage-presentation.js";
 
 test("unpriced or incomplete usage is never presented as free", () => {

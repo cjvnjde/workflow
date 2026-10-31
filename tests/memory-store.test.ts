@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { access, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import test from "node:test";
+import { test, type TestContext } from "vitest";
 import { MemoryStore, observeContributions } from "../src/core/memory/memory-store.js";
 import { MEMORY_PAGE_BYTES } from "../src/contracts/memory-schema.js";
 import { runSchema, type WorkflowRun } from "../src/contracts/domain.js";
@@ -14,7 +14,7 @@ import type { WorkflowApplication } from "../src/core/application.js";
 import { WorkflowClient } from "../src/client/client.js";
 import { fixture } from "./helpers.js";
 
-async function sample(t: test.TestContext) {
+async function sample(t: TestContext) {
   const { project, library } = await fixture(t);
   const run = runSchema.parse({
     id: randomUUID(),
@@ -511,7 +511,7 @@ test("memory API and shared client validate IDs, explicit authorship and optimis
     deleteMemoryEntry: (id: string, body: unknown) => store.remove(id, body),
   } as unknown as WorkflowApplication;
   const server = await createHttpServer(app);
-  t.after(() => server.close());
+  t.onTestFinished(() => server.close());
   const client = new WorkflowClient({
     baseUrl: "http://127.0.0.1:4310",
     fetch: Object.assign(

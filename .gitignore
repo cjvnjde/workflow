@@ -9,8 +9,8 @@
 # Dependencies, build output, and test artifacts.
 node_modules/
 dist/
-playwright-report/
 test-results/
+playwright-report/
 reports/mutation/
 reports/mutation-smoke/
 *.log

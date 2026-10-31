@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -8,7 +8,7 @@ import { Workspace } from "../src/core/storage/workspace.js";
 
 test("test ownership rejects managed edits and detects unmanaged changes, additions and deletions", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "workflow-ownership-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   await mkdir(path.join(root, "src"));
   await writeFile(path.join(root, "src/example.test.ts"), "original assertions");
   const guard = await ProtectedPaths.capture(root, ["**/*.test.ts"]);
@@ -39,7 +39,7 @@ test("ownership globs reject outside paths rather than silently protecting nothi
 
 test("test-author allowlists protect production from managed and shell edits", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "workflow-test-owner-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   await writeFile(path.join(root, "app.ts"), "production");
   const guard = await ProtectedPaths.capture(root, [], ["**/*.test.ts"]);
   const workspace = await Workspace.create(root, { protect: guard });
@@ -53,7 +53,7 @@ test("test-author allowlists protect production from managed and shell edits", a
 
 test("empty write allowlists deny edits and protection wins over an allowlist", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "workflow-readonly-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const readonly = await ProtectedPaths.capture(root, [], []);
   await assert.rejects(
     (await Workspace.create(root, { protect: readonly })).write("new.ts", "x"),

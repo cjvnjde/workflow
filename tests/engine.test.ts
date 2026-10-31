@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test, { type TestContext } from "node:test";
+import { test, type TestContext } from "vitest";
 import { writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
 import { ActivityFailure, WorkflowFailedError } from "@temporalio/client";

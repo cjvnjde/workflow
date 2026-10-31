@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import { RunStore } from "../src/core/storage/run-store.js";
 import { runSchema } from "../src/contracts/domain.js";
 import { createTemplate } from "../src/core/library/templates.js";

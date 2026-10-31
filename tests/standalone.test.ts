@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { userPaths } from "../src/infrastructure/user-paths.js";
@@ -15,7 +15,8 @@ const execute = promisify(execFile);
 test(
   "a relocated single executable initializes, serves the UI, and executes compiled workflows and workers without Bun on PATH",
   {
-    skip: !existsSync(binary) && "Run bun run test:standalone to build the executable first",
+    // Run bun run test:standalone to build the executable first.
+    skip: !existsSync(binary),
   },
   async (t) => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "workflow-standalone-"));
@@ -58,7 +59,7 @@ test(
         throw new Error(`${String(error)}\n${log}`, { cause: error });
       }
     };
-    t.after(async () => {
+    t.onTestFinished(async () => {
       try {
         await command(["stop"]);
       } finally {

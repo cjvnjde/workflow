@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { rename, writeFile, readdir, readlink } from "node:fs/promises";
-import test from "node:test";
+import { test } from "vitest";
 import {
   projectOperations,
   operationKey,

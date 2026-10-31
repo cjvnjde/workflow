@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { readFile, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import test from "node:test";
+import { test } from "vitest";
 import { SetupJobs } from "../src/core/setup/setup-jobs.js";
 import { bundleSchema } from "../src/contracts/domain.js";
 import { emptyUsage } from "../src/core/execution/budget.js";

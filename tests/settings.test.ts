@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import { loadLibrary } from "../src/core/library/library.js";
 import { loadUserSettings, saveUserSettings } from "../src/core/settings/user-settings.js";
 import { userPaths } from "../src/infrastructure/user-paths.js";
@@ -11,7 +11,7 @@ test("terminal model/thinking defaults apply to new projects while explicit proj
   const context = await fixture(t);
   const previous = process.env.WORKFLOW_HOME;
   process.env.WORKFLOW_HOME = path.join(context.project, "private-user-settings");
-  t.after(() => {
+  t.onTestFinished(() => {
     if (previous === undefined) {
       delete process.env.WORKFLOW_HOME;
     } else {
