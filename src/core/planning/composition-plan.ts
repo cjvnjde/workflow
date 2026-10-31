@@ -10,7 +10,7 @@ import { modelOverride } from "../execution/program-steps.js";
 import { validateCompositionOwnership } from "../execution/composition-ownership.js";
 
 /** Build the UI's step catalog; execution follows the composition, not these legacy route fields. */
-export function compositionPlan(
+export async function compositionPlan(
   structure: FlowStructure,
   title: string,
   task: string,
@@ -57,7 +57,7 @@ export function compositionPlan(
     for (const child of item.children) visit(child);
   };
   visit(structure);
-  validateCompositionOwnership(structure, blocks);
+  await validateCompositionOwnership(structure, blocks);
   if (!nodes.length) throw new Error("Composition must contain at least one step");
   return {
     plan: {

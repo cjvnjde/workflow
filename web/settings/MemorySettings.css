@@ -1,0 +1,187 @@
+.memory-settings {
+  min-width: 0;
+}
+.memory-settings p {
+  line-height: 1.6;
+}
+.memory-settings .memory-switch,
+.memory-settings .memory-list-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+.memory-settings .memory-switch > div {
+  max-width: 800px;
+}
+.memory-settings .memory-switch > button {
+  flex-shrink: 0;
+}
+.memory-settings .memory-switch small,
+.memory-settings .memory-list-heading p,
+.memory-settings .memory-editor-heading small,
+.memory-settings .memory-id {
+  color: var(--muted-foreground);
+}
+.memory-settings .memory-list-heading {
+  margin: 24px 0 10px;
+}
+.memory-settings .memory-list-heading h3 {
+  margin: 0;
+}
+.memory-settings .memory-list-heading h3 small {
+  margin-left: 8px;
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+.memory-settings .memory-list-heading p {
+  margin: 6px 0 0;
+}
+.memory-settings .memory-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(170px, 240px);
+  gap: 16px;
+}
+.memory-settings .memory-layout {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.8fr) minmax(0, 1.4fr);
+  gap: 20px;
+  align-items: start;
+}
+.memory-settings .memory-list {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.memory-settings .memory-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 16px;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.memory-settings .memory-entry[aria-pressed="true"] {
+  border-color: var(--info);
+  background: var(--muted);
+}
+.memory-settings .memory-entry > span:not(.memory-kind),
+.memory-settings .memory-entry small {
+  color: var(--muted-foreground);
+  line-height: 1.5;
+}
+.memory-settings .memory-kind {
+  color: var(--primary);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.memory-settings .memory-empty {
+  color: var(--muted-foreground);
+  padding: 20px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  margin: 0;
+}
+.memory-settings .memory-detail,
+.memory-settings .memory-detail > * {
+  min-width: 0;
+}
+.memory-settings .memory-detail .settings-card:first-child {
+  margin-top: 0;
+}
+.memory-settings .memory-editor-heading {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+}
+.memory-settings .memory-editor-heading h3 {
+  margin: 0 0 12px;
+}
+.memory-settings .memory-detail textarea {
+  resize: vertical;
+  min-height: 70px;
+}
+.memory-settings .memory-conflict {
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid var(--warning);
+  border-radius: 8px;
+}
+.memory-settings .memory-latest {
+  margin-top: 14px;
+}
+.memory-settings .memory-latest pre {
+  max-height: 280px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--card);
+  padding: 12px;
+}
+.memory-settings .memory-id {
+  font-size: 10px;
+  margin-bottom: 0;
+  overflow-wrap: anywhere;
+}
+.memory-settings .memory-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.memory-settings .memory-facts > div {
+  min-width: 0;
+}
+.memory-settings .memory-facts dt {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  margin-bottom: 5px;
+}
+.memory-settings .memory-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+.memory-settings .memory-observation summary {
+  cursor: pointer;
+}
+.memory-settings .memory-sources {
+  padding-left: 18px;
+}
+.memory-settings .memory-sources li {
+  margin-top: 10px;
+}
+.memory-settings .memory-sources small {
+  display: block;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+  margin-top: 5px;
+}
+@media (max-width: 1050px) {
+  .memory-settings .memory-layout {
+    grid-template-columns: minmax(190px, 0.7fr) minmax(0, 1.3fr);
+  }
+}
+@media (max-width: 780px) {
+  .memory-settings .memory-switch,
+  .memory-settings .memory-list-heading {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .memory-settings .memory-filters,
+  .memory-settings .memory-layout,
+  .memory-settings .memory-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .memory-settings .memory-filters {
+    gap: 0;
+  }
+  .memory-settings .memory-list {
+    max-height: 340px;
+    overflow-y: auto;
+  }
+}

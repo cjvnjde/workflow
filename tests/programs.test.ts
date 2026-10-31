@@ -35,8 +35,11 @@ async function until(check: () => boolean) {
 
 test("TypeScript compiler catches type errors, missing exports and invalid inputs without evaluating source", async (t) => {
   const { project } = await fixture(t);
-  assert.equal(checkProgram(project, { source: scripted, input }).input.request, input.request);
-  assert.throws(
+  assert.equal(
+    (await checkProgram(project, { source: scripted, input })).input.request,
+    input.request,
+  );
+  await assert.rejects(
     () =>
       checkProgram(project, {
         source: scripted.replace("ctx.input.request", "ctx.input.absent"),
@@ -44,24 +47,27 @@ test("TypeScript compiler catches type errors, missing exports and invalid input
       }),
     /absent/,
   );
-  assert.throws(
+  await assert.rejects(
     () => checkProgram(project, { source: "export const x = 1", input }),
     /default export/,
   );
-  assert.throws(
+  await assert.rejects(
     () => checkProgram(project, { source: scripted, filename: "../escape.ts", input }),
     /project-relative/,
   );
-  assert.throws(() => checkProgram(project, { source: scripted, input: [] }));
+  await assert.rejects(() => checkProgram(project, { source: scripted, input: [] }));
   // Compilation must never evaluate even top-level orchestration statements.
-  checkProgram(project, { source: `throw new Error("Must not evaluate");\n${scripted}`, input });
+  await checkProgram(project, {
+    source: `throw new Error("Must not evaluate");\n${scripted}`,
+    input,
+  });
 });
 
 test("shipped TypeScript examples typecheck with the installed SDK", async (t) => {
   const { project } = await fixture(t);
   for (const name of ["implement-reviewed", "scripts-only", "composed", "shared-tools"]) {
     const source = await readFile(new URL(`../examples/${name}.ts`, import.meta.url), "utf8");
-    checkProgram(project, { source, input: {} });
+    await checkProgram(project, { source, input: {} });
   }
 });
 
@@ -91,7 +97,7 @@ test("TypeScript script workflows execute only after approval and freeze importe
   await engine.approve(draft.id);
   await engine.waitForIdle();
   const run = engine.get(draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.equal(run.output, "frozen helper");
   assert.equal(await readFile(path.join(project, "effect.txt"), "utf8"), "ran\n");
   assert.equal(run.attempts.length, 1);
@@ -189,7 +195,7 @@ export default workflow({name:"Reviewed implementation",input:z.object({request:
   await engine.approve(draft.id);
   await engine.waitForIdle();
   const run = engine.get(draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.equal(run.output, "Approved");
   assert.deepEqual(
     calls.map((step) => step.node.id),
@@ -331,7 +337,7 @@ test("profile models retain pricing and frozen settings when workflow code custo
     await engine.approve(draft.id);
     await engine.waitForIdle();
     const completed = engine.get(draft.id);
-    assert.equal(completed.status, "completed", completed.error);
+    assert.equal(completed.status, "completed", completed.error ?? "");
     assert.deepEqual(completed.program?.input, {});
     assert.equal(completed.program?.models.shared?.timeoutMs, undefined);
     assert.equal(completed.blocks.review?.definition.agent?.timeoutMs, 10000);
@@ -370,7 +376,7 @@ test("TypeScript workflow pauses and resumes on its archived version without rep
   await resumed.resume(draft.id);
   await resumed.waitForIdle();
   const run = resumed.get(draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.equal(await readFile(path.join(project, "effect.txt"), "utf8"), "ran\n");
   assert.equal(await readFile(path.join(project, "second.txt"), "utf8"), "second");
   assert.equal(run.attempts.length, 2);

@@ -56,7 +56,7 @@ test("a dynamic TypeScript AI estimate stays unknown without blocking a priced e
   assert.ok(draft.estimate?.dynamicNodes?.includes("answer"));
   await engine.approve(draft.id, draft.revision);
   const run = await settledRun(engine, draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.equal(calls, 1);
   assert.equal(run.usage?.costUsd, 0.25);
   assert.deepEqual(JSON.parse(run.artifacts.answer!.data!), { answer: 42 });
@@ -193,7 +193,7 @@ test("ledger sessions and retained custom-runner usage aggregate once across rel
   );
   await engine.approve(draft.id, draft.revision);
   const run = await settledRun(engine, draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.equal(run.usage?.requests, 2);
   const store = new UsageStore(project);
   const scope = await store.ensureRun(run);

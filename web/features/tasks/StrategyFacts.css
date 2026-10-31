@@ -1,0 +1,54 @@
+.strategy-facts {
+  min-width: 0;
+}
+.strategy-facts p {
+  line-height: 1.6;
+  color: var(--muted-foreground);
+}
+.strategy-facts h3 {
+  margin-top: 0;
+}
+.strategy-facts summary {
+  cursor: pointer;
+  line-height: 1.5;
+}
+.strategy-facts details {
+  margin-top: 16px;
+}
+.strategy-facts .strategy-fact-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.strategy-facts .strategy-fact-grid dt {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  margin-bottom: 5px;
+}
+.strategy-facts .strategy-fact-grid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+.strategy-facts .strategy-roles article {
+  padding: 12px;
+  margin-top: 10px;
+  background: var(--card);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.strategy-facts .strategy-roles h4 {
+  margin: 0;
+}
+.strategy-facts .strategy-roles article p {
+  margin: 6px 0;
+}
+.strategy-facts li {
+  margin: 5px 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .strategy-facts .strategy-fact-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

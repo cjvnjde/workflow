@@ -4,7 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import ts from "typescript";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 
@@ -36,20 +35,35 @@ test("published package entry points retain runtime exports and resolvable decla
       })
       .join("\n"),
   );
-  const program = ts.createProgram([consumer], {
-    noEmit: true,
-    strict: true,
-    skipLibCheck: true,
-    target: ts.ScriptTarget.ES2023,
-    module: ts.ModuleKind.ESNext,
-    moduleResolution: ts.ModuleResolutionKind.Bundler,
-    types: ["bun", "node"],
-    typeRoots: [path.join(root, "node_modules/@types")],
-  });
-  assert.deepEqual(
-    ts
-      .getPreEmitDiagnostics(program)
-      .map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")),
-    [],
+  const nativeTsc = fileURLToPath(
+    new URL("./bin/tsc", import.meta.resolve("typescript/package.json")),
   );
+  const compiler = Bun.spawn(
+    [
+      process.execPath,
+      nativeTsc,
+      "--ignoreConfig",
+      "--noEmit",
+      "--strict",
+      "--skipLibCheck",
+      "--target",
+      "ES2023",
+      "--module",
+      "ESNext",
+      "--moduleResolution",
+      "Bundler",
+      "--types",
+      "bun,node",
+      "--typeRoots",
+      path.join(root, "node_modules/@types"),
+      consumer,
+    ],
+    { cwd: root, stdout: "pipe", stderr: "pipe" },
+  );
+  const [code, stdout, stderr] = await Promise.all([
+    compiler.exited,
+    new Response(compiler.stdout).text(),
+    new Response(compiler.stderr).text(),
+  ]);
+  assert.equal(code, 0, `${stdout}${stderr}`);
 });

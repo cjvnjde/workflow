@@ -1,30 +1,33 @@
-import { describeActivity } from "../features/execution/activity.js";
-import { onMounted, onScopeDispose, shallowRef } from "vue";
-import { z } from "zod";
 import {
-  eventSchema,
-  runSchema,
-  type RunEvent,
-  type WorkflowRun,
-} from "../../src/contracts/index.js";
-import { client, projectSchema, request, runListSchema } from "../shared/api.js";
+  queryOptions,
+  skipToken,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import type { z } from "zod";
+import { describeActivity } from "../features/execution/activity.js";
+import type { RunEvent, WorkflowRun } from "../../src/contracts/index.js";
+import { client, type projectSchema } from "../shared/api.js";
+import { workflowQueryKeys } from "../shared/query-client.js";
 import { mergeEvents, mergeRuns, newerRun, type RunList } from "../features/execution/run-state.js";
 
-const refreshKinds = new Set([
-  "draft",
-  "approved",
-  "node_start",
-  "node_end",
-  "group_state",
-  "run_end",
-  "rejected",
-  "paused",
-  "resumed",
-  "interrupted",
-  "recovery",
-  "usage",
-  "run_deleted",
-]);
+const refreshKinds: Record<string, true> = {
+  draft: true,
+  approved: true,
+  node_start: true,
+  node_end: true,
+  group_state: true,
+  run_end: true,
+  rejected: true,
+  paused: true,
+  resumed: true,
+  interrupted: true,
+  recovery: true,
+  usage: true,
+  run_deleted: true,
+};
 export type WorkflowNotice = {
   id: string;
   runId: string;
@@ -33,64 +36,60 @@ export type WorkflowNotice = {
   time: string;
   read: boolean;
 };
-export type TaskStream = {
-  activity: string;
-  text: string;
-  kind: string;
-  time: string;
+export type TaskStream = { activity: string; text: string; kind: string; time: string };
+
+type WorkflowLocalState = {
+  selectedId: string | undefined;
+  usageRevision: number;
+  setupRevision: number;
+  liveText: string;
+  liveTextByNode: Record<string, string>;
+  coordinatorText: string;
+  coordinatorActivity: string;
+  connected: boolean;
+  error: string;
+  taskStreams: Record<string, TaskStream>;
+  notices: WorkflowNotice[];
+};
+type WorkflowSnapshot = WorkflowLocalState & {
+  project: z.infer<typeof projectSchema> | undefined;
+  runs: RunList;
+  run: WorkflowRun | undefined;
+  events: RunEvent[];
 };
 
-/** One event stream per application; refreshes are coalesced and revision guarded. */
-export function useWorkflowData() {
-  const project = shallowRef<z.infer<typeof projectSchema>>();
-  const runs = shallowRef<RunList>([]);
-  const selectedId = shallowRef<string>();
-  const run = shallowRef<WorkflowRun>();
-  const events = shallowRef<RunEvent[]>([]);
-  const usageRevision = shallowRef(0);
-  const setupRevision = shallowRef(0);
-  const liveText = shallowRef("");
-  const liveTextByNode = shallowRef<Record<string, string>>({});
-  const coordinatorText = shallowRef("");
-  const coordinatorActivity = shallowRef("");
-  const connected = shallowRef(false);
-  const error = shallowRef("");
-  const taskStreams = shallowRef<Record<string, TaskStream>>({});
-  const notices = shallowRef<WorkflowNotice[]>([]);
-  const stepSummaries = new Map<string, string>();
-  function markNoticesRead() {
-    notices.value = notices.value.map((item) => ({ ...item, read: true }));
-  }
-  const controller = new AbortController();
-  const options = { signal: controller.signal };
-  let source: ReturnType<typeof client.subscribe> | undefined;
-  let running = false;
-  let pending = false;
-  let pendingEvents = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let loadError = "";
-  const report = (failure: unknown) => {
-    if (!controller.signal.aborted) {
-      error.value = failure instanceof Error ? failure.message : String(failure);
-      loadError = error.value;
-    }
-  };
-
-  function selectRun(id?: string) {
-    if (id === selectedId.value) {
-      return;
-    }
-    selectedId.value = id;
-    run.value = undefined;
-    events.value = [];
-    liveText.value = "";
-    liveTextByNode.value = {};
-    schedule(true);
-  }
-  function applyRun(loaded: WorkflowRun) {
-    run.value = newerRun(run.value, loaded, selectedId.value);
-    const { id, status, mode, createdAt, updatedAt, revision, cursor, deletedAt } = loaded;
-    runs.value = mergeRuns(runs.value, [
+const emptyRuns: RunList = [];
+const emptyEvents: RunEvent[] = [];
+const projectOptions = queryOptions({
+  queryKey: workflowQueryKeys.project,
+  queryFn: ({ signal }) => client.project(signal),
+});
+const runsOptions = queryOptions({
+  queryKey: workflowQueryKeys.runs,
+  queryFn: ({ signal }) => client.runs(signal),
+  structuralSharing: (previous, incoming) =>
+    mergeRuns((previous as RunList | undefined) ?? emptyRuns, incoming as RunList),
+});
+function runOptions(id: string | undefined) {
+  return queryOptions({
+    queryKey: workflowQueryKeys.run(id),
+    queryFn: id ? ({ signal }) => client.run(id, signal) : skipToken,
+    structuralSharing: (previous, incoming) =>
+      newerRun(previous as WorkflowRun | undefined, incoming as WorkflowRun, id),
+  });
+}
+function eventsOptions(id: string | undefined) {
+  return queryOptions({
+    queryKey: workflowQueryKeys.events(id),
+    queryFn: id ? ({ signal }) => client.events(id, signal) : skipToken,
+    structuralSharing: (previous, incoming) =>
+      mergeEvents((previous as RunEvent[] | undefined) ?? emptyEvents, incoming as RunEvent[]),
+  });
+}
+function mergeRunSummary(queryClient: QueryClient, loaded: WorkflowRun) {
+  const { id, status, mode, createdAt, updatedAt, revision, cursor, deletedAt } = loaded;
+  queryClient.setQueryData(runsOptions.queryKey, (previous) =>
+    mergeRuns(previous ?? emptyRuns, [
       {
         id,
         status,
@@ -103,162 +102,152 @@ export function useWorkflowData() {
         title: loaded.plan.title,
         task: loaded.plan.task,
       },
-    ]);
+    ]),
+  );
+}
+
+/** Only transient stream/UI state lives outside the Query cache. */
+function createWorkflowStore(queryClient: QueryClient, initialId?: string) {
+  let snapshot: WorkflowLocalState = {
+    selectedId: initialId,
+    usageRevision: 0,
+    setupRevision: 0,
+    liveText: "",
+    liveTextByNode: {},
+    coordinatorText: "",
+    coordinatorActivity: "",
+    connected: false,
+    error: "",
+    taskStreams: {},
+    notices: [],
+  };
+  const listeners = new Set<() => void>();
+  const stepSummaries = new Map<string, string>();
+  function update(patch: Partial<WorkflowLocalState>) {
+    snapshot = { ...snapshot, ...patch };
+    for (const listener of listeners) listener();
+  }
+  function applyRun(loaded: WorkflowRun) {
+    queryClient.setQueryData(runOptions(loaded.id).queryKey, (current) =>
+      newerRun(current, loaded, loaded.id),
+    );
+    mergeRunSummary(queryClient, loaded);
   }
   async function refreshRuns() {
-    const loaded = await request("/api/runs", runListSchema, options);
-    if (!controller.signal.aborted) {
-      runs.value = mergeRuns(runs.value, loaded);
-    }
+    await queryClient.invalidateQueries({ queryKey: workflowQueryKeys.runs });
   }
   async function refreshProject() {
-    const loaded = await request("/api/project", projectSchema, options);
-    if (!controller.signal.aborted) {
-      project.value = loaded;
-      if (error.value === loadError) error.value = "";
+    await queryClient.invalidateQueries({ queryKey: workflowQueryKeys.project });
+  }
+  function refreshHistory(includeEvents: boolean) {
+    void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.runs });
+    const id = snapshot.selectedId;
+    if (id) {
+      void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.run(id) });
+      if (includeEvents)
+        void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.events(id) });
     }
   }
-  async function refresh() {
-    timer = undefined;
-    if (controller.signal.aborted || running) {
-      return;
-    }
-    running = true;
-    const id = selectedId.value;
-    const includeEvents = pendingEvents;
-    pending = false;
-    pendingEvents = false;
-    const [list, detail, history] = await Promise.allSettled([
-      request("/api/runs", runListSchema, options),
-      id ? request(`/api/runs/${id}`, runSchema, options) : Promise.resolve(undefined),
-      id && includeEvents
-        ? request(`/api/runs/${id}/events`, z.array(eventSchema), options)
-        : Promise.resolve(undefined),
-    ]);
-    if (!controller.signal.aborted) {
-      if (
-        [list, detail, history].every((result) => result.status === "fulfilled") &&
-        error.value === loadError
-      )
-        error.value = "";
-      if (list.status === "fulfilled") {
-        runs.value = mergeRuns(runs.value, list.value);
-      } else {
-        report(list.reason);
-      }
-      if (detail.status === "fulfilled") {
-        if (detail.value) {
-          applyRun(detail.value);
-        }
-      } else if (id === selectedId.value) {
-        report(detail.reason);
-      }
-      if (history.status === "fulfilled") {
-        if (history.value && id === selectedId.value) {
-          events.value = mergeEvents(events.value, history.value);
-        }
-      } else if (id === selectedId.value) {
-        report(history.reason);
-      }
-    }
-    running = false;
-    if (!controller.signal.aborted && pending) {
-      timer = setTimeout(() => {
-        void refresh();
-      }, 80);
-    }
-  }
-  function schedule(includeEvents: boolean) {
-    pending = true;
-    pendingEvents ||= includeEvents;
-    if (!running && timer === undefined) {
-      timer = setTimeout(() => {
-        void refresh();
-      }, 80);
-    }
-  }
-  onMounted(() => {
-    void refreshProject().catch(report);
-    void refreshRuns().catch(report);
-    source = client.subscribe(
+  function start() {
+    const lifetime = new AbortController();
+    const source = client.subscribe(
       (event) => {
-        if (controller.signal.aborted) return;
+        if (lifetime.signal.aborted) return;
         if (event.kind === "setup_state") {
-          setupRevision.value++;
-          usageRevision.value++;
+          update({
+            setupRevision: snapshot.setupRevision + 1,
+            usageRevision: snapshot.usageRevision + 1,
+          });
+          void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.setup });
+          void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.usage });
           return;
         }
-        if (["usage", "model_session_end", "task_state", "run_end"].includes(event.kind))
-          usageRevision.value++;
+        if (["usage", "model_session_end", "task_state", "run_end"].includes(event.kind)) {
+          update({ usageRevision: snapshot.usageRevision + 1 });
+          void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.usage });
+        }
         if (event.kind === "run_deleted") {
-          notices.value = notices.value.filter((item) => item.runId !== event.runId);
+          update({ notices: snapshot.notices.filter((item) => item.runId !== event.runId) });
           stepSummaries.delete(event.runId);
         }
-        if (event.kind === "node_end")
+        if (event.kind === "node_end") {
           stepSummaries.set(event.runId, event.message.split("\n").slice(1).join("\n"));
+        }
         if (
           ["run_end", "interrupted", "paused"].includes(event.kind) &&
-          !notices.value.some((item) => item.id === event.id)
+          !snapshot.notices.some((item) => item.id === event.id)
         ) {
-          const title = runs.value.find((item) => item.id === event.runId)?.title ?? "Workflow";
-          notices.value = [
-            {
-              id: event.id,
-              runId: event.runId,
-              title,
-              time: event.time,
-              read: false,
-              message: `${event.message}${stepSummaries.get(event.runId) ? ` · ${stepSummaries.get(event.runId)}` : ""}`,
-            },
-            ...notices.value,
-          ].slice(0, 30);
+          const runs = queryClient.getQueryData(runsOptions.queryKey) ?? emptyRuns;
+          const title = runs.find((item) => item.id === event.runId)?.title ?? "Workflow";
+          const summary = stepSummaries.get(event.runId);
+          update({
+            notices: [
+              {
+                id: event.id,
+                runId: event.runId,
+                title,
+                time: event.time,
+                read: false,
+                message: `${event.message}${summary ? ` · ${summary}` : ""}`,
+              },
+              ...snapshot.notices,
+            ].slice(0, 30),
+          });
         }
         if (event.runId.startsWith("task:")) {
           const id = event.runId.slice(5);
-          const previous = taskStreams.value[id];
-          taskStreams.value = {
-            ...taskStreams.value,
-            [id]: {
-              activity:
-                event.kind === "text_delta"
-                  ? (previous?.activity ?? "Understanding your request…")
-                  : describeActivity(event).preview,
-              text:
-                event.kind === "text_delta"
-                  ? ((previous?.text ?? "") + event.message).slice(-8000)
-                  : event.kind === "agent_message"
-                    ? event.message
-                    : (previous?.text ?? ""),
-              kind: event.kind === "text_delta" ? (previous?.kind ?? "planning") : event.kind,
-              time: event.time,
+          const previous = snapshot.taskStreams[id];
+          update({
+            taskStreams: {
+              ...snapshot.taskStreams,
+              [id]: {
+                activity:
+                  event.kind === "text_delta"
+                    ? (previous?.activity ?? "Understanding your request…")
+                    : describeActivity(event).preview,
+                text:
+                  event.kind === "text_delta"
+                    ? ((previous?.text ?? "") + event.message).slice(-8000)
+                    : event.kind === "agent_message"
+                      ? event.message
+                      : (previous?.text ?? ""),
+                kind: event.kind === "text_delta" ? (previous?.kind ?? "planning") : event.kind,
+                time: event.time,
+              },
             },
-          };
+          });
           if (event.kind === "task_state") {
-            schedule(false);
+            void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.tasks });
+            void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.task(id) });
+            refreshHistory(false);
           }
           return;
         }
         if (event.runId === "coordinator") {
           if (event.kind === "text_delta") {
-            coordinatorText.value = (coordinatorText.value + event.message).slice(-8000);
+            update({ coordinatorText: (snapshot.coordinatorText + event.message).slice(-8000) });
           } else {
-            coordinatorActivity.value = describeActivity(event).preview.slice(0, 2000);
-            if (event.kind === "agent_message") {
-              coordinatorText.value = event.message.slice(-8000);
-            }
+            update({
+              coordinatorActivity: describeActivity(event).preview.slice(0, 2000),
+              ...(event.kind === "agent_message"
+                ? { coordinatorText: event.message.slice(-8000) }
+                : {}),
+            });
           }
           return;
         }
-        if (event.runId === selectedId.value) {
+        if (event.runId === snapshot.selectedId) {
           if (event.kind === "text_delta") {
             if (event.nodeId)
-              liveTextByNode.value = {
-                ...liveTextByNode.value,
-                [event.nodeId]: ((liveTextByNode.value[event.nodeId] ?? "") + event.message).slice(
-                  -16_000,
-                ),
-              };
-            else liveText.value = (liveText.value + event.message).slice(-16_000);
+              update({
+                liveTextByNode: {
+                  ...snapshot.liveTextByNode,
+                  [event.nodeId]: (
+                    (snapshot.liveTextByNode[event.nodeId] ?? "") + event.message
+                  ).slice(-16_000),
+                },
+              });
+            else update({ liveText: (snapshot.liveText + event.message).slice(-16_000) });
             return;
           }
           if (
@@ -266,59 +255,98 @@ export function useWorkflowData() {
               event.kind,
             )
           ) {
-            if (event.kind === "run_end") {
-              liveText.value = "";
-              liveTextByNode.value = {};
-            } else if (event.nodeId) {
-              const next = { ...liveTextByNode.value };
+            if (event.kind === "run_end") update({ liveText: "", liveTextByNode: {} });
+            else if (event.nodeId) {
+              const next = { ...snapshot.liveTextByNode };
               delete next[event.nodeId];
-              liveTextByNode.value = next;
-            } else liveText.value = "";
+              update({ liveTextByNode: next });
+            } else update({ liveText: "" });
           }
-          events.value = mergeEvents(events.value, [event]);
+          queryClient.setQueryData(eventsOptions(event.runId).queryKey, (previous) =>
+            mergeEvents(previous ?? emptyEvents, [event]),
+          );
         }
-        if (refreshKinds.has(event.kind)) {
-          schedule(false);
-        }
+        if (refreshKinds[event.kind]) refreshHistory(false);
       },
       {
-        signal: controller.signal,
+        signal: lifetime.signal,
         onOpen: () => {
-          connected.value = true;
-          if (!project.value) void refreshProject().catch(report);
-          schedule(true);
+          if (lifetime.signal.aborted) return;
+          update({ connected: true });
+          void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.project });
+          void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.tasks });
+          void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.taskDetails });
+          void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.setup });
+          void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.usage });
+          refreshHistory(true);
         },
         onError: () => {
-          connected.value = false;
+          if (!lifetime.signal.aborted) update({ connected: false });
         },
       },
     );
-  });
-  onScopeDispose(() => {
-    controller.abort();
-    source?.close();
-    clearTimeout(timer);
-  });
+    return () => {
+      lifetime.abort();
+      source.close();
+    };
+  }
   return {
-    project,
-    runs,
-    selectedId,
-    selectRun,
-    run,
+    getLocalSnapshot: () => snapshot,
+    getSnapshot: (): WorkflowSnapshot => ({
+      ...snapshot,
+      project: queryClient.getQueryData(projectOptions.queryKey),
+      runs: queryClient.getQueryData(runsOptions.queryKey) ?? emptyRuns,
+      run: queryClient.getQueryData(runOptions(snapshot.selectedId).queryKey),
+      events: queryClient.getQueryData(eventsOptions(snapshot.selectedId).queryKey) ?? emptyEvents,
+    }),
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    start,
+    selectRun: (id?: string) => {
+      if (id === snapshot.selectedId) return;
+      update({ selectedId: id, liveText: "", liveTextByNode: {} });
+    },
     applyRun,
     refreshRuns,
     refreshProject,
-    events,
-    usageRevision,
-    setupRevision,
-    liveText,
-    liveTextByNode,
-    coordinatorText,
-    coordinatorActivity,
-    connected,
-    error,
-    taskStreams,
-    notices,
-    markNoticesRead,
+    setError: (error: string) => update({ error }),
+    setCoordinatorText: (coordinatorText: string) => update({ coordinatorText }),
+    setCoordinatorActivity: (coordinatorActivity: string) => update({ coordinatorActivity }),
+    markNoticesRead: () =>
+      update({ notices: snapshot.notices.map((item) => ({ ...item, read: true })) }),
+  };
+}
+
+/** Query owns revisioned server state; one reconnecting stream owns transient text/notices. */
+export function useWorkflowData(initialId?: string) {
+  const queryClient = useQueryClient();
+  const [store] = useState(() => createWorkflowStore(queryClient, initialId));
+  const snapshot = useSyncExternalStore(
+    store.subscribe,
+    store.getLocalSnapshot,
+    store.getLocalSnapshot,
+  );
+  const refetchInterval = snapshot.connected ? false : 5000;
+  const project = useQuery(projectOptions);
+  const runs = useQuery({ ...runsOptions, refetchInterval });
+  const run = useQuery({ ...runOptions(snapshot.selectedId), refetchInterval });
+  const events = useQuery({ ...eventsOptions(snapshot.selectedId), refetchInterval });
+  useEffect(() => store.start(), [store]);
+  useEffect(() => {
+    if (run.data) mergeRunSummary(queryClient, run.data);
+  }, [queryClient, run.data]);
+  const loadError = project.error ?? runs.error ?? run.error ?? events.error;
+  return {
+    ...snapshot,
+    project: project.data,
+    runs: runs.data ?? emptyRuns,
+    run: run.data,
+    events: events.data ?? emptyEvents,
+    error: snapshot.error || loadError?.message || "",
+    ...store,
   };
 }

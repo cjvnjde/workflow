@@ -248,7 +248,7 @@ async function finish(task: TaskRequest, publicationStep?: string) {
     path: path.join(directory, `${task.id}.png`),
     fullPage: true,
   });
-  assert.equal(run.status, "completed", run.error ?? run.attempts.at(-1)?.result?.summary);
+  assert.equal(run.status, "completed", run.error ?? run.attempts.at(-1)?.result?.summary ?? "");
   await expect(page.locator(".status-pill")).toHaveText("Completed");
   return run;
 }
@@ -261,7 +261,7 @@ async function approveAndFinish(task: TaskRequest, checkPublicationOrder = false
   assert.ok(draft.program.structure, "Generated composition must contain a reviewed structure");
   await expect(page.getByRole("button", { name: "Workflow", exact: true })).toHaveClass(/active/);
   for (const node of draft.plan.nodes)
-    await expect(page.locator(`.vue-flow__node[data-id="${node.id}"]`)).toBeVisible();
+    await expect(page.locator(`.react-flow__node[data-id="${node.id}"]`)).toBeVisible();
   await page.screenshot({
     path: path.join(directory, `${task.id}-graph.png`),
     fullPage: true,
@@ -436,7 +436,7 @@ export default workflow({name:"Live composed workflow",flow:sequence(repeatUntil
     async () => engine.get(draft.id),
     (item) => ["completed", "failed", "interrupted", "cancelled"].includes(item.status),
   );
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.deepEqual(run.visits, { first: 2, second: 2, review: 2, report: 1 });
   assert.equal(run.groups?.rounds?.iteration, 2);
   for (const id of ["first", "second"])
@@ -649,7 +649,7 @@ async function checkBlockDesigner() {
     },
     (item) => !!item && ["ready", "failed"].includes(item.status),
   );
-  assert.equal(design?.status, "ready", design?.error);
+  assert.equal(design?.status, "ready", design?.error ?? "");
   assert.equal(design?.proposal?.scope, "blocks");
   if (design?.proposal?.scope !== "blocks") throw new Error("Expected a block proposal");
   const proposed = design.proposal.changes.blocks.find(
@@ -673,7 +673,7 @@ async function checkBlockDesigner() {
   await engine.approve(run.id);
   await engine.waitForIdle();
   const finished = engine.get(run.id);
-  assert.equal(finished.status, "completed", finished.error);
+  assert.equal(finished.status, "completed", finished.error ?? "");
   assert.equal(finished.usage?.requests ?? 0, 0);
   assert.match(finished.output ?? "", /math\.ts/);
   await writeFile(

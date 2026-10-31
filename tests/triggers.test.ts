@@ -83,7 +83,7 @@ async function setup(t: TestContext) {
     createTriggeredRun: async (value: WorkflowRun, id: string, input: GithubEvent) => {
       if (!runs.has(id)) {
         creations++;
-        runs.set(id, instantiateTrigger(value, id, input));
+        runs.set(id, await instantiateTrigger(value, id, input));
       }
       return engine.get(id);
     },

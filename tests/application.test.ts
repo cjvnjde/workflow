@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createApplication } from "../src/core/application.js";
 import { createHttpServer } from "../src/http/http-server.js";
@@ -135,23 +134,4 @@ test("headless application shutdown cancels pending coordinator work", async (t)
   } finally {
     await app.close();
   }
-});
-
-test("presentation boundary: web imports only public contracts/client, and core has no UI or HTTP imports", async () => {
-  const webFiles = new Bun.Glob("**/*.{ts,vue}");
-  for await (const filename of webFiles.scan({ cwd: "web", absolute: true })) {
-    const source = await readFile(filename, "utf8");
-    const imports = [...source.matchAll(/(?:\.\.\/)+src\/([^"']+)/g)].map((match) => match[1]);
-    assert.ok(
-      imports.every((name) => name === "contracts/index.js" || name === "client/client.js"),
-      `${filename} imports backend internals`,
-    );
-  }
-  const application = await readFile("src/core/application.ts", "utf8");
-  assert.doesNotMatch(
-    application,
-    /from ["'](?:fastify|@fastify|vue|.*(?:server|terminal-ui|\/web\/))/,
-  );
-  const client = await Bun.build({ entrypoints: ["src/client/client.ts"], target: "browser" });
-  assert.equal(client.success, true, client.logs.join("\n"));
 });

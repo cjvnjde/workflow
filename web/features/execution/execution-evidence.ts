@@ -1,5 +1,14 @@
 import type { WorkflowRun } from "../../../src/contracts/index.js";
 
+export interface StepAttemptInterval {
+  nodeId: string;
+  visit: number;
+  start: number;
+  end: number;
+  outcome: string;
+  label: string;
+}
+
 /** Intervals are actual step attempts, not planned graph branches. */
 export function executionEvidence(
   run: Pick<WorkflowRun, "status" | "updatedAt"> & {
@@ -23,7 +32,7 @@ export function executionEvidence(
       ? `${label} · ${id}`
       : label;
   };
-  const intervals = run.attempts.map((attempt) => {
+  const intervals: StepAttemptInterval[] = run.attempts.map((attempt) => {
     const start = Date.parse(attempt.startedAt);
     const end = Date.parse(
       attempt.finishedAt ?? (terminal ? run.updatedAt : new Date(now).toISOString()),
@@ -53,7 +62,7 @@ export function executionEvidence(
       label: labelFor(attempt.nodeId),
     };
   });
-  const overlaps: { first: string; second: string; seconds: number }[] = [];
+  const overlaps: { id: string; first: string; second: string; seconds: number }[] = [];
   for (let i = 0; i < intervals.length; i++)
     for (let j = i + 1; j < intervals.length; j++) {
       const a = intervals[i]!,
@@ -62,6 +71,7 @@ export function executionEvidence(
       const ms = Math.min(a.end, b.end) - Math.max(a.start, b.start);
       if (ms > 0)
         overlaps.push({
+          id: `${a.nodeId}/${a.visit}/${b.nodeId}/${b.visit}`,
           first: `${a.label} (visit ${a.visit})`,
           second: `${b.label} (visit ${b.visit})`,
           seconds: ms / 1000,

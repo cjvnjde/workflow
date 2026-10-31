@@ -1,134 +1,156 @@
-import { onMounted, onScopeDispose, reactive, watch } from "vue";
+import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import {
   setupJobSchema,
-  setupJobsLatestSchema,
-  setupSchema,
   type Setup,
   type SetupJob,
   type StartSetup,
 } from "../../../src/contracts/index.js";
-import { request } from "../../shared/api.js";
+import { client, request } from "../../shared/api.js";
+import { workflowQueryKeys } from "../../shared/query-client.js";
 
-/** One project-owned job survives all client navigation and disconnections. */
+type SetupJobsState = {
+  setup: Setup | undefined;
+  job: SetupJob | null;
+  loading: boolean;
+  pending: boolean;
+  error: string;
+};
+type SetupAction = { url: string; body: unknown; observedJob: string };
+const setupMutationKey = ["setup-action"] as const;
+const setupOptions = queryOptions({
+  queryKey: workflowQueryKeys.setup,
+  queryFn: async ({ signal }) => {
+    const [setup, latest] = await Promise.all([
+      client.setupState(signal),
+      client.latestSetup(signal),
+    ]);
+    return { setup, job: latest.job };
+  },
+});
+
+/** The host owns mutations; Query owns cancellable lookups and visible-window polling. */
 export function useSetupJobs(options: {
-  revision: () => string | number;
+  revision: string | number;
   completed: () => Promise<void>;
-}) {
-  const state = reactive({
-    setup: undefined as Setup | undefined,
-    job: null as SetupJob | null,
-    loading: false,
-    pending: false,
-    error: "",
-  });
-  let controller: AbortController | undefined;
-  let version = 0;
-  let disposed = false;
-  let initialized = false;
-  let completedGeneration: string | undefined;
-  let actionError = "";
-  let timer: ReturnType<typeof setInterval> | undefined;
-
-  async function refresh() {
-    if (disposed) return;
-    const current = ++version;
-    controller?.abort();
-    controller = new AbortController();
-    state.loading = true;
-    try {
-      const [setup, latest] = await Promise.all([
-        request("/api/setup", setupSchema, { signal: controller.signal }),
-        request("/api/setup-jobs/latest", setupJobsLatestSchema, {
-          signal: controller.signal,
-        }),
-      ]);
-      if (current !== version || disposed) return;
-      if (state.job?.id !== latest.job?.id || state.job?.revision !== latest.job?.revision)
-        actionError = "";
-      state.setup = setup;
-      state.job = latest.job;
-      state.error = actionError;
-      const completed = setup.completedSetup;
-      const generation = completed?.generationId ?? completed?.jobId ?? completed?.completedAt;
-      const changed = initialized && generation && generation !== completedGeneration;
-      initialized = true;
-      const previousGeneration = completedGeneration;
-      completedGeneration = generation;
-      if (changed) {
-        try {
-          await options.completed();
-        } catch (failure) {
-          if (completedGeneration === generation) completedGeneration = previousGeneration;
-          throw failure;
-        }
-      }
-    } catch (failure) {
-      if (current !== version || disposed || controller.signal.aborted) return;
-      state.error = failure instanceof Error ? failure.message : String(failure);
-    } finally {
-      if (current === version && !disposed) state.loading = false;
-    }
-  }
-
-  async function act(url: string, body: unknown) {
-    if (disposed || state.pending) return;
-    version++;
-    controller?.abort();
-    state.loading = false;
-    state.pending = true;
-    actionError = "";
-    state.error = "";
-    try {
-      // The host owns this operation. Unmounting a client must never cancel it.
-      const job = await request(url, setupJobSchema, { method: "POST", body });
-      if (disposed) return;
-      state.job = job;
-      await refresh();
-    } catch (failure) {
-      if (!disposed)
-        state.error = actionError = failure instanceof Error ? failure.message : String(failure);
-    } finally {
-      if (!disposed) state.pending = false;
-    }
-  }
-  const start = (body: StartSetup) => act("/api/setup-jobs", body);
-  const resume = (maxSetupCostUsd?: number) =>
-    state.job
-      ? act(`/api/setup-jobs/${encodeURIComponent(state.job.id)}/resume`, {
-          revision: state.job.revision,
-          ...(maxSetupCostUsd !== undefined ? { maxSetupCostUsd } : {}),
-        })
-      : Promise.resolve();
-  const cancel = () =>
-    state.job
-      ? act(`/api/setup-jobs/${encodeURIComponent(state.job.id)}/cancel`, {
-          revision: state.job.revision,
-        })
-      : Promise.resolve();
-  watch(
-    options.revision,
-    () => {
-      if (!state.pending) void refresh();
+}): SetupJobsController {
+  const queryClient = useQueryClient();
+  const [completionError, setCompletionError] = useState("");
+  const completion = useRef<{
+    initialized: boolean;
+    generation: string | undefined;
+    pending: boolean;
+  }>({ initialized: false, generation: undefined, pending: false });
+  const mounted = useRef(false);
+  const completed = useEffectEvent(options.completed);
+  const action = useMutation({
+    mutationKey: setupMutationKey,
+    onMutate: () => queryClient.cancelQueries({ queryKey: workflowQueryKeys.setup }),
+    mutationFn: ({ url, body }: SetupAction) =>
+      // Unmounting a client must never cancel a project-owned setup operation.
+      request(url, setupJobSchema, { method: "POST", body }),
+    onSuccess: async (job) => {
+      queryClient.setQueryData(setupOptions.queryKey, (current) =>
+        current ? { ...current, job } : undefined,
+      );
+      await queryClient.query({ ...setupOptions, staleTime: 0 });
     },
-    { immediate: true },
-  );
-  const visible = () => {
-    if (document.visibilityState === "visible" && !state.pending) void refresh();
+  });
+  const query = useQuery({
+    ...setupOptions,
+    enabled: !action.isPending,
+    refetchInterval: 5000,
+  });
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.setup });
+  }, [queryClient, options.revision]);
+  useEffect(() => {
+    if (!query.data) return;
+    const saved = query.data.setup.completedSetup;
+    const generation = saved?.generationId ?? saved?.jobId ?? saved?.completedAt;
+    const current = completion.current;
+    if (!current.initialized) {
+      current.initialized = true;
+      current.generation = generation;
+      return;
+    }
+    if (!generation || generation === current.generation || current.pending) return;
+    current.pending = true;
+    void (async () => {
+      try {
+        await completed();
+        current.generation = generation;
+        if (mounted.current) setCompletionError("");
+      } catch (failure) {
+        if (mounted.current)
+          setCompletionError(failure instanceof Error ? failure.message : String(failure));
+      } finally {
+        current.pending = false;
+      }
+    })();
+  }, [query.data, query.dataUpdatedAt]);
+
+  const refresh = useCallback(async () => {
+    if (queryClient.isMutating({ mutationKey: setupMutationKey })) return;
+    try {
+      await queryClient.cancelQueries({ queryKey: workflowQueryKeys.setup });
+      await queryClient.query({ ...setupOptions, staleTime: 0 });
+    } catch {
+      // Query retains the failure for the UI and retries on the next refresh or poll.
+    }
+  }, [queryClient]);
+  const act = async (url: string, body: unknown) => {
+    if (queryClient.isMutating({ mutationKey: setupMutationKey })) return;
+    const job = queryClient.getQueryData(setupOptions.queryKey)?.job;
+    try {
+      await action.mutateAsync({
+        url,
+        body,
+        observedJob: job ? `${job.id}:${job.revision}` : "",
+      });
+    } catch {
+      // The mutation retains its error; server-owned work is not cancelled on unmount.
+    }
   };
-  onMounted(() => {
-    timer = setInterval(() => {
-      if (!state.loading) visible();
-    }, 5000);
-    document.addEventListener("visibilitychange", visible);
-  });
-  onScopeDispose(() => {
-    disposed = true;
-    version++;
-    controller?.abort();
-    clearInterval(timer);
-    document.removeEventListener("visibilitychange", visible);
-  });
-  return { state, refresh, start, resume, cancel };
+  const job = query.data?.job ?? null;
+  const observedJob = job ? `${job.id}:${job.revision}` : "";
+  const actionError = action.variables?.observedJob === observedJob ? action.error?.message : "";
+  return {
+    state: {
+      setup: query.data?.setup,
+      job,
+      loading: query.isFetching,
+      pending: action.isPending,
+      error: query.error?.message || actionError || completionError,
+    },
+    refresh,
+    start: (body) => act("/api/setup-jobs", body),
+    resume: (maxSetupCostUsd) =>
+      job
+        ? act(`/api/setup-jobs/${encodeURIComponent(job.id)}/resume`, {
+            revision: job.revision,
+            ...(maxSetupCostUsd !== undefined ? { maxSetupCostUsd } : {}),
+          })
+        : Promise.resolve(),
+    cancel: () =>
+      job
+        ? act(`/api/setup-jobs/${encodeURIComponent(job.id)}/cancel`, {
+            revision: job.revision,
+          })
+        : Promise.resolve(),
+  };
 }
 
-export type SetupJobsController = ReturnType<typeof useSetupJobs>;
+export interface SetupJobsController {
+  state: SetupJobsState;
+  refresh: () => Promise<void>;
+  start: (body: StartSetup) => Promise<void>;
+  resume: (maxSetupCostUsd?: number) => Promise<void>;
+  cancel: () => Promise<void>;
+}

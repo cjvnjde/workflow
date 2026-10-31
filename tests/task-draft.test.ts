@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { effectScope, ref } from "vue";
-import { useTaskDraft } from "../web/features/tasks/use-task-draft.js";
+import { createDraftStore } from "../web/features/tasks/use-task-draft.js";
 
 function browserStorage() {
   const values = new Map<string, string>();
@@ -26,60 +25,37 @@ const attachment = {
 
 test("task text and uploaded references survive remounts and stay scoped to their project", () => {
   const storage = browserStorage();
-  const project = ref<string | undefined>(undefined);
-  const scope = effectScope();
-  const draft = scope.run(() =>
-    useTaskDraft(
-      () => project.value,
-      () => storage,
-    ),
-  )!;
-  project.value = "/project/one";
+  const draft = createDraftStore(undefined, () => storage);
+  draft.selectProject("/project/one");
   draft.text("Unsent request");
   draft.files([attachment]);
-  project.value = "/project/two";
-  assert.deepEqual(draft.draft.value, { text: "", files: [] });
+  draft.selectProject("/project/two");
+  assert.deepEqual(draft.getSnapshot(), { text: "", files: [] });
   draft.text("Other project");
-  project.value = "/project/one";
-  assert.deepEqual(draft.draft.value, { text: "Unsent request", files: [attachment] });
-  scope.stop();
-  const reloadedScope = effectScope();
-  const reloaded = reloadedScope.run(() =>
-    useTaskDraft(
-      () => "/project/one",
-      () => storage,
-    ),
-  )!;
-  assert.deepEqual(reloaded.draft.value, { text: "Unsent request", files: [attachment] });
+  draft.selectProject("/project/one");
+  assert.deepEqual(draft.getSnapshot(), { text: "Unsent request", files: [attachment] });
+  const reloaded = createDraftStore("/project/one", () => storage);
+  assert.deepEqual(reloaded.getSnapshot(), { text: "Unsent request", files: [attachment] });
   reloaded.clear();
   assert.equal(storage.getItem(`workflow:task-draft:${encodeURIComponent("/project/one")}`), null);
-  reloadedScope.stop();
 });
 
 test("late task creation cannot clear a newer draft or another project's draft", () => {
-  const scope = effectScope();
-  const project = ref("/one");
   const storage = browserStorage();
-  const draft = scope.run(() =>
-    useTaskDraft(
-      () => project.value,
-      () => storage,
-    ),
-  )!;
+  const draft = createDraftStore("/one", () => storage);
   draft.text("Submitted request");
-  const submitted = draft.draft.value;
+  const submitted = draft.getSnapshot();
   draft.text("New request");
   draft.files([attachment]);
   draft.clearSubmitted(submitted);
-  assert.equal(draft.draft.value.text, "New request");
-  const current = draft.draft.value;
-  project.value = "/two";
+  assert.equal(draft.getSnapshot().text, "New request");
+  const current = draft.getSnapshot();
+  draft.selectProject("/two");
   draft.text("Other project");
   draft.clearSubmitted(current);
-  assert.equal(draft.draft.value.text, "Other project");
-  draft.clearSubmitted(draft.draft.value);
-  assert.deepEqual(draft.draft.value, { text: "", files: [] });
-  scope.stop();
+  assert.equal(draft.getSnapshot().text, "Other project");
+  draft.clearSubmitted(draft.getSnapshot());
+  assert.deepEqual(draft.getSnapshot(), { text: "", files: [] });
 });
 
 test("malformed or unavailable browser storage does not break editing or navigation", () => {
@@ -89,12 +65,10 @@ test("malformed or unavailable browser storage does not break editing or navigat
       throw new Error("Storage disabled");
     },
   ]) {
-    const scope = effectScope();
-    const draft = scope.run(() => useTaskDraft(() => "/project", storage))!;
-    assert.deepEqual(draft.draft.value, { text: "", files: [] });
+    const draft = createDraftStore("/project", storage);
+    assert.deepEqual(draft.getSnapshot(), { text: "", files: [] });
     draft.text("Still editable");
     draft.files([attachment]);
-    assert.deepEqual(draft.draft.value, { text: "Still editable", files: [attachment] });
-    scope.stop();
+    assert.deepEqual(draft.getSnapshot(), { text: "Still editable", files: [attachment] });
   }
 });

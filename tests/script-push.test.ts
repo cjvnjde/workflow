@@ -3,6 +3,8 @@ import test from "node:test";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdir, writeFile, readFile, stat } from "node:fs/promises";
+import { watch } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
 import path from "node:path";
 import { fixture, passingResult } from "./helpers.js";
 import { runScriptBlock } from "../src/core/execution/script-runner.js";
@@ -182,22 +184,30 @@ test("cancelling a push terminates the Git process group before its hook can pub
   );
   await git(project, "config", "core.hooksPath", ".hooks");
   const controller = new AbortController();
+  const hookReady = Promise.withResolvers<void>();
+  const watcher = watch(project, (_event, filename) => {
+    if (filename === "hook-ready") hookReady.resolve();
+  });
+  watcher.once("error", hookReady.reject);
   const operation = runScriptBlock({ ...execution(project, library), signal: controller.signal });
   const stopped = assert.rejects(operation, /Cancelled push/);
-  let ready = false;
-  for (let i = 0; i < 100 && !ready; i++) {
-    ready = await stat(path.join(project, "hook-ready")).then(
-      () => true,
-      () => false,
-    );
-    if (!ready) await new Promise((resolve) => setTimeout(resolve, 10));
+  try {
+    await Promise.race([
+      hookReady.promise,
+      stopped.then(() => {
+        throw new Error("Push exited before its cancellation hook started");
+      }),
+    ]);
+    controller.abort(new Error("Cancelled push"));
+    await stopped;
+    await delay(2100);
+    await assert.rejects(stat(path.join(project, "hook-late")), /ENOENT/);
+    assert.equal(await git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/"), "");
+  } finally {
+    watcher.close();
+    controller.abort(new Error("Cancelled push"));
+    await operation.catch(() => {});
   }
-  controller.abort(new Error("Cancelled push"));
-  await stopped;
-  assert.equal(ready, true);
-  await new Promise((resolve) => setTimeout(resolve, 2100));
-  await assert.rejects(stat(path.join(project, "hook-late")), /ENOENT/);
-  assert.equal(await git(remote, "for-each-ref", "--format=%(refname)", "refs/heads/"), "");
 });
 
 test("editable push script follows explicit, branch and project remote preferences without publishing other refs", async (t) => {
@@ -265,7 +275,7 @@ test("an approved script workflow publishes using no AI runner or provider crede
   await engine.approve(draft.id);
   await engine.waitForIdle();
   const completed = engine.get(draft.id);
-  assert.equal(completed.status, "completed", completed.error);
+  assert.equal(completed.status, "completed", completed.error ?? "");
   assert.equal(completed.usage?.requests ?? 0, 0);
   assert.equal(await git(remote, "rev-parse", "refs/heads/feature/publish"), head);
   assert.match(completed.attempts[0]!.result!.summary, /Pushed/);
@@ -307,7 +317,7 @@ test("a script can finish publication after the preceding AI step exhausts the m
   await engine.approve(draft.id);
   await engine.waitForIdle();
   const completed = engine.get(draft.id);
-  assert.equal(completed.status, "completed", completed.error);
+  assert.equal(completed.status, "completed", completed.error ?? "");
   assert.deepEqual(calls, ["review"]);
   assert.equal(completed.usage?.costUsd, 0.1);
   assert.equal(await git(remote, "rev-parse", "refs/heads/feature/publish"), head);

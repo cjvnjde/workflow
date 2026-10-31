@@ -67,7 +67,7 @@ test("one TypeScript block combines typed AI calls, file effects and commands wi
   await engine.approve(draft.id);
   await engine.waitForIdle();
   const run = engine.get(draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.equal(run.attempts.length, 1);
   assert.deepEqual(JSON.parse(run.artifacts.work!.data!), { answer: 2, text: "1" });
   assert.equal(run.artifacts.work!["evidence.md"], "command-output");
@@ -118,7 +118,7 @@ test("code input/output validation and thrown errors fail visibly and recover ma
     assert.ok(run.artifacts.work?.summary);
     assert.equal(await readFile(path.join(project, "original.txt"), "utf8"), "original");
   }
-  assert.throws(
+  await assert.rejects(
     () =>
       checkProgram(project, {
         source: wrap(
@@ -146,7 +146,7 @@ test("saved TypeScript blocks are typechecked, frozen with helpers and return ty
     prompt: "Code owns the behavior",
     skills: [],
   });
-  checkCodeBlocks(project, library.blocks);
+  await checkCodeBlocks(project, library.blocks);
   const invalid = structuredClone(library.blocks);
   invalid.custom!.definition.executor = {
     kind: "code",
@@ -154,7 +154,7 @@ test("saved TypeScript blocks are typechecked, frozen with helpers and return ty
     timeoutMs: 1000,
     maxOperations: 10,
   };
-  assert.throws(() => checkCodeBlocks(project, invalid), /CodeBlock/);
+  await assert.rejects(() => checkCodeBlocks(project, invalid), /CodeBlock/);
   const engine = new WorkflowEngine(project, "live", passingRunner);
   cleanup(() => engine.shutdown());
   await engine.initialize();
@@ -173,7 +173,7 @@ test("saved TypeScript blocks are typechecked, frozen with helpers and return ty
   await engine.approve(draft.id);
   await engine.waitForIdle();
   const run = engine.get(draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.deepEqual(JSON.parse(run.artifacts.custom!.data!), { answer: "frozen", value: 7 });
 });
 
@@ -195,7 +195,7 @@ test("code operation limits and unawaited commands cannot leave background work 
     await engine.approve(draft.id);
     await engine.waitForIdle();
     const run = engine.get(draft.id);
-    assert.equal(run.status, "failed", run.error);
+    assert.equal(run.status, "failed", run.error ?? "");
     assert.match(run.error!, /operation limit|Await every/);
   }
   await new Promise((resolve) => setTimeout(resolve, 1100));
@@ -222,7 +222,7 @@ test("code test results can route a bounded loop without making an AI call", asy
   await engine.approve(draft.id);
   await engine.waitForIdle();
   const run = engine.get(draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.equal(run.output, "passed");
   assert.deepEqual(
     run.attempts.map((attempt) => attempt.result?.outcome),
@@ -241,7 +241,7 @@ test("initialization writes editable TypeScript modules and conversions preserve
       (bundle) => bundle.definition.executor?.kind === "code",
     ),
   );
-  checkCodeBlocks(child, initialized.blocks);
+  await checkCodeBlocks(child, initialized.blocks);
   const file = path.join(child, ".workflow/blocks/review/block.ts");
   await writeFile(
     file,
@@ -274,7 +274,7 @@ writeFileSync(process.env.WORKFLOW_RESULT!,JSON.stringify({outcome:"pass",summar
     skills: [],
   });
   library.blocks.converted = codeBundle(legacy, library.config.commands);
-  checkCodeBlocks(project, library.blocks);
+  await checkCodeBlocks(project, library.blocks);
   const draft = await engine.createProgram(
     "Converted",
     "Read",
@@ -289,7 +289,7 @@ writeFileSync(process.env.WORKFLOW_RESULT!,JSON.stringify({outcome:"pass",summar
   await engine.approve(draft.id);
   await engine.waitForIdle();
   const run = engine.get(draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.equal(run.output, "hello");
   assert.equal(run.artifacts.converted?.evidence, "preserved");
 });
@@ -315,7 +315,7 @@ test("pure code output transforms retain their types and invalid non-JSON output
     await engine.approve(draft.id);
     await engine.waitForIdle();
     const run = engine.get(draft.id);
-    assert.equal(run.status, status, run.error);
+    assert.equal(run.status, status, run.error ?? "");
     if (status === "completed") assert.equal(JSON.parse(run.artifacts.work!.data!), 5);
     else assert.match(run.error!, /JSON values/);
   }
@@ -347,7 +347,7 @@ test("a code block awaiting an unresolved promise still honors its timeout and c
 
 test("unsupported module execution is rejected before the planner accepts a workflow", async (t) => {
   const { project } = await fixture(t);
-  assert.throws(
+  await assert.rejects(
     () =>
       checkProgram(project, {
         source: wrap(
@@ -356,14 +356,14 @@ test("unsupported module execution is rejected before the planner accepts a work
       }),
     /Top-level await|static imports/,
   );
-  assert.throws(
+  await assert.rejects(
     () =>
       checkProgram(project, {
         source: wrap('await Promise.resolve(); const work=block({async run(){return "x";}});'),
       }),
     /Top-level await/,
   );
-  assert.throws(
+  await assert.rejects(
     () =>
       checkProgram(project, {
         source: wrap(
@@ -525,7 +525,7 @@ test("verbose failed-check summaries stay bounded without preventing diagnostic 
   await engine.approve(draft.id);
   await engine.waitForIdle();
   const run = engine.get(draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.deepEqual(
     run.attempts.map((a) => a.nodeId),
     ["checks", "diagnose"],
@@ -606,7 +606,7 @@ test("large recovery handoffs remain complete through referenced context files",
   await engine.approve(draft.id);
   for (let i = 0; i < 300 && engine.get(draft.id).status === "running"; i++) await Bun.sleep(50);
   const run = engine.get(draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.ok(called);
 });
 
@@ -641,7 +641,7 @@ test("large inherited step inputs are referenced without changing a focused AI p
   );
   await engine.approve(draft.id);
   await engine.waitForIdle();
-  assert.equal(engine.get(draft.id).status, "completed", engine.get(draft.id).error);
+  assert.equal(engine.get(draft.id).status, "completed", engine.get(draft.id).error ?? "");
 });
 
 test("ownership roles enforce author boundaries before starting a model and preserve capability selection", async (t) => {
@@ -674,7 +674,7 @@ test("ownership roles enforce author boundaries before starting a model and pres
     assert.equal(
       engine.get(run.id).status,
       valid ? "completed" : "failed",
-      engine.get(run.id).error,
+      engine.get(run.id).error ?? "",
     );
   }
   assert.equal(calls.length, 3);

@@ -40,7 +40,7 @@ test("shared tools retain frozen imports, typed outputs, journaled writes and st
     signal: AbortSignal.timeout(20_000),
   });
   const run = engine.get(draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.equal(await readFile(path.join(project, "report.txt"), "utf8"), "reviewed:source");
   const events = await engine.events(run.id);
   const read = events.find(
@@ -64,7 +64,7 @@ test("shared tools retain frozen imports, typed outputs, journaled writes and st
     activityCard({ ...read, message: "unstructured text is irrelevant" })!.body,
     /reviewed:source/,
   );
-  assert.throws(
+  await assert.rejects(
     () =>
       checkProgram(project, {
         source: source.replace('{path:"input.txt"}', "{path:42}"),
@@ -95,7 +95,7 @@ test("read-only tools retry transient failures; unsafe tools retain the explicit
   await waitForRun(() => engine.get(draft.id), {
     signal: AbortSignal.timeout(20_000),
   });
-  assert.equal(engine.get(draft.id).status, "completed", engine.get(draft.id).error);
+  assert.equal(engine.get(draft.id).status, "completed", engine.get(draft.id).error ?? "");
   assert.equal(calls, 2);
   calls = 0;
   await writeFile(path.join(project, "attempt.txt"), "original");
@@ -128,7 +128,7 @@ test("read-only tools retry transient failures; unsafe tools retain the explicit
   await waitForRun(() => engine.get(unsafe.id), {
     signal: AbortSignal.timeout(20_000),
   });
-  assert.equal(engine.get(unsafe.id).status, "completed", engine.get(unsafe.id).error);
+  assert.equal(engine.get(unsafe.id).status, "completed", engine.get(unsafe.id).error ?? "");
   assert.equal(await readFile(path.join(project, "attempt.txt"), "utf8"), "changed");
 });
 
@@ -175,7 +175,7 @@ test("restarting a paused workflow retains completed shared-tool calls in histor
   const run = await waitForRun(() => resumed.get(draft.id), {
     signal: AbortSignal.timeout(15_000),
   });
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.equal(reads, 2, "completed tool must not run again after reconnecting");
   assert.deepEqual(
     run.attempts.map((attempt) => JSON.parse(attempt.result!.artifacts.data!)),
@@ -296,7 +296,7 @@ test("AI adapter and deterministic calls share the frozen tool", async (t) => {
   await waitForRun(() => engine.get(draft.id), {
     signal: AbortSignal.timeout(20_000),
   });
-  assert.equal(engine.get(draft.id).status, "completed", engine.get(draft.id).error);
+  assert.equal(engine.get(draft.id).status, "completed", engine.get(draft.id).error ?? "");
   assert.match(calls[0]!, /frozen:content/);
 });
 
@@ -408,7 +408,7 @@ test("real Pi session uses the selected shared tool and persists its operation t
   await waitForRun(() => engine.get(draft.id), {
     signal: AbortSignal.timeout(20_000),
   });
-  assert.equal(engine.get(draft.id).status, "completed", engine.get(draft.id).error);
+  assert.equal(engine.get(draft.id).status, "completed", engine.get(draft.id).error ?? "");
   assert.equal(requests.length, 3);
   for (const request of requests)
     assert.deepEqual(request.tools.map((tool) => tool.function.name).sort(), [

@@ -919,7 +919,7 @@ export class WorkflowEngine {
       const prepared = await this.prepareProgram(value, snapshot);
       const composed =
         prepared.program.structure &&
-        compositionPlan(prepared.program.structure, title, task, snapshot);
+        (await compositionPlan(prepared.program.structure, title, task, snapshot));
       signal?.throwIfAborted();
       const now = new Date().toISOString(),
         id = randomUUID();
@@ -998,7 +998,7 @@ export class WorkflowEngine {
       throw new Error("Choose a draft or completed workflow for this trigger");
     if (source.mode !== this.mode)
       throw new Error("The selected workflow belongs to another execution mode");
-    const template = triggerTemplate(source);
+    const template = await triggerTemplate(source);
     await this.versions.load(template.executionVersion!);
     return template;
   }
@@ -1006,7 +1006,7 @@ export class WorkflowEngine {
   /** The inbox reserves id before calling this; recovery reacquires the same run. */
   async createTriggeredRun(template: WorkflowRun, id: string, event: GithubEvent) {
     return this.mutate(async () => {
-      const run = instantiateTrigger(template, id, event);
+      const run = await instantiateTrigger(template, id, event);
       const existing = this.runs.get(id);
       if (existing) {
         const policy = (value: WorkflowRun) =>
@@ -1091,10 +1091,10 @@ export class WorkflowEngine {
       signal?.throwIfAborted();
       const composed =
         prepared.program.structure &&
-        compositionPlan(prepared.program.structure, run.plan.title, run.plan.task, {
+        (await compositionPlan(prepared.program.structure, run.plan.title, run.plan.task, {
           config: run.config,
           blocks: run.program.catalog,
-        });
+        }));
       run.program = { ...prepared.program, composition: composed ? "structured" : undefined };
       run.plan = composed?.plan ?? { ...run.plan, entry: "start", nodes: [] };
       run.blocks = composed?.blocks ?? {};

@@ -1,10 +1,20 @@
 import { distributionUrl } from "../../infrastructure/package-paths.js";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
+import * as ts from "typescript/unstable/ast";
+import { createVirtualFileSystem } from "typescript/unstable/fs";
+import {
+  API,
+  DiagnosticCategory,
+  SymbolFlags,
+  TypeFlags,
+  type Diagnostic,
+  type Project,
+} from "typescript/unstable/async";
 import vm from "node:vm";
 import type { FlowStructure } from "../../sdk/composition-sdk.js";
 import { bundleWorkflowCode, DefaultLogger } from "@temporalio/worker";
@@ -24,50 +34,56 @@ const apiModules = new Set(["workflow", "predictable-workflow/workflow"]);
 // generated workflows and their reusable imports.
 const unusedLocalCodes = new Set([6133, 6138, 6192, 6196, 6198, 6199]);
 
-function unusedFlowDiagnostics(
-  program: ts.Program,
-  diagnostics: readonly ts.Diagnostic[],
-): ts.Diagnostic[] {
-  const checker = program.getTypeChecker();
-  const sdkFile = program.getSourceFile(sdkTypes);
-  const sdk = sdkFile && checker.getSymbolAtLocation(sdkFile);
-  const flow = sdk && checker.getExportsOfModule(sdk).find((symbol) => symbol.name === "FlowNode");
+async function unusedFlowDiagnostics(
+  { program, checker }: Project,
+  diagnostics: readonly Diagnostic[],
+): Promise<Diagnostic[]> {
+  const sdkFile = await program.getSourceFile(sdkTypes);
+  const sdk = sdkFile && (await checker.getSymbolAtLocation(sdkFile));
+  const flow =
+    sdk && (await checker.getExportsOfModule(sdk)).find((symbol) => symbol.name === "FlowNode");
   if (!flow) return [];
-  const flowType = checker.getDeclaredTypeOfSymbol(flow);
+  const flowType = await checker.getDeclaredTypeOfSymbol(flow);
   const reported = new Set<ts.Identifier>();
-  const errors: ts.Diagnostic[] = [];
+  const errors: Diagnostic[] = [];
   for (const diagnostic of diagnostics) {
-    const { file, start, length } = diagnostic;
-    if (!file || start === undefined || length === undefined) continue;
-    const end = start + length;
+    const { fileName, pos: start, end } = diagnostic;
+    const file = fileName && (await program.getSourceFile(fileName));
+    if (!file || start < 0) continue;
+    const names: ts.Identifier[] = [];
     const binding = (name: ts.BindingName): void => {
       if (!ts.isIdentifier(name)) {
-        for (const item of name.elements) if (ts.isBindingElement(item)) binding(item.name);
+        for (const item of name.elements)
+          if (ts.isBindingElement(item) && item.name) binding(item.name);
         return;
       }
-      if (name.getStart(file) < start || name.end > end || reported.has(name)) return;
-      const type = checker.getNonNullableType(checker.getTypeAtLocation(name));
-      if (
-        type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never) ||
-        !checker.isTypeAssignableTo(type, flowType)
-      )
-        return;
-      reported.add(name);
-      errors.push({
-        category: ts.DiagnosticCategory.Error,
-        code: diagnostic.code,
-        file,
-        start: name.getStart(file),
-        length: name.getWidth(file),
-        messageText: `Workflow primitive "${name.text}" is declared but unused. Attach it to the exported workflow's flow (for example sequence(existingFlow, ${name.text})), or remove it if it is intentionally excluded. Declaring a step or group does not execute it.`,
-      });
+      if (name.getStart(file) >= start && name.end <= end && !reported.has(name)) names.push(name);
     };
     const visit = (node: ts.Node): void => {
       if (node.end < start || node.getStart(file) > end) return;
-      if (ts.isVariableDeclaration(node)) binding(node.name);
-      ts.forEachChild(node, visit);
+      if (ts.isVariableDeclaration(node) && node.name) binding(node.name);
+      node.forEachChild(visit);
     };
     visit(file);
+    for (const name of names) {
+      const inferred = await checker.getTypeAtLocation(name);
+      const type = inferred && (await checker.getNonNullableType(inferred));
+      if (
+        !type ||
+        type.flags & (TypeFlags.Any | TypeFlags.Unknown | TypeFlags.Never) ||
+        !(await checker.isTypeAssignableTo(type, flowType))
+      )
+        continue;
+      reported.add(name);
+      errors.push({
+        category: DiagnosticCategory.Error,
+        code: diagnostic.code,
+        fileName: file.fileName,
+        pos: name.getStart(file),
+        end: name.end,
+        text: `Workflow primitive "${name.text}" is declared but unused. Attach it to the exported workflow's flow (for example sequence(existingFlow, ${name.text})), or remove it if it is intentionally excluded. Declaring a step or group does not execute it.`,
+      });
+    }
   }
   return errors;
 }
@@ -105,136 +121,182 @@ function programFiles(project: string, source: ProgramSource, catalog: Library["
 }
 
 /** Typecheck without importing/evaluating the user's module or running its code. */
-export function checkProgram(
+export async function checkProgram(
   project: string,
   value: unknown,
   catalog: Library["blocks"] = {},
   inspectDefinition?: (declarative: boolean) => void,
   excludedFiles?: ReadonlySet<string>,
-): ProgramSource {
+): Promise<ProgramSource> {
   const source = programSourceSchema.parse(value);
   const { files: virtual, check: entry } = programFiles(project, source, catalog);
-  const options: ts.CompilerOptions = {
-    target: ts.ScriptTarget.ES2023,
-    module: ts.ModuleKind.ESNext,
-    moduleResolution: ts.ModuleResolutionKind.Bundler,
-    strict: true,
-    noUnusedLocals: true,
-    skipLibCheck: true,
-    noEmit: true,
-    allowImportingTsExtensions: true,
-    types: [],
-    lib: ["lib.es2023.d.ts"],
-    esModuleInterop: true,
-  };
-  const host = ts.createCompilerHost(options);
-  const read = host.readFile.bind(host),
-    exists = host.fileExists.bind(host);
-  const directoryExists = host.directoryExists?.bind(host);
-  host.directoryExists = (directory) =>
-    [...virtual.keys()].some((file) => file.startsWith(path.resolve(directory) + path.sep)) ||
-    !!directoryExists?.(directory);
-  host.readFile = (file) =>
-    excludedFiles?.has(path.resolve(file))
-      ? undefined
-      : (virtual.get(path.resolve(file)) ?? read(file));
-  host.fileExists = (file) =>
-    !excludedFiles?.has(path.resolve(file)) && (virtual.has(path.resolve(file)) || exists(file));
-  host.resolveModuleNames = (names, containingFile) =>
-    names.map((name) => {
-      if (apiModules.has(name)) return { resolvedFileName: sdkTypes, extension: ts.Extension.Dts };
-      return (
-        ts.resolveModuleName(name, containingFile, options, host).resolvedModule ??
-        ts.resolveModuleName(name, path.join(installRoot, "__workflow_types.ts"), options, host)
-          .resolvedModule
-      );
-    });
-  const program = ts.createProgram([entry], options, host);
-  const checker = program.getTypeChecker();
-  const file = program.getSourceFile(path.resolve(project, source.filename));
-  const module = file && checker.getSymbolAtLocation(file);
-  const exported =
-    module && checker.getExportsOfModule(module).find((symbol) => symbol.name === "default");
-  const flow =
-    exported && file && checker.getTypeOfSymbolAtLocation(exported, file).getProperty("flow");
-  const declarative = !!flow && !(flow.flags & ts.SymbolFlags.Optional);
-  inspectDefinition?.(declarative);
-  for (const file of program.getSourceFiles()) {
-    if (file.isDeclarationFile) continue;
-    const fail = (node: ts.Node, message: string): never => {
-      const at = file.getLineAndCharacterOfPosition(node.getStart(file));
-      throw new Error(
-        `TypeScript workflow needs correction:\n${path.relative(project, file.fileName)}:${at.line + 1}:${at.character + 1}: ${message}`,
-      );
-    };
-    const visit = (node: ts.Node, inFunction = false): void => {
-      if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
-        fail(
-          node,
-          'Use static imports (for example import {z} from "workflow"). Dynamic import() cannot be frozen in this durable bundle.',
+  const config = `${entry}.tsconfig.json`;
+  virtual.set(
+    config,
+    JSON.stringify({
+      compilerOptions: {
+        target: "ES2023",
+        module: "ESNext",
+        moduleResolution: "Bundler",
+        strict: true,
+        noUnusedLocals: true,
+        skipLibCheck: true,
+        noEmit: true,
+        allowImportingTsExtensions: true,
+        types: [],
+        lib: ["ES2023"],
+        paths: Object.fromEntries([...apiModules].map((name) => [name, [sdkTypes]])),
+      },
+      files: [entry],
+    }),
+  );
+  const overlay = createVirtualFileSystem(Object.fromEntries(virtual));
+  // Resolve installed dependencies only after the project's normal node_modules
+  // search is exhausted, matching the bundler's installation-root fallback.
+  const rootModules = path.join(path.parse(path.resolve(project)).root, "node_modules");
+  const installed = (file: string): string | undefined =>
+    file.startsWith(rootModules + path.sep) && !existsSync(file)
+      ? path.join(installRoot, "node_modules", path.relative(rootModules, file))
+      : file === rootModules && !existsSync(file)
+        ? path.join(installRoot, "node_modules")
+        : undefined;
+  const api = new API({
+    cwd: path.resolve(project),
+    fs: {
+      readFile(file) {
+        if (excludedFiles?.has(path.resolve(file))) return null;
+        const contents = overlay.readFile?.(file);
+        if (contents !== undefined) return contents;
+        const fallback = installed(file);
+        return fallback && existsSync(fallback) ? readFileSync(fallback, "utf8") : undefined;
+      },
+      fileExists(file) {
+        if (excludedFiles?.has(path.resolve(file))) return false;
+        if (overlay.fileExists?.(file)) return true;
+        const fallback = installed(file);
+        return fallback && existsSync(fallback) ? true : undefined;
+      },
+      directoryExists(directory) {
+        if (overlay.directoryExists?.(directory)) return true;
+        const fallback = installed(directory);
+        return fallback && existsSync(fallback) ? true : undefined;
+      },
+      realpath(file) {
+        if (virtual.has(file)) return file;
+        const fallback = installed(file);
+        return fallback && existsSync(fallback) ? realpathSync(fallback) : undefined;
+      },
+    },
+  });
+  try {
+    const snapshot = await api.updateSnapshot({ openProjects: [config] });
+    const checkedProject = snapshot.getProject(config);
+    if (!checkedProject) throw new Error("Could not load the TypeScript workflow project");
+    const { program, checker } = checkedProject;
+    const file = await program.getSourceFile(path.resolve(project, source.filename));
+    const module = file && (await checker.getSymbolAtLocation(file));
+    const exported =
+      module &&
+      (await checker.getExportsOfModule(module)).find((symbol) => symbol.name === "default");
+    const flow =
+      exported &&
+      file &&
+      (await checker.getPropertyOfType(
+        await checker.getTypeOfSymbolAtLocation(exported, file),
+        "flow",
+      ));
+    const declarative = !!flow && !(flow.flags & SymbolFlags.Optional);
+    inspectDefinition?.(declarative);
+    for (const filename of await program.getSourceFileNames()) {
+      const file = await program.getSourceFile(filename);
+      if (!file || file.isDeclarationFile) continue;
+      const fail = (node: ts.Node, message: string): never => {
+        const at = file.getLineAndCharacterOfPosition(node.getStart(file));
+        throw new Error(
+          `TypeScript workflow needs correction:\n${path.relative(project, file.fileName)}:${at.line + 1}:${at.character + 1}: ${message}`,
         );
-      }
-      if (
-        !inFunction &&
-        (ts.isAwaitExpression(node) || (ts.isForOfStatement(node) && node.awaitModifier))
-      ) {
-        fail(
-          node,
-          "Top-level await is not supported. Move awaited operations into workflow.run or block.run and use static imports.",
-        );
-      }
-      if (
-        (ts.isImportDeclaration(node) && !node.importClause?.isTypeOnly) ||
-        ts.isExportDeclaration(node)
-      ) {
-        const target = node.moduleSpecifier;
+      };
+      const visit = (node: ts.Node, inFunction = false): void => {
+        if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+          fail(
+            node,
+            'Use static imports (for example import {z} from "workflow"). Dynamic import() cannot be frozen in this durable bundle.',
+          );
+        }
         if (
-          target &&
-          ts.isStringLiteral(target) &&
-          (target.text.startsWith("node:") || builtins.has(target.text))
+          !inFunction &&
+          (ts.isAwaitExpression(node) || (ts.isForOfStatement(node) && node.awaitModifier))
         ) {
           fail(
             node,
-            `Host module "${target.text}" must run through a block context operation (ctx.exec/readFile/writeFile).`,
+            "Top-level await is not supported. Move awaited operations into workflow.run or block.run and use static imports.",
           );
         }
-      }
-      ts.forEachChild(node, (child) => visit(child, inFunction || ts.isFunctionLike(node)));
-    };
-    visit(file);
+        if (
+          (ts.isImportDeclaration(node) &&
+            node.importClause?.phaseModifier !== ts.SyntaxKind.TypeKeyword) ||
+          ts.isExportDeclaration(node)
+        ) {
+          const target = node.moduleSpecifier;
+          if (
+            target &&
+            ts.isStringLiteral(target) &&
+            (target.text.startsWith("node:") || builtins.has(target.text))
+          ) {
+            fail(
+              node,
+              `Host module "${target.text}" must run through a block context operation (ctx.exec/readFile/writeFile).`,
+            );
+          }
+        }
+        node.forEachChild((child) =>
+          visit(child, inFunction || ts.isFunctionLikeDeclaration(node)),
+        );
+      };
+      visit(file);
+    }
+    const checked = [
+      ...(await program.getConfigFileParsingDiagnostics()),
+      ...(await program.getProgramDiagnostics()),
+      ...(await program.getSyntacticDiagnostics()),
+      ...(await program.getBindDiagnostics()),
+      ...(await program.getGlobalDiagnostics()),
+      ...(await program.getSemanticDiagnostics()),
+    ].filter((item) => item.category === DiagnosticCategory.Error);
+    const diagnostics = [
+      ...checked.filter((item) => !unusedLocalCodes.has(item.code)),
+      ...(declarative
+        ? await unusedFlowDiagnostics(
+            checkedProject,
+            checked.filter((item) => unusedLocalCodes.has(item.code)),
+          )
+        : []),
+    ];
+    const message = (item: Diagnostic): string =>
+      [item.text, ...(item.messageChain?.map(message) ?? [])].join("\n");
+    if (diagnostics.length)
+      throw new Error(
+        "TypeScript workflow needs correction:\n" +
+          (
+            await Promise.all(
+              diagnostics.slice(0, 8).map(async (item) => {
+                const file = item.fileName && (await program.getSourceFile(item.fileName));
+                const location =
+                  file && item.pos >= 0 ? file.getLineAndCharacterOfPosition(item.pos) : undefined;
+                return `${item.fileName ? path.relative(project, item.fileName) : source.filename}${location ? `:${location.line + 1}:${location.character + 1}` : ""}: ${message(item)}`;
+              }),
+            )
+          ).join("\n"),
+      );
+  } finally {
+    await api.close();
   }
-  const checked = ts
-    .getPreEmitDiagnostics(program)
-    .filter((item) => item.category === ts.DiagnosticCategory.Error);
-  const diagnostics = [
-    ...checked.filter((item) => !unusedLocalCodes.has(item.code)),
-    ...(declarative
-      ? unusedFlowDiagnostics(
-          program,
-          checked.filter((item) => unusedLocalCodes.has(item.code)),
-        )
-      : []),
-  ];
-  if (diagnostics.length)
-    throw new Error(
-      "TypeScript workflow needs correction:\n" +
-        diagnostics
-          .slice(0, 8)
-          .map((item) => {
-            const location =
-              item.file && item.start !== undefined
-                ? item.file.getLineAndCharacterOfPosition(item.start)
-                : undefined;
-            return `${item.file ? path.relative(project, item.file.fileName) : source.filename}${location ? `:${location.line + 1}:${location.character + 1}` : ""}: ${ts.flattenDiagnosticMessageText(item.messageText, "\n")}`;
-          })
-          .join("\n"),
-    );
   return source;
 }
 
-export function checkCodeBlocks(project: string, blocks: Library["blocks"]) {
+export async function checkCodeBlocks(project: string, blocks: Library["blocks"]) {
   if (!Object.values(blocks).some((bundle) => bundle.definition.executor?.kind === "code")) return;
-  checkProgram(
+  await checkProgram(
     project,
     {
       filename: ".workflow/library-check.ts",
@@ -253,7 +315,7 @@ async function bundleProgram(
 ) {
   const parsed = programSourceSchema.parse(value);
   let declarative = false;
-  const source = checkProgram(
+  const source = await checkProgram(
     project,
     { ...parsed, source: (await formatCode(parsed.source)).formatted },
     catalog,

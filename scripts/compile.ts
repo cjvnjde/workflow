@@ -15,12 +15,19 @@ try {
     recursive: true,
     filter: (source) => !["workflow", "workflow.exe"].includes(path.basename(source)),
   });
-  const { name, version, type, dependencies, devDependencies } = JSON.parse(
+  const { name, version, type, dependencies, devDependencies, overrides } = JSON.parse(
     await readFile(path.join(root, "package.json"), "utf8"),
   );
   await writeFile(
     path.join(runtime, "package.json"),
-    JSON.stringify({ name, version, type, dependencies, devDependencies }),
+    JSON.stringify({
+      name,
+      version,
+      type,
+      dependencies,
+      devDependencies,
+      overrides,
+    }),
   );
   await cp(path.join(root, "bun.lock"), path.join(runtime, "bun.lock"));
   await $`${process.execPath} install --production`.cwd(runtime);

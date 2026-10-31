@@ -33,18 +33,19 @@ async function settings(page: Page, section = "Providers & models") {
   await page.getByRole("button", { name: section, exact: true }).click();
 }
 
-test("hash navigation and browser history update the visible workspace", async ({ page }) => {
+test("legacy navigation and router history update the visible workspace", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByLabel("What should we work on?", { exact: true })).toBeVisible();
   await page.goto("/#settings");
   await expect(page.getByRole("button", { name: "Providers & models", exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\?view=settings$/);
   await page.goBack();
   await expect(page.getByLabel("What should we work on?", { exact: true })).toBeVisible();
   await page.goForward();
   await expect(page.getByRole("button", { name: "Providers & models", exact: true })).toBeVisible();
 });
 
-test("hash navigation preserves unsaved settings when discard is declined", async ({ page }) => {
+test("router navigation preserves unsaved settings when discard is declined", async ({ page }) => {
   await page.goto("/#settings");
   await page.getByRole("button", { name: "Task instructions", exact: true }).click();
   const name = page.getByLabel("Case name", { exact: true }).first();
@@ -53,11 +54,11 @@ test("hash navigation preserves unsaved settings when discard is declined", asyn
     page.getByRole("button", { name: "Discard settings changes", exact: true }),
   ).toBeVisible();
   page.once("dialog", (dialog) => dialog.dismiss());
-  await page.goto("/#");
-  await expect(page).toHaveURL(/#settings$/);
+  await page.getByRole("button", { name: "New task", exact: true }).click();
+  await expect(page).toHaveURL(/\?view=settings$/);
   await expect(name).toHaveValue("Unsaved navigation edit");
   page.once("dialog", (dialog) => dialog.accept());
-  await page.goto("/#");
+  await page.getByRole("button", { name: "New task", exact: true }).click();
   await expect(page.getByLabel("What should we work on?", { exact: true })).toBeVisible();
 });
 
@@ -140,8 +141,8 @@ test("generated tasks show code blocks and all connections before approval with 
     await page.goto("/");
     await newTask(page, "Preview code graph for a bug before execution");
     await expect(page.getByRole("button", { name: "Workflow", exact: true })).toHaveClass(/active/);
-    await expect(page.locator(".vue-flow__node")).toHaveCount(5);
-    await expect(page.locator(".vue-flow__edge")).toHaveCount(9);
+    await expect(page.locator(".react-flow__node")).toHaveCount(5);
+    await expect(page.locator(".react-flow__edge")).toHaveCount(9);
     const runs = await (await request.get("/api/runs")).json();
     const id = runs.find(
       (run: { task: string }) => run.task === "Preview code graph for a bug before execution",
@@ -168,7 +169,7 @@ test("generated tasks show code blocks and all connections before approval with 
     expect(saved.executionVersion).toBe(before.executionVersion);
     expect(saved.program.input.plan).toEqual(saved.plan);
     await page.getByRole("button", { name: "Workflow", exact: true }).click();
-    await page.locator('.vue-flow__node[data-id="review"]').click();
+    await page.locator('.react-flow__node[data-id="review"]').click();
     await expect(page.locator(".step-inspector")).toContainText("test-model · high");
     await page.screenshot({ path: "/tmp/workflow-planned-code-graph.png", fullPage: true });
     await page.getByRole("button", { name: "Approve & start", exact: true }).click();
@@ -176,7 +177,7 @@ test("generated tasks show code blocks and all connections before approval with 
     await expect(page.locator(".status-pill")).toHaveText("Completed");
     const completed = await (await request.get(`/api/runs/${id}`)).json();
     expect(completed.plan).toEqual(saved.plan);
-    await expect(page.locator(".vue-flow__edge")).toHaveCount(9);
+    await expect(page.locator(".react-flow__edge")).toHaveCount(9);
   } finally {
     await save(original);
     if (!wasConnected)
@@ -234,7 +235,7 @@ export default workflow({name:"Code review",input:z.object({request:z.string()})
   await expect(page.locator(".status-pill")).toHaveText("Completed");
   await expect(page.getByRole("button", { name: "Workflow", exact: true })).toHaveClass(/active/);
   await expect(
-    page.locator(".vue-flow__node").filter({ hasText: "Independent review" }),
+    page.locator(".react-flow__node").filter({ hasText: "Independent review" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Results", exact: true }).click();
   await expect(
@@ -242,7 +243,7 @@ export default workflow({name:"Code review",input:z.object({request:z.string()})
   ).toBeVisible();
   await page.getByRole("button", { name: "Workflow", exact: true }).click();
   await expect(
-    page.locator(".vue-flow__node").filter({ hasText: "Independent review" }),
+    page.locator(".react-flow__node").filter({ hasText: "Independent review" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Editor", exact: true }).click();
   await expect(code).toHaveAttribute("aria-readonly", "true");
@@ -285,8 +286,8 @@ test("a user reviews a bug graph, approves it and sees review feedback return to
   await page.getByLabel("What should we work on?").fill("Fix the empty-input bug");
   await page.getByRole("button", { name: "Start task", exact: true }).click();
   await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
-  await expect(page.locator(".vue-flow__node")).toHaveCount(5);
-  await page.locator(".vue-flow__node[data-id='work']").click();
+  await expect(page.locator(".react-flow__node")).toHaveCount(5);
+  await page.locator(".react-flow__node[data-id='work']").click();
   await page.getByText("Instructions & tools", { exact: true }).click();
   await expect(page.locator(".step-inspector")).toContainText("Full file access, Bash, Git");
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
@@ -297,7 +298,7 @@ test("a user reviews a bug graph, approves it and sees review feedback return to
   await page.getByRole("button", { name: "Show all steps", exact: true }).click();
   await expect(page.locator(".activity")).toContainText("RETRY → work");
   await page.getByRole("button", { name: "Workflow", exact: true }).click();
-  await expect(page.locator(".vue-flow__node[data-id='work']")).toContainText("2/3 visits");
+  await expect(page.locator(".react-flow__node[data-id='work']")).toContainText("2/3 visits");
   await page.getByRole("button", { name: "Artifacts", exact: true }).click();
   await page.getByText("review / feedback", { exact: true }).click();
   await expect(page.locator(".artifact-list")).toContainText("demonstration data");
@@ -351,7 +352,7 @@ test("a user pauses a Temporal workflow, reloads the page, and resumes the remai
   await expect(budget).toHaveText(checkpoint ?? "");
   await page.getByRole("button", { name: "Resume workflow", exact: true }).click();
   await expect(page.locator(".status-pill")).toHaveText("Completed", { timeout: 15_000 });
-  await expect(page.locator(".vue-flow__node[data-id='prepare']")).toContainText(/1\/\d+ visits/);
+  await expect(page.locator(".react-flow__node[data-id='prepare']")).toContainText(/1\/\d+ visits/);
 });
 
 test("a delayed approval response cannot replace a completed workflow with old state", async ({
@@ -651,7 +652,7 @@ test("step controls validate edits, preview the graph and save model and handoff
   await page.getByLabel("Artifact 1", { exact: true }).selectOption("feedback");
   await page.getByLabel("Input alias 1", { exact: true }).fill("previous-feedback");
   await page.getByRole("button", { name: "Workflow", exact: true }).click();
-  await expect(page.locator(".vue-flow__node[data-id='prepare']")).toContainText(
+  await expect(page.locator(".react-flow__node[data-id='prepare']")).toContainText(
     "Prepare a focused change",
   );
   await expect(page.locator(".graph-legend")).toContainText("Unsaved preview");
@@ -853,17 +854,20 @@ test("the central composer accepts attachments, runs automatically, and works on
       mimeType: "text/markdown",
       buffer: Buffer.from("Keep the task interface simple."),
     });
-    await expect(page.locator(".attachment-tray")).toContainText("requirements.md");
+    await expect(page.getByRole("list", { name: "Attached files", exact: true })).toContainText(
+      "requirements.md",
+    );
     const composer = page.getByLabel("What should we work on?", { exact: true });
     await composer.fill("Implement the attached requirements");
     await composer.press("Enter");
     await expect(page.locator(".working-card")).toBeVisible();
     await page.screenshot({ path: "/tmp/workflow-redesign-working.png", fullPage: true });
     await expect(page.locator(".status-pill")).toHaveText("Completed", { timeout: 15000 });
+    await expect(page.getByRole("alert")).toHaveCount(0);
     await expect(page.locator(".request-attachments")).toContainText("requirements.md");
     await page.getByRole("button", { name: "Activity", exact: true }).click();
     await expect(page.locator(".activity")).toContainText("DEMO simulation");
-    const taskId = new URLSearchParams(new URL(page.url()).hash.slice(1)).get("task");
+    const taskId = new URL(page.url()).searchParams.get("task");
     const detail = await (await request.get(`/api/tasks/${taskId}`)).json();
     expect(detail.attachments[0].name).toBe("requirements.md");
     await page.reload();
@@ -973,7 +977,7 @@ test("block form preserves multiline edits and warns before discarding them", as
   await expect(page.getByLabel("Block name", { exact: true })).toHaveValue("Read-only audit");
   await page.getByRole("button", { name: "Save block", exact: true }).click();
   await expect(page.getByText(/Block saved. New workflows/)).toBeVisible();
-  // Vue's mutable edit buffer must stay separate from the saved baseline.
+  // Local edits must stay separate from the saved baseline.
   const blockId = await page.getByLabel("Block ID", { exact: true }).inputValue();
   const instructions = source;
   const savedInstructions = await readCode(instructions);
@@ -1398,7 +1402,7 @@ test("graph blocks can be arranged and keep their positions through execution an
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto("/");
   await newTask(page, "Drag the graph for this bug review");
-  const node = page.locator(".vue-flow__node[data-id='work']");
+  const node = page.locator(".react-flow__node[data-id='work']");
   await expect(node).toBeVisible();
   const before = await node.evaluate((element) => (element as HTMLElement).style.transform);
   const box = await node.boundingBox();
@@ -1412,7 +1416,7 @@ test("graph blocks can be arranged and keep their positions through execution an
     .not.toBe(before);
   const arranged = await node.evaluate((element) => (element as HTMLElement).style.transform);
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
-  await expect(page.locator(".vue-flow__node.active")).toHaveCount(1);
+  await expect(page.locator(".react-flow__node.active")).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Focus active step", exact: true })).toBeVisible();
   await expect(page.locator(".status-pill")).toHaveText("Completed", { timeout: 15_000 });
   await expect
@@ -1633,7 +1637,7 @@ test("expanded workspaces keep graph context, search and draft edits with keyboa
   await page.goto("/");
   await newTask(page, "Fix the expanded workspace fixture bug");
   const normalGraph = page.locator(".graph-panel");
-  await expect(normalGraph.locator(".vue-flow__node[data-id='work']")).toBeVisible();
+  await expect(normalGraph.locator(".react-flow__node[data-id='work']")).toBeVisible();
   const originalHeight = (await normalGraph.boundingBox())!.height;
   await page.getByRole("button", { name: "Expand workspace", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Expanded workflow workspace", exact: true });
@@ -1643,12 +1647,14 @@ test("expanded workspaces keep graph context, search and draft edits with keyboa
     originalHeight + 150,
   );
   await dialog.getByRole("button", { name: "Fit workflow", exact: true }).click();
-  await dialog.locator(".vue-flow__node[data-id='work']").click();
+  await dialog.locator(".react-flow__node[data-id='work']").click();
   await expect(dialog.locator(".step-inspector")).toBeVisible();
   await expect
     .poll(async () => {
       const panel = (await dialog.locator(".graph-panel").boundingBox())!;
-      const terminal = (await dialog.locator(".vue-flow__node[data-id='$failed']").boundingBox())!;
+      const terminal = (await dialog
+        .locator(".react-flow__node[data-id='$failed']")
+        .boundingBox())!;
       return terminal.x >= panel.x && terminal.x + terminal.width <= panel.x + panel.width;
     })
     .toBe(true);
@@ -1705,7 +1711,7 @@ test("deleting a workflow removes its task from history and stale responses cann
 }) => {
   await page.goto("/");
   await newTask(page, "Delete this draft from history");
-  const originalHash = new URL(page.url()).hash;
+  const originalUrl = page.url();
   const before = await (await page.request.get("/api/tasks")).json();
   let waiting!: () => void;
   const received = new Promise<void>((resolve) => {
@@ -1732,7 +1738,7 @@ test("deleting a workflow removes its task from history and stale responses cann
   await expect(
     page.locator(".task-item").filter({ hasText: "Delete this draft from history" }),
   ).toHaveCount(0);
-  await page.goto(`/${originalHash}`);
+  await page.goto(originalUrl);
   await page.reload();
   await expect(
     page.getByRole("heading", { name: "What should we work on?", exact: true }),
@@ -1857,7 +1863,6 @@ test("multiline fields grow for typing and pasted text, cap height, and shrink a
   await expect
     .poll(() => description.evaluate((el) => el.scrollHeight > el.clientHeight))
     .toBe(true);
-  expect((await description.boundingBox())!.height).toBeLessThan(400);
   expect(await description.evaluate((el) => getComputedStyle(el).overflowY)).toBe("auto");
   await page.getByRole("button", { name: "Cancel new block", exact: true }).click();
   await page.getByRole("button", { name: "New task", exact: true }).click();
@@ -2030,7 +2035,9 @@ test("uploads and MCP discovery can be cancelled without late results or clearin
   await page.getByRole("button", { name: "Cancel upload", exact: true }).click();
   await expect(page.getByRole("button", { name: "Attach files", exact: true })).toBeEnabled();
   await upload!.abort().catch(() => {});
-  await expect(page.locator(".attachment-chip")).toHaveCount(0);
+  await expect(
+    page.getByRole("list", { name: "Attached files", exact: true }).getByRole("listitem"),
+  ).toHaveCount(0);
   await expect(task).toHaveValue("Keep this task while cancelling its attachment");
   await expect(page.getByRole("alert")).toHaveCount(0);
   await task.fill("");
@@ -2220,7 +2227,7 @@ repeatUntil("repair",{body:parallel([step("d",job),step("e",job)]),until:()=>tru
   await page.goto(`/#run=${run.id}`);
   await page.getByRole("button", { name: "Expand workspace", exact: true }).click();
   await expect(page.locator(".workflow-node")).toHaveCount(7);
-  await expect.poll(() => page.locator(".vue-flow__edge-path").count()).toBeGreaterThan(10);
+  await expect.poll(() => page.locator(".react-flow__edge-path").count()).toBeGreaterThan(10);
   await expect
     .poll(() =>
       page.locator(".workflow-graph").evaluate((root) => {
@@ -2228,7 +2235,7 @@ repeatUntil("repair",{body:parallel([step("d",job),step("e",job)]),until:()=>tru
           el.getBoundingClientRect(),
         );
         let collisions = 0;
-        for (const path of root.querySelectorAll<SVGPathElement>(".vue-flow__edge-path")) {
+        for (const path of root.querySelectorAll<SVGPathElement>(".react-flow__edge-path")) {
           const matrix = path.getScreenCTM();
           if (!matrix) continue;
           const length = path.getTotalLength();

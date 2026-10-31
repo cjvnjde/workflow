@@ -357,6 +357,8 @@ test("a killed CLI recovers its lease and Temporal server, then resumes without 
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   try {
     const address = await first.ready;
+    const temporalReceiptPath = path.join(context.project, ".workflow/temporal/server.json");
+    const temporalReceipt = JSON.parse(await readFile(temporalReceiptPath, "utf8"));
     const response = await fetch(`${address}/api/stream`, {
       signal: AbortSignal.any([streamController.signal, AbortSignal.timeout(15_000)]),
     });
@@ -412,6 +414,11 @@ test("a killed CLI recovers its lease and Temporal server, then resumes without 
     await first.exited;
     second = launch();
     const restoredAddress = await second.ready;
+    assert.deepEqual(
+      JSON.parse(await readFile(temporalReceiptPath, "utf8")),
+      temporalReceipt,
+      "Restart must adopt the same verified Temporal process, port, and database",
+    );
     const restored = runSchema.parse(
       await (await fetch(`${restoredAddress}/api/runs/${run.id}`)).json(),
     );
@@ -447,6 +454,22 @@ test("a killed CLI recovers its lease and Temporal server, then resumes without 
       await process?.exited;
     }
   }
+});
+
+test("managed Temporal recovery protects an unrelated live PID and its receipt", async (t) => {
+  const { project, run } = await commandFixture(t);
+  await run(["init"]);
+  const directory = path.join(project, ".workflow/temporal");
+  await mkdir(directory);
+  const receiptPath = path.join(directory, "server.json");
+  const receipt = JSON.stringify({
+    pid: process.pid,
+    port: 7233,
+    binary: process.execPath,
+  });
+  await writeFile(receiptPath, receipt);
+  await assert.rejects(run(["serve", "--demo", "--port", "0"]), /A prior Temporal service/);
+  assert.equal(await readFile(receiptPath, "utf8"), receipt);
 });
 
 test("workflow exec uses the packaged engine without a web/API server and returns a machine-readable result", async (t) => {
@@ -506,7 +529,7 @@ export default workflow({name:"Tools",flow:step("read",block({async run(ctx){con
     timeout: 30_000,
   });
   const completed = runSchema.parse(JSON.parse(result.stdout));
-  assert.equal(completed.status, "completed", completed.error);
+  assert.equal(completed.status, "completed", completed.error ?? "");
   assert.equal(completed.attempts[0]?.result?.summary, "packaged worker");
 });
 

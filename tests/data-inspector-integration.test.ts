@@ -48,7 +48,7 @@ test("parallel named handoffs retain exact raw/effective values through API, ter
   });
   await app.approve(draft.id, draft.revision);
   const run = await settled(() => app.getRun(draft.id));
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   const evidence = await client.attemptEvidence(run.id, "combine", 1);
   assert.equal(evidence.inputs.state, "available");
   assert.equal(evidence.output.state, "available");
@@ -173,7 +173,7 @@ test("input failures, unsupported transforms and repeated visits preserve execut
   );
   await app.approve(transformed.id, transformed.revision);
   const dateRun = await settled(() => app.getRun(transformed.id));
-  assert.equal(dateRun.status, "completed", dateRun.error);
+  assert.equal(dateRun.status, "completed", dateRun.error ?? "");
   const date = await client.attemptEvidence(transformed.id, "date", 1);
   if (date.inputs.state !== "available" || date.output.state !== "available")
     throw new Error("Missing date evidence");

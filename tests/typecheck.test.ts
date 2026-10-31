@@ -7,8 +7,8 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 
-test("Bun typechecking rejects Vue script, template and component prop errors", async (t) => {
-  const directory = await mkdtemp(path.join(os.tmpdir(), "workflow-vue-types-"));
+test("Bun typechecking rejects React source, JSX and component prop errors", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "workflow-react-types-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const config = path.join(directory, "tsconfig.json");
   await writeFile(
@@ -18,22 +18,24 @@ test("Bun typechecking rejects Vue script, template and component prop errors", 
         target: "ES2023",
         module: "ESNext",
         moduleResolution: "Bundler",
-        jsx: "preserve",
+        jsx: "react-jsx",
         strict: true,
         skipLibCheck: true,
         noEmit: true,
         types: [],
-        paths: { vue: [path.join(root, "node_modules/vue")] },
+        paths: {
+          react: [path.join(root, "node_modules/@types/react")],
+          "react/*": [path.join(root, "node_modules/@types/react/*")],
+        },
       },
-      vueCompilerOptions: { strictTemplates: true },
-      include: ["*.vue"],
+      include: ["*.tsx"],
     }),
   );
   await writeFile(
-    path.join(directory, "Child.vue"),
-    '<script setup lang="ts">defineProps<{ count: number }>();</script><template><p>{{ count }}</p></template>',
+    path.join(directory, "Child.tsx"),
+    "export default function Child({ count }: { count: number }) { return <p>{count}</p>; }",
   );
-  const parent = path.join(directory, "Parent.vue");
+  const parent = path.join(directory, "Parent.tsx");
   const check = async () => {
     const child = Bun.spawn([process.execPath, path.join(root, "scripts/typecheck.ts"), config], {
       cwd: root,
@@ -45,32 +47,28 @@ test("Bun typechecking rejects Vue script, template and component prop errors", 
       new Response(child.stdout).text(),
       new Response(child.stderr).text(),
     ]);
-    return {
-      code,
-      // eslint-disable-next-line no-control-regex -- Control bytes must be matched explicitly for validation or terminal escape removal.
-      output: `${stdout}${stderr}`.replace(/\x1b\[[0-9;]*m/g, ""),
-    };
+    return { code, output: `${stdout}${stderr}` };
   };
   await writeFile(
     parent,
-    `<script setup lang="ts">
-import Child from './Child.vue';
+    `import Child from './Child';
 const count: number = 'invalid';
-</script>
-<template><Child :count="'wrong prop'" /><p>{{ count.toUpperCase() }}</p></template>`,
+export default function Parent() {
+  return <><Child count="wrong prop" /><p>{count.toUpperCase()}</p><unknownFixtureElement /></>;
+}`,
   );
   const invalid = await check();
-  assert.equal(invalid.code, 1, invalid.output);
-  assert.match(invalid.output, /Type 'string' is not assignable to type 'number'/);
+  assert.notEqual(invalid.code, 0, invalid.output);
+  assert.equal(invalid.output.match(/TS2322/g)?.length, 2, invalid.output);
   assert.match(invalid.output, /toUpperCase/);
-  assert.match(invalid.output, /wrong prop/);
+  assert.match(invalid.output, /unknownFixtureElement/);
   await writeFile(
     parent,
-    `<script setup lang="ts">
-import Child from './Child.vue';
+    `import Child from './Child';
 const count: number = 1;
-</script>
-<template><Child :count="count" /><p>{{ count.toFixed(0) }}</p></template>`,
+export default function Parent() {
+  return <><Child count={count} /><p>{count.toFixed(0)}</p></>;
+}`,
   );
   const valid = await check();
   assert.equal(valid.code, 0, valid.output);

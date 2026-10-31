@@ -64,13 +64,13 @@ Durability is not a promise of exactly-once external effects. An interrupted com
 
 ## Why these components
 
-| Component              | Responsibility                                                                                                             |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| **Workflow**           | The product: task planning, settings, approval, block composition, local tools, results, and the browser workspace.        |
-| **Pi**                 | Embedded model/session, authentication, and optional terminal UI integration. Users configure it through Workflow.         |
-| **Temporal**           | Persisted execution history, activity boundaries, signals, and replay. The application manages a local service by default. |
-| **Vue and Vue Flow**   | Reactive forms, task state, and the workflow graph.                                                                        |
-| **Bun and TypeScript** | The application runtime and the authoring language for blocks and workflows.                                               |
+| Component                | Responsibility                                                                                                             |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| **Workflow**             | The product: task planning, settings, approval, block composition, local tools, results, and the browser workspace.        |
+| **Pi**                   | Embedded model/session, authentication, and optional terminal UI integration. Users configure it through Workflow.         |
+| **Temporal**             | Persisted execution history, activity boundaries, signals, and replay. The application manages a local service by default. |
+| **React and React Flow** | The browser workspace, component state, workflow graph, and shadcn composer controls.                                      |
+| **Bun and TypeScript**   | The application runtime and the authoring language for blocks and workflows.                                               |
 
 Workflow uses its own credential storage and explicit project resources. It does not load ambient Pi extensions, credentials, or previous conversations. See [Architecture](architecture.md) for how these pieces connect in code.
 

@@ -86,7 +86,7 @@ The coordinator uses the supplied request, context, task instructions, blocks, a
 | **Workflow**                             | Steps composed into sequences, branches, parallel groups, and bounded loops.          |
 | **Task instructions and model profiles** | Guidance the orchestrator uses to choose blocks and models for a particular request.  |
 
-The web UI uses Vue, Vue Flow, CodeMirror, and Catppuccin Mocha. The terminal workspace uses OpenTUI. Pi provides embedded model sessions and authentication integration; Temporal provides durable execution. Workflow owns the task workspace, configuration, approval flow, and results. [Read the design rationale](docs/concepts.md) or [explore the architecture](docs/architecture.md).
+The web UI uses React 19 and React Compiler on TanStack Start in SPA mode, with TanStack Router, Query, Form, and Table. Tailwind CSS 4 and shadcn/ui share one semantic CSS-variable theme across the workspace. The terminal workspace uses OpenTUI. Pi provides embedded model sessions and authentication integration; Temporal provides durable execution. Workflow owns the task workspace, configuration, approval flow, and results. [Read the design rationale](docs/concepts.md) or [explore the architecture](docs/architecture.md).
 
 ## Inspect execution
 

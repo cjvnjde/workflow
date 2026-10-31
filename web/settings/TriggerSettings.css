@@ -1,0 +1,37 @@
+.trigger-settings .trigger-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.trigger-settings .trigger-list button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 16px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.trigger-settings .trigger-list button[aria-pressed="true"] {
+  border-color: var(--info);
+}
+.trigger-settings .trigger-list span,
+.trigger-settings .trigger-list small {
+  color: var(--muted-foreground);
+}
+.trigger-settings .trigger-job .card-title {
+  flex-wrap: wrap;
+}
+.trigger-settings .trigger-job p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.trigger-settings .toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0;
+}
+.trigger-settings .toggle-row input {
+  width: auto;
+}

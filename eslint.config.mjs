@@ -1,14 +1,17 @@
 import js from "@eslint/js";
 import { defineConfig, globalIgnores } from "eslint/config";
 import prettier from "eslint-config-prettier/flat";
-import vue from "eslint-plugin-vue";
+import reactHooks from "eslint-plugin-react-hooks";
+import reactRefresh from "eslint-plugin-react-refresh";
+import { reactX, tseslint } from "@workflow/eslint";
 import globals from "globals";
-import tseslint from "typescript-eslint";
 
 export default defineConfig(
   globalIgnores([
     "dist/**",
     "node_modules/**",
+    ".tanstack/**",
+    "web/routeTree.gen.ts",
     "coverage/**",
     ".stryker-tmp/**",
     "reports/mutation/**",
@@ -22,15 +25,10 @@ export default defineConfig(
     "src/legacy/**",
   ]),
   {
-    files: ["**/*.{js,mjs,ts,vue}"],
-    extends: [
-      js.configs.recommended,
-      tseslint.configs.recommended,
-      vue.configs["flat/recommended"],
-    ],
+    files: ["**/*.{js,mjs,ts,tsx}"],
+    extends: [js.configs.recommended, tseslint.configs.recommended],
     languageOptions: {
       globals: { ...globals.node, ...globals.browser },
-      parserOptions: { parser: tseslint.parser, extraFileExtensions: [".vue"] },
     },
     rules: {
       "@typescript-eslint/consistent-type-imports": [
@@ -44,16 +42,24 @@ export default defineConfig(
       eqeqeq: ["error", "always", { null: "ignore" }],
       "no-var": "error",
       "prefer-const": "error",
-      // Optional TypeScript props intentionally remain undefined unless the component supplies a default.
-      "vue/require-default-prop": "off",
-      "vue/multi-word-component-names": [
-        "error",
-        { ignores: ["App", "Icon", "Field", "Capabilities"] },
-      ],
     },
   },
   {
-    files: ["web/**/*.{ts,vue}", "src/{contracts,sdk,client}/**/*.ts"],
+    files: ["web/**/*.{ts,tsx}"],
+    extends: [
+      reactHooks.configs.flat.recommended,
+      reactX.configs.recommended,
+      reactRefresh.configs.vite,
+    ],
+  },
+  {
+    files: ["web/routes/**/*.tsx"],
+    rules: {
+      "react-refresh/only-export-components": ["error", { allowExportNames: ["Route"] }],
+    },
+  },
+  {
+    files: ["web/**/*.{ts,tsx}", "src/{contracts,sdk,client}/**/*.ts"],
     rules: {
       "no-restricted-imports": [
         "error",
@@ -96,7 +102,9 @@ export default defineConfig(
                   `../${directory}/**`,
                   `../**/${directory}/**`,
                 ]),
-                "vue",
+                "react",
+                "react-dom",
+                "@xyflow/*",
                 "fastify",
                 "@opentui/*",
               ],

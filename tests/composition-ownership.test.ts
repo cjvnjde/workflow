@@ -36,9 +36,9 @@ const blocks = (a: string, b: string): Library["blocks"] =>
       ];
     }),
   );
-test("parallel disjoint allowlists are rejected because each protects the sibling's files", () => {
+test("parallel disjoint allowlists are rejected because each protects the sibling's files", async () => {
   const code = blocks('writablePaths:["backend/**"]', 'writablePaths:["frontend/**"]');
-  assert.throws(
+  await assert.rejects(
     () =>
       validateCompositionOwnership(
         group("parallel", [step("a"), group("when", [step("b")])]),
@@ -46,22 +46,22 @@ test("parallel disjoint allowlists are rejected because each protects the siblin
       ),
     /conflicting ownership guards/,
   );
-  assert.doesNotThrow(() =>
+  await assert.doesNotReject(() =>
     validateCompositionOwnership(group("sequence", [step("a"), step("b")]), code),
   );
-  assert.doesNotThrow(() =>
+  await assert.doesNotReject(() =>
     validateCompositionOwnership(
       { ...group("parallel", [step("a"), step("b")]), concurrency: 1 },
       code,
     ),
   );
 });
-test("read-only calls can overlap, while an overlapping shared writer requires isolation", () => {
+test("read-only calls can overlap, while an overlapping shared writer requires isolation", async () => {
   const root = group("parallel", [step("a"), step("b")]);
-  assert.doesNotThrow(() =>
+  await assert.doesNotReject(() =>
     validateCompositionOwnership(root, blocks('protectedPaths:["**/*"]', "writablePaths:[]")),
   );
-  assert.throws(
+  await assert.rejects(
     () =>
       validateCompositionOwnership(
         root,
@@ -69,7 +69,7 @@ test("read-only calls can overlap, while an overlapping shared writer requires i
       ),
     /shared project/,
   );
-  assert.doesNotThrow(() =>
+  await assert.doesNotReject(() =>
     validateCompositionOwnership(
       root,
       blocks(
@@ -77,5 +77,29 @@ test("read-only calls can overlap, while an overlapping shared writer requires i
         'workspace:"../b",writablePaths:["src/**"]',
       ),
     ),
+  );
+});
+
+test("native ownership parsing preserves quoted property names and nested calls", async () => {
+  const root = group("parallel", [step("a"), step("b")]);
+  const code = blocks('"writablePaths":["src/**"]', "'protectedPaths':['**/*']");
+  code.a!.definition.executor = {
+    kind: "code",
+    timeoutMs: 600_000,
+    maxOperations: 100,
+    source: `import {block} from "workflow";
+type Options<T>={value:T};
+const metadata={value:"ownership"} satisfies Options<string>;
+export default block({async run(ctx){
+  async function work(){return ctx.ai({prompt:metadata.value,"writablePaths":["src/**"]});}
+  return await work();
+}});`,
+  };
+  await assert.rejects(
+    () => validateCompositionOwnership(root, code),
+    /conflicting ownership guards/,
+  );
+  await assert.doesNotReject(() =>
+    validateCompositionOwnership(root, blocks('"writablePaths":[]', "'protectedPaths':['**/*']")),
   );
 });

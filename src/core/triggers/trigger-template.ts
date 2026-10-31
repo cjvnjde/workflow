@@ -3,7 +3,7 @@ import { compositionPlan } from "../planning/composition-plan.js";
 import { githubEventSchema, type GithubEvent } from "../../contracts/trigger-schema.js";
 
 /** Keep the frozen executable/configuration, never a previous run's mutable execution state. */
-export function triggerTemplate(value: WorkflowRun): WorkflowRun {
+export async function triggerTemplate(value: WorkflowRun): Promise<WorkflowRun> {
   const run = runSchema.parse(value);
   if (!run.program || !run.executionVersion || run.executionProtocol !== 2)
     throw new Error("Select a saved TypeScript workflow with an execution archive");
@@ -14,7 +14,7 @@ export function triggerTemplate(value: WorkflowRun): WorkflowRun {
   }
   const composed =
     run.program.composition === "structured" && run.program.structure
-      ? compositionPlan(run.program.structure, run.plan.title, run.plan.task, {
+      ? await compositionPlan(run.program.structure, run.plan.title, run.plan.task, {
           config: run.config,
           blocks: run.program.catalog,
         })
@@ -44,8 +44,8 @@ export function triggerTemplate(value: WorkflowRun): WorkflowRun {
   });
 }
 
-export function instantiateTrigger(template: WorkflowRun, id: string, event: GithubEvent) {
-  const run = triggerTemplate(template);
+export async function instantiateTrigger(template: WorkflowRun, id: string, event: GithubEvent) {
+  const run = await triggerTemplate(template);
   const now = new Date().toISOString();
   run.id = id;
   run.temporalWorkflowId = `workflow-${id}`;

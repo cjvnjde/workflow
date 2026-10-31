@@ -85,7 +85,7 @@ Project commands and stdio MCP servers inherit the server environment. Provider-
 
 ## Local HTTP API
 
-The Vue UI and CLI use the same loopback API. This is a local application interface, not a remotely authenticated public service. Request/response validation is implemented in `src/core/application.ts`, `src/http/http-server.ts`, and the public `src/contracts/index.ts` schemas.
+The React UI and CLI use the same loopback API. This is a local application interface, not a remotely authenticated public service. Request/response validation is implemented in `src/core/application.ts`, `src/http/http-server.ts`, and the public `src/contracts/index.ts` schemas.
 
 All mutations and `/api/auth/*` reads require `X-Workflow-Client: 1`. Responses disable caching. Draft reads return a quoted revision `ETag`, such as `"2"`; send it as `If-Match` when editing, refining, or approving. Conflicts return 409. The browser supplies these headers; older clients can omit some draft revision headers, but should not rely on that for concurrent edits.
 

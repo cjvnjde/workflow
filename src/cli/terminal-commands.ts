@@ -1,5 +1,10 @@
-import type { AuthInteraction, AuthPrompt, Model, Api } from "@earendil-works/pi-ai";
-import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/compat";
+import {
+  getSupportedThinkingLevels,
+  type AuthInteraction,
+  type AuthPrompt,
+  type Model,
+  type Api,
+} from "@earendil-works/pi-ai";
 import {
   ExtensionSelectorComponent,
   LoginDialogComponent,

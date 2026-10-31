@@ -8,7 +8,7 @@ Workflow has a presentation-independent application layer around one execution e
 
 ```mermaid
 flowchart TD
-    UI["Vue workspace / OpenTUI / CLI"] --> Client["WorkflowClient + public contracts"]
+    UI["React workspace / OpenTUI / CLI"] --> Client["WorkflowClient + public contracts"]
     Client --> API["Fastify HTTP adapter"]
     API --> App["WorkflowApplication"]
     Direct["Embedded host / workflow exec"] --> App
@@ -44,7 +44,9 @@ The public entry points are `src/core/index.ts`, `src/http/index.ts`, and `src/t
 
 `createHttpServer` borrows that application and translates HTTP requests, headers, disconnects, and SSE. Closing this adapter closes its connections but leaves the application running. The host closes the application explicitly. `registerWebGui` optionally adds static browser assets. The legacy `createServer` wrapper keeps its combined ownership for existing callers.
 
-The Vue code imports only the public `contracts` and `client` entry points from the backend tree. The shared client handles validation, revision headers, errors, endpoint selection, and event streaming. Presentation state, graph layout, editors, and rendering remain in `web/`. [Engine and clients](clients.md) documents the integration and lifecycle contract.
+The React workspace imports only the public `contracts` and `client` entry points from the backend tree. The shared client handles validation, revision headers, errors, endpoint selection, and event streaming. Presentation state, graph layout, editors, and rendering remain in `web/`. [Engine and clients](clients.md) documents the integration and lifecycle contract.
+
+TanStack Start builds the client-only workspace shell; TanStack Router owns URL selection/history and unsaved-edit guards. Each router owns a QueryClient, with revisioned server data in TanStack Query and transient SSE text/notices kept separately. Forms use TanStack Form, and evidence/usage tables use TanStack Table. Tailwind and shadcn share root-level semantic theme tokens rather than separate composer/workspace palettes.
 
 The terminal controller also uses only that client and public contracts. `src/terminal/view.ts` renders its state with OpenTUI; `presentation.ts` formats activity and composition trees. `src/terminal/workspace.ts` owns attachment, background-host startup requests, signals, parser resources, and terminal cleanup. `src/host/host.ts` is the process composition root; `src/host/host-lifecycle.ts` manages detached startup, readiness, status, and authenticated shutdown. The CLI loads `dist/tui.js` for the default interactive workspace, `tui`, or `attach`, keeping native rendering out of server and scripting commands.
 
@@ -132,7 +134,7 @@ Paths below are relative to the repository checkout. The packaged CLI includes c
 | Library and settings design                | `src/core/library/library.ts`, `src/core/library/library-proposals.ts`, `src/core/design/design-chats.ts`, `src/core/design/settings-designer.ts`                                              |
 | Recovery and persistence                   | `src/core/storage/recovery.ts`, `src/core/storage/workspace.ts`, `src/core/storage/run-store.ts`, `src/core/storage/attempt-store.ts`                                                          |
 | Temporal process/version management        | `src/infrastructure/temporal-server.ts`, `src/infrastructure/temporal-runtime.ts`, `src/infrastructure/workflow-versions.ts`, `src/infrastructure/project-lock.ts`                             |
-| Vue state and navigation                   | `web/App.vue`, `web/app/`, feature composables                                                                                                                                                 |
+| React root and application state           | `web/main.tsx`, `web/router.tsx`, `web/routes/`, `web/App.tsx`, feature hooks, `web/shared/query-client.ts`                                                                                    |
 | Graph, activity, results, editors          | `web/features/`, `web/shared/`, `web/features/graph/graph-layout.ts`                                                                                                                           |
 | Settings UI                                | `web/settings/`                                                                                                                                                                                |
 | Build, development, live checks            | `scripts/`                                                                                                                                                                                     |

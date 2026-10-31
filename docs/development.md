@@ -23,11 +23,25 @@ Do not run competing servers against the same project. Use disposable project di
 
 ## Application structure
 
-The frontend is Vue 3 with TypeScript `<script setup>`, typed props/events, and composables for state and lifecycle management. Vue Flow renders graphs; CodeMirror provides source editing; Prettier formats authored code. The palette is Catppuccin Mocha.
+The browser UI uses React 19 and [TanStack Start SPA mode](https://tanstack.com/start/latest/docs/framework/react/guide/spa-mode), with TanStack Router owning typed URL search state and navigation guards. Canonical session links use `?task=<id>` or `?run=<id>`; settings use `?view=settings`. Existing hash links are converted on entry. Fastify continues to own the API and serve the generated static shell.
+
+TanStack Query owns project, run, task, setup, and usage caches, request cancellation, polling, and SSE-driven invalidation. Revision-aware merging prevents stale responses from overwriting newer mutations. Streaming text and UI state remain local. TanStack Form owns data-entry state and submission lifecycles; TanStack Table v9 renders model usage and execution evidence. Query already covers the server-state requirements, so there is no additional TanStack DB store.
+
+Tailwind CSS 4 and shadcn/ui use the [recommended CSS-variable theming](https://ui.shadcn.com/docs/theming): one `:root`/`.dark` token set, `@theme inline` mappings, and `components.json` with `cssVariables: true`. Workspace layout CSS consumes those tokens without a second palette, scoped theme islands, or hard overrides of shadcn controls. React Flow and CodeMirror use the same semantic tokens.
+
+React Compiler runs through Vite's Babel compiler preset for React 19 in development and production. ESLint enables the official Hooks/Compiler rules, React component rules, and Vite Fast Refresh checks. Do not bypass these checks with compiler opt-outs or blanket rule disables.
+
+Composer validation errors wrap within the available width, including long filenames and multiline diagnostics. Editors use React `useId` for document-unique identities.
 
 The backend, CLI, SDK, and scripts are TypeScript on Bun. `node:*` imports use Bun's compatible APIs rather than requiring a separate Node process. Temporal's workflow bundle executes in its replayable environment; host effects belong in activities.
 
 See [Architecture](architecture.md#source-map) for the source map and execution boundaries.
+
+Provider-owned OAuth callback pages retain the upstream library's presentation; Workflow does not patch their branding or theme.
+
+Security overrides in `package.json` keep `glob`, `minimatch`, `qs`, and `undici` on patched releases while upstream dependencies still constrain vulnerable versions. The portable runtime copies these overrides. Run `bun audit` after dependency changes; remove an override only when the resolved upstream tree remains patched without it.
+
+The current shadcn CLI brings the development-only `deepmerge` 4.3.1 advisory [GHSA-gcqx-w48m-w2h4](https://github.com/advisories/GHSA-gcqx-w48m-w2h4) (low severity). No patched `deepmerge` release is available. It is not part of the production runtime; use trusted registries and track an upstream fix rather than substituting an incompatible merge implementation.
 
 ## Build and typechecking
 
@@ -38,9 +52,11 @@ bun run build:engine  # backend artifacts, without invoking Vite
 bun run build:web     # GUI assets only
 ```
 
-Typechecking includes Vue scripts, templates, and component props through the Vue language engine. `scripts/typecheck.ts` integrates it directly for Bun. A regression test verifies that script, template, and prop errors fail.
+The application pins TypeScript 7.0.2 for browser/backend checking, SDK declarations, runtime workflow diagnostics, and ownership analysis. Runtime analysis uses TypeScript's asynchronous native API because its synchronous pipe transport requires Node internals unavailable in Bun. Validation remains non-evaluating, including imported-module safety checks and unused-flow diagnostics.
 
-The build typechecks, removes stale `dist` output, runs Vite, emits SDK declarations, bundles the public SDK and program runtime, bundles current and frozen legacy Temporal workflows, and builds the executable CLI.
+The lint toolchain is an explicit exception: current `typescript-eslint` and React lint utilities require the legacy compiler API. `tooling/eslint` isolates their TypeScript 6.0.3 dependency; `bunfig.toml` enables isolated installs so it cannot replace the application's TypeScript 7. No application code imports the legacy compiler. See [Microsoft's compatibility guidance](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-60). Preserve this dependency boundary until the lint libraries support the native API.
+
+The build typechecks, removes stale `dist` output, builds the Start client and temporary server renderer, prerenders `dist/web/index.html`, emits SDK declarations, bundles the public SDK and program runtime, bundles current and frozen legacy Temporal workflows, and builds the executable CLI. The build-only renderer stays in ignored `.tanstack/start-server`; production serves static assets without a second web server.
 
 Main outputs:
 
@@ -66,7 +82,7 @@ Do not rebuild or remove `dist` while tests or live runs are loading it. Build o
 ```sh
 bun run test:unit            # quick source-level tests; no build or services
 bun run test                 # build, then backend and integration tests
-bun run typecheck            # TS and Vue checks without rebuilding dist
+bun run typecheck            # native TypeScript 7 and React TSX checks without rebuilding dist
 
 # After a build, run a focused suite without rebuilding:
 bun test --timeout 30000 tests/composition.test.ts
@@ -112,7 +128,7 @@ The command runner cannot select tests by coverage, so `coverageAnalysis` is off
 
 Two equivalent budget mutants have line-specific Stryker comments with reasons: a string in the fallback tier array never matches a numeric threshold, and changing the default mode to another non-demo value still takes the live path. They stay visible as ignored in reports. Tests cover missing block definitions, absent/empty tiers, pricing boundaries, snapshot immutability and default live behavior. Mutants that decrement the visit counter or remove the loop body produce infinite loops; their bounded process timeouts count as detected mutations.
 
-`test:mutation:full` uses `stryker.full.config.mjs` to mutate TypeScript across `src/` and `web/`, excluding declarations and frozen legacy sources. It builds the instrumented distribution once inside Stryker's sandbox, then runs the backend/integration suite for each mutant with one runner. With tens of thousands of mutants and a roughly nine-minute baseline, this can take days even with early exit on failures. Its baseline limit is 20 minutes. Vue components and browser journeys are outside this scope. Local `.workflow/` state and existing build output are excluded from every sandbox.
+`test:mutation:full` uses `stryker.full.config.mjs` to mutate TypeScript across `src/` and `web/`, excluding declarations and frozen legacy sources. It builds the instrumented distribution once inside Stryker's sandbox, then runs the backend/integration suite for each mutant with one runner. With tens of thousands of mutants and a roughly nine-minute baseline, this can take days even with early exit on failures. Its baseline limit is 20 minutes. Browser journeys are outside this scope. Local `.workflow/` state and existing build output are excluded from every sandbox.
 
 HTML and JSON reports go to `reports/mutation/`, full-sweep reports to `reports/mutation/full/`, and smoke reports to `reports/mutation-smoke/`. Reports and `.stryker-tmp/` are ignored by Git, ESLint, and Prettier. The smoke configuration inherits the default configuration and narrows mutation to usage arithmetic/formatting and the engine's snapshot/activity approval guards. Keep source line ranges aligned when those functions move.
 
@@ -215,8 +231,8 @@ The installed CLI and `bun run start` default to a detached host. Use `bun run s
 
 ## Code quality
 
-Run `bun run check` before submitting changes. It runs ESLint with zero warnings, checks Prettier formatting, typechecks TypeScript and Vue templates, builds the distributable artifacts, and runs the unit and integration tests. CI runs only the quick unit suite (`bun run test:unit`). Run browser journeys (`bun run test:e2e`) and mutation checks (`bun run test:mutation:smoke`) explicitly when needed.
+Run `bun run check` before submitting changes. It runs ESLint with zero warnings, checks Prettier formatting, typechecks TypeScript and React TSX, builds the distributable artifacts, and runs the unit and integration tests. CI runs only the quick unit suite (`bun run test:unit`). Run browser journeys (`bun run test:e2e`) and mutation checks (`bun run test:mutation:smoke`) explicitly when needed.
 
-Use `bun run lint:fix` for safe lint fixes and `bun run format` to format supported repository files. `bun run format:web` limits formatting to the browser application. ESLint uses its flat config with the recommended JavaScript, TypeScript and Vue rules; Prettier owns formatting. Prefer type-only imports, `const`, explicit module ownership, and meaningful error causes. Narrow, documented exceptions cover heterogeneous SDK generics, control-character validation and integrity checks during cleanup. Historical workflow sources are excluded from automated lint and formatting rewrites to preserve replay behavior.
+Use `bun run lint:fix` for safe lint fixes and `bun run format` to format supported repository files. `bun run format:web` limits formatting to the browser application. ESLint uses its flat config with recommended JavaScript, TypeScript, React, Hooks/Compiler, and Fast Refresh rules; Prettier owns formatting. Prefer type-only imports, `const`, explicit module ownership, and meaningful error causes. Narrow, documented exceptions cover heterogeneous SDK generics, control-character validation and integrity checks during cleanup. Historical workflow sources are excluded from automated lint and formatting rewrites to preserve replay behavior.
 
 `.editorconfig` and `.prettierrc.json` define shared formatting defaults. `.prettierignore` excludes generated files, local workflow state, dependency directories and lockfiles. Add production code to its owning module and import implementations directly; avoid creating compatibility re-export files for old source paths.

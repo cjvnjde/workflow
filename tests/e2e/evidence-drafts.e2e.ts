@@ -7,7 +7,9 @@ async function attach(page: Page) {
     mimeType: "text/plain",
     buffer: Buffer.from("Preserve this context"),
   });
-  await expect(page.locator(".attachment-tray")).toContainText("draft-context.txt");
+  await expect(page.getByRole("list", { name: "Attached files", exact: true })).toContainText(
+    "draft-context.txt",
+  );
 }
 
 test("unsent task text and attachments survive Settings, session navigation and reload until explicitly discarded", async ({
@@ -28,17 +30,23 @@ test("unsent task text and attachments survive Settings, session navigation and 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("button", { name: "New task", exact: true }).click();
   await expect(composer(page)).toHaveValue("Unsent task with important context");
-  await expect(page.locator(".attachment-tray")).toContainText("draft-context.txt");
+  await expect(page.getByRole("list", { name: "Attached files", exact: true })).toContainText(
+    "draft-context.txt",
+  );
   await page.getByRole("button", { name: /^Another saved task for draft navigation/ }).click();
   await expect(page).toHaveURL(new RegExp(task.id));
   await page.getByRole("button", { name: "New task", exact: true }).click();
   await page.reload();
   await expect(composer(page)).toHaveValue("Unsent task with important context");
-  await expect(page.locator(".attachment-tray")).toContainText("draft-context.txt");
+  await expect(page.getByRole("list", { name: "Attached files", exact: true })).toContainText(
+    "draft-context.txt",
+  );
   await page.getByRole("button", { name: "Discard task draft", exact: true }).click();
   await page.reload();
   await expect(composer(page)).toHaveValue("");
-  await expect(page.locator(".attachment-chip")).toHaveCount(0);
+  await expect(
+    page.getByRole("list", { name: "Attached files", exact: true }).getByRole("listitem"),
+  ).toHaveCount(0);
 });
 
 test("failed submission preserves a draft and successful submission clears the submitted text and attachments", async ({
@@ -57,14 +65,18 @@ test("failed submission preserves a draft and successful submission clears the s
   await expect(composer(page)).toHaveValue("Submit the preserved task draft");
   await page.unroute("**/api/tasks");
   await page.reload();
-  await expect(page.locator(".attachment-tray")).toContainText("draft-context.txt");
+  await expect(page.getByRole("list", { name: "Attached files", exact: true })).toContainText(
+    "draft-context.txt",
+  );
   await page.getByRole("button", { name: "Start task", exact: true }).click();
   await expect(page.locator(".task-request > p")).toHaveText("Submit the preserved task draft");
   await expect(page.locator(".request-attachments")).toContainText("draft-context.txt");
   await page.getByRole("button", { name: "New task", exact: true }).click();
   await page.reload();
   await expect(composer(page)).toHaveValue("");
-  await expect(page.locator(".attachment-chip")).toHaveCount(0);
+  await expect(
+    page.getByRole("list", { name: "Attached files", exact: true }).getByRole("listitem"),
+  ).toHaveCount(0);
 });
 
 test("a delayed successful submission cannot erase newer draft edits", async ({ page }) => {
@@ -92,7 +104,9 @@ test("a delayed successful submission cannot erase newer draft edits", async ({ 
   await expect(composer(page)).toHaveValue("Newer draft must survive the earlier response");
   await page.reload();
   await expect(composer(page)).toHaveValue("Newer draft must survive the earlier response");
-  await expect(page.locator(".attachment-tray")).toContainText("draft-context.txt");
+  await expect(page.getByRole("list", { name: "Attached files", exact: true })).toContainText(
+    "draft-context.txt",
+  );
 });
 
 async function completedEvidenceRun(page: Page) {
@@ -108,7 +122,7 @@ test("Results show evidence older than 500 events after completion and browser r
   request,
 }) => {
   await completedEvidenceRun(page);
-  const taskId = new URL(page.url()).hash.slice("#task=".length);
+  const taskId = new URL(page.url()).searchParams.get("task");
   const task = await (await request.get(`/api/tasks/${taskId}`)).json();
   const recent = await (await request.get(`/api/runs/${task.runId}/events`)).json();
   expect(recent).toHaveLength(500);

@@ -161,14 +161,14 @@ test("session IDs reopen the same task and run across terminal controllers with 
     await other.openSessionById(taskId);
     assert.equal(other.state.task?.id, taskId);
     assert.equal(other.state.run?.id, runId);
-    assert.equal(other.browserUrl(), `${address}/#task=${taskId}`);
+    assert.equal(other.browserUrl(), `${address}/?task=${taskId}`);
     await other.submit("/web");
     assert.equal(other.state.screen, "session");
     assert.match(other.state.detail, new RegExp(`workflow attach ${taskId}`));
     await other.submit(`/open run:${runId}`);
     assert.equal(other.state.task, undefined);
     assert.equal(other.state.run?.id, runId);
-    assert.equal(other.browserUrl(), `${address}/#run=${runId}`);
+    assert.equal(other.browserUrl(), `${address}/?run=${runId}`);
     await other.submit("/reject");
     await controller.refresh();
     assert.equal(controller.state.run?.status, "rejected");

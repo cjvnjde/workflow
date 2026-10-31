@@ -1,0 +1,114 @@
+.evidence-value {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 12px;
+  min-width: 0;
+  margin: 10px 0;
+}
+.evidence-value summary {
+  display: list-item;
+  cursor: pointer;
+  font-size: 12px;
+}
+.evidence-value summary strong {
+  font-weight: 500;
+}
+.evidence-value summary > span {
+  display: block;
+  margin: 5px 0 0 14px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.evidence-value p {
+  font-size: 11px;
+  margin: 12px 0 0;
+}
+.evidence-value .evidence-unavailable {
+  color: var(--warning);
+  font-size: 12px;
+}
+.evidence-value .evidence-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+.evidence-value .evidence-actions button,
+.evidence-value .evidence-actions a {
+  font-size: 10px;
+  padding: 5px;
+}
+.evidence-value .evidence-actions a {
+  color: var(--primary);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.evidence-value .evidence-actions > span {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.evidence-value .evidence-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.evidence-value .evidence-search input {
+  flex: 1;
+  min-width: 150px;
+  font-size: 11px;
+  padding: 7px 9px;
+}
+.evidence-value .evidence-search > span,
+.evidence-value .evidence-search button {
+  font-size: 10px;
+}
+.evidence-value pre {
+  margin: 0;
+  padding: 12px;
+  background: var(--card);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 1.7;
+  max-height: 480px;
+  overflow: auto;
+}
+.evidence-value mark {
+  color: var(--background);
+  background: var(--warning);
+}
+.evidence-value .evidence-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 10px;
+}
+.evidence-value .evidence-fields > section {
+  min-width: 0;
+}
+.evidence-value h4 {
+  font-size: 11px;
+  font-weight: 600;
+  margin: 4px 0 7px;
+  overflow-wrap: anywhere;
+}
+.evidence-value h4 small {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 400;
+  margin-left: 8px;
+}
+.evidence-value .evidence-preview-note {
+  color: var(--muted-foreground);
+  margin: 5px 0 8px;
+}
+.evidence-value .evidence-image {
+  max-width: 100%;
+  max-height: 480px;
+  object-fit: contain;
+}

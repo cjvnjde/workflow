@@ -13,6 +13,14 @@ test("session references accept terminal IDs and browser links without following
     kind: "run",
   });
   assert.deepEqual(parseSessionLocation(`http://localhost:4310/?session=${id}`), { id });
+  assert.deepEqual(parseSessionLocation(`https://another-machine.test/?task=${id}`), {
+    id,
+    kind: "task",
+  });
+  assert.deepEqual(parseSessionLocation(`https://another-machine.test/?view=settings&run=${id}`), {
+    id,
+    kind: "run",
+  });
   for (const value of [
     "",
     "partial-id",
@@ -25,10 +33,13 @@ test("session references accept terminal IDs and browser links without following
 });
 test("copied session links replace stale selection and preserve deployment prefix", () => {
   assert.equal(
-    sessionLink(`https://example.test/workflow/?mode=local&session=old#settings`, {
-      id,
-      kind: "task",
-    }),
-    `https://example.test/workflow/?mode=local#task=${id}`,
+    sessionLink(
+      `https://example.test/workflow/?mode=local&session=old&view=settings&run=old#settings`,
+      {
+        id,
+        kind: "task",
+      },
+    ),
+    `https://example.test/workflow/?mode=local&task=${id}`,
   );
 });

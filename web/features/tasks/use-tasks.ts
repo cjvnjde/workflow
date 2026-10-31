@@ -1,74 +1,71 @@
-import { computed, shallowRef, watch, toValue, type MaybeRefOrGetter } from "vue";
-import { taskListSchema, taskSchema, type TaskRequest } from "../../../src/contracts/index.js";
+import { queryOptions, skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useState } from "react";
+import type { taskListSchema, TaskRequest } from "../../../src/contracts/index.js";
 import type { z } from "zod";
-import { request } from "../../shared/api.js";
+import { client } from "../../shared/api.js";
+import { workflowQueryKeys } from "../../shared/query-client.js";
 
-export function useTasks(source: MaybeRefOrGetter<string | undefined>) {
-  const tasks = shallowRef<z.infer<typeof taskListSchema>>([]);
-  const task = shallowRef<TaskRequest>();
-  const error = shallowRef("");
-  const selected = computed(() => toValue(source));
-  const apply = (loaded: TaskRequest) => {
-    if (
-      selected.value === loaded.id &&
-      !(task.value?.id === loaded.id && task.value.revision > loaded.revision)
-    ) {
-      task.value = loaded;
-    }
-    if (!tasks.value.some((item) => item.id === loaded.id && item.revision > loaded.revision)) {
-      tasks.value = [...tasks.value.filter((item) => item.id !== loaded.id), loaded].sort((a, b) =>
-        b.createdAt.localeCompare(a.createdAt),
+type TaskList = z.infer<typeof taskListSchema>;
+const emptyTasks: TaskList = [];
+
+/** Keep deletion markers and newer revisions when a response races a mutation or SSE refresh. */
+function mergeTasks(previous: TaskList, incoming: TaskList): TaskList {
+  const tasks = new Map(previous.map((task) => [task.id, task]));
+  for (const task of incoming) {
+    if ((tasks.get(task.id)?.revision ?? -1) <= task.revision) tasks.set(task.id, task);
+  }
+  return [...tasks.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+function newerTask(previous: TaskRequest | undefined, incoming: TaskRequest) {
+  return previous && previous.revision > incoming.revision ? previous : incoming;
+}
+const tasksOptions = queryOptions({
+  queryKey: workflowQueryKeys.tasks,
+  queryFn: ({ signal }) => client.tasks(signal),
+  structuralSharing: (previous, incoming) =>
+    mergeTasks((previous as TaskList | undefined) ?? emptyTasks, incoming as TaskList),
+  refetchInterval: 1000,
+});
+function taskOptions(id: string | undefined) {
+  return queryOptions({
+    queryKey: workflowQueryKeys.task(id),
+    queryFn: id ? ({ signal }) => client.task(id, signal) : skipToken,
+    structuralSharing: (previous, incoming) =>
+      newerTask(previous as TaskRequest | undefined, incoming as TaskRequest),
+    refetchInterval: 1000,
+  });
+}
+
+/** Query cancels superseded selections and owns both polling and revisioned task history. */
+export function useTasks(selectedId: string | undefined) {
+  const queryClient = useQueryClient();
+  const [actionError, setActionError] = useState("");
+  const tasks = useQuery(tasksOptions);
+  const task = useQuery(taskOptions(selectedId));
+  const apply = useCallback(
+    (loaded: TaskRequest) => {
+      queryClient.setQueryData(taskOptions(loaded.id).queryKey, (current) =>
+        newerTask(current, loaded),
       );
-    }
-  };
-  watch(
-    selected,
-    (id, _previous, onCleanup) => {
-      const controller = new AbortController();
-      let timer: ReturnType<typeof setTimeout>;
-      task.value = undefined;
-      const refresh = async () => {
-        const [list, detail] = await Promise.allSettled([
-          request("/api/tasks", taskListSchema, { signal: controller.signal }),
-          id
-            ? request(`/api/tasks/${id}`, taskSchema, {
-                signal: controller.signal,
-              })
-            : Promise.resolve(undefined),
-        ]);
-        if (controller.signal.aborted) {
-          return;
-        }
-        if (list.status === "fulfilled") {
-          const merged = new Map(tasks.value.map((item) => [item.id, item]));
-          for (const item of list.value) {
-            if ((merged.get(item.id)?.revision ?? -1) <= item.revision) {
-              merged.set(item.id, item);
-            }
-          }
-          tasks.value = [...merged.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-          error.value = "";
-        } else {
-          error.value = list.reason instanceof Error ? list.reason.message : "Could not load tasks";
-        }
-        if (detail.status === "fulfilled" && detail.value) {
-          apply(detail.value);
-        }
-        if (detail.status === "rejected") {
-          error.value =
-            detail.reason instanceof Error ? detail.reason.message : "Could not load this task";
-        }
-        timer = setTimeout(() => {
-          void refresh();
-        }, 1000);
-      };
-      void refresh();
-      onCleanup(() => {
-        controller.abort();
-        clearTimeout(timer);
-      });
+      queryClient.setQueryData(tasksOptions.queryKey, (current) =>
+        mergeTasks(current ?? emptyTasks, [loaded]),
+      );
+      void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.tasks });
     },
-    { immediate: true, flush: "sync" },
+    [queryClient],
   );
-  return { tasks, task, apply, error };
+  useEffect(() => {
+    if (!task.data) return;
+    const loaded = task.data;
+    queryClient.setQueryData(tasksOptions.queryKey, (current) =>
+      mergeTasks(current ?? emptyTasks, [loaded]),
+    );
+  }, [queryClient, task.data]);
+  return {
+    tasks: tasks.data ?? emptyTasks,
+    task: task.data,
+    error: actionError || task.error?.message || tasks.error?.message || "",
+    apply,
+    setError: setActionError,
+  };
 }

@@ -56,7 +56,7 @@ test("three focused blocks collect only staged changes, draft with Luna without 
   await engine.approve(draft.id);
   await engine.waitForIdle();
   const run = engine.get(draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.equal(calls, 1);
   assert.deepEqual(
     run.attempts.map((a) => a.nodeId),
@@ -97,7 +97,7 @@ test("message validation rejects malformed subjects and accepts breaking-change 
     assert.equal(
       engine.get(draft.id).status,
       valid ? "completed" : "failed",
-      engine.get(draft.id).error,
+      engine.get(draft.id).error ?? "",
     );
   }
 });

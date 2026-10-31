@@ -7,7 +7,7 @@ Workflow has one application layer and several ways to use it. The application o
 ```mermaid
 flowchart LR
   Terminal[OpenTUI workspace / terminal commands] --> Client[WorkflowClient]
-  Web[Vue web GUI] --> Client
+  Web[React web GUI] --> Client
   Native[Future desktop / mobile GUI] --> Client
   Client --> HTTP[HTTP adapter + SSE]
   HTTP --> App[WorkflowApplication]
