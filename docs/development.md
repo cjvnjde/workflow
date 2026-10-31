@@ -23,7 +23,7 @@ Do not run competing servers against the same project. Use disposable project di
 
 ## Application structure
 
-The frontend is Vue 3 with TypeScript `<script setup>`, typed props/events, and composables for state and lifecycle management. Vue Flow renders graphs; CodeMirror provides source editing; Prettier formats authored code. The palette is Catppuccin Mocha.
+The browser entry is React 19. React owns the root and new screens use Tailwind CSS 4 with shadcn/ui components on its default neutral theme. Existing Vue 3 feature screens remain mounted in an isolated compatibility island while they are migrated; they use typed props/events and composables, Vue Flow for graphs, CodeMirror for source editing, and the Catppuccin Mocha palette. Keep the React theme tokens at their shadcn defaults.
 
 The backend, CLI, SDK, and scripts are TypeScript on Bun. `node:*` imports use Bun's compatible APIs rather than requiring a separate Node process. Temporal's workflow bundle executes in its replayable environment; host effects belong in activities.
 
@@ -38,7 +38,7 @@ bun run build:engine  # backend artifacts, without invoking Vite
 bun run build:web     # GUI assets only
 ```
 
-Typechecking includes Vue scripts, templates, and component props through the Vue language engine. `scripts/typecheck.ts` integrates it directly for Bun. A regression test verifies that script, template, and prop errors fail.
+Typechecking covers React TSX and Vue scripts, templates, and component props. `scripts/typecheck.ts` integrates TypeScript with the Vue language engine directly for Bun. A regression test verifies that script, template, and prop errors fail.
 
 The build typechecks, removes stale `dist` output, runs Vite, emits SDK declarations, bundles the public SDK and program runtime, bundles current and frozen legacy Temporal workflows, and builds the executable CLI.
 
@@ -66,7 +66,7 @@ Do not rebuild or remove `dist` while tests or live runs are loading it. Build o
 ```sh
 bun run test:unit            # quick source-level tests; no build or services
 bun run test                 # build, then backend and integration tests
-bun run typecheck            # TS and Vue checks without rebuilding dist
+bun run typecheck            # TS, React TSX, and Vue checks without rebuilding dist
 
 # After a build, run a focused suite without rebuilding:
 bun test --timeout 30000 tests/composition.test.ts
@@ -215,7 +215,7 @@ The installed CLI and `bun run start` default to a detached host. Use `bun run s
 
 ## Code quality
 
-Run `bun run check` before submitting changes. It runs ESLint with zero warnings, checks Prettier formatting, typechecks TypeScript and Vue templates, builds the distributable artifacts, and runs the unit and integration tests. CI runs only the quick unit suite (`bun run test:unit`). Run browser journeys (`bun run test:e2e`) and mutation checks (`bun run test:mutation:smoke`) explicitly when needed.
+Run `bun run check` before submitting changes. It runs ESLint with zero warnings, checks Prettier formatting, typechecks TypeScript, React TSX, and Vue templates, builds the distributable artifacts, and runs the unit and integration tests. CI runs only the quick unit suite (`bun run test:unit`). Run browser journeys (`bun run test:e2e`) and mutation checks (`bun run test:mutation:smoke`) explicitly when needed.
 
 Use `bun run lint:fix` for safe lint fixes and `bun run format` to format supported repository files. `bun run format:web` limits formatting to the browser application. ESLint uses its flat config with the recommended JavaScript, TypeScript and Vue rules; Prettier owns formatting. Prefer type-only imports, `const`, explicit module ownership, and meaningful error causes. Narrow, documented exceptions cover heterogeneous SDK generics, control-character validation and integrity checks during cleanup. Historical workflow sources are excluded from automated lint and formatting rewrites to preserve replay behavior.
 

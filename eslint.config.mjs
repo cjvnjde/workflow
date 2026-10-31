@@ -22,7 +22,7 @@ export default defineConfig(
     "src/legacy/**",
   ]),
   {
-    files: ["**/*.{js,mjs,ts,vue}"],
+    files: ["**/*.{js,mjs,ts,tsx,vue}"],
     extends: [
       js.configs.recommended,
       tseslint.configs.recommended,
@@ -53,7 +53,7 @@ export default defineConfig(
     },
   },
   {
-    files: ["web/**/*.{ts,vue}", "src/{contracts,sdk,client}/**/*.ts"],
+    files: ["web/**/*.{ts,tsx,vue}", "src/{contracts,sdk,client}/**/*.ts"],
     rules: {
       "no-restricted-imports": [
         "error",
