@@ -206,6 +206,7 @@ Usage totals cover planning, setup, design, and execution, including failed requ
 ## Develop Workflow
 
 ```sh
+bun run workflow init  # once per checkout; creates local configuration
 bun run dev        # live backend + Vite at http://127.0.0.1:5173
 bun run test       # build + backend/integration tests
 bun run test:e2e   # build + headless browser tests

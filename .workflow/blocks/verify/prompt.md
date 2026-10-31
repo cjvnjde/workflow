@@ -1,1 +1,0 @@
-Write focused tests proving the acceptance criteria. Do not change production code. If valid tests expose an implementation defect, publish feedback with the violated criterion and failure evidence and return retry to implementation. Do not weaken tests to pass. Return pass only when the criteria and checks pass.

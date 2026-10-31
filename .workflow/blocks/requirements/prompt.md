@@ -1,1 +1,0 @@
-Read the project and task. Produce concise, testable acceptance criteria and relevant constraints. Do not modify files. Publish a requirements artifact. If the task cannot be specified safely, return fail with the questions that must be answered.

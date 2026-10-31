@@ -38,7 +38,7 @@ cd /path/to/your/project
 ./workflow
 ```
 
-To work on the Workflow repository itself, run `bun run build` and `bun run start` from its checkout. Its example `.workflow/` configuration is already present. `bun run dev` starts the live backend and a hot-reloading frontend at **http://127.0.0.1:5173**; [development mode](development.md) is for editing the application.
+To work on the Workflow repository itself, run `bun run build`, then `bun run workflow init` once to create local configuration, and `bun run start`. The generated `.workflow/` directory is ignored by Git. `bun run dev` starts the live backend and a hot-reloading frontend at **http://127.0.0.1:5173**; [development mode](development.md) is for editing the application.
 
 ## Initialize your project
 

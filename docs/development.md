@@ -9,10 +9,11 @@ From the repository root:
 ```sh
 bun install
 bun run build
+bun run workflow init
 bun run dev
 ```
 
-The development script starts the live API, waits for readiness, then starts Vite at **http://127.0.0.1:5173**. The backend uses **4310** and the checkout's `.workflow/` configuration. `bun run dev:live` is a compatibility alias. Both `dev` and `start` use real AI when tasks request it; they do not silently substitute demo responses.
+Run `bun run workflow init` once per checkout to create local `.workflow/` configuration; Git ignores this directory. The development script starts the live API, waits for readiness, then starts Vite at **http://127.0.0.1:5173**. The backend uses **4310** and that local configuration. `bun run dev:live` is a compatibility alias. Both `dev` and `start` use real AI when tasks request it; they do not silently substitute demo responses.
 
 Use `bun run workflow --help` for the source CLI. `bun run start` serves the built distribution. Run `bun run compile` to rebuild a portable executable after changing the tool, then replace your installed copy.
 

@@ -1,1 +1,0 @@
-Push the current branch using the configured Git remote. This editable script publishes existing commits. Route failure diagnostics to a repair step or stop. Modify the script source to change its behavior.
