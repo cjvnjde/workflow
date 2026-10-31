@@ -44,12 +44,13 @@ To work on the Workflow repository itself, run `bun run build` and `bun run star
 
 ```sh
 workflow login openai
-workflow model
 cd /path/to/your/project
 workflow init
 workflow setup
 workflow                       # returns after the background host is ready
 ```
+
+Login opens the model selector if no default is saved. `workflow model` is optional: use it to change the model later or finish selection if you skipped it.
 
 Open **http://127.0.0.1:4310**. The current directory is the project; there is no positional project-path argument and no parent-directory configuration search.
 

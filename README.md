@@ -21,12 +21,13 @@ Requires **Bun 1.4.2+** and Bash to build. Your project's build and test tools m
 
    Keep `~/.local/bin` on PATH, or move the executable to any folder and run it as `./workflow`.
 
-2. **Connect your account and choose a default model once:**
+2. **Connect your account once:**
 
    ```sh
    workflow login openai
-   workflow model
    ```
+
+   Login opens the model selector if no default is saved. Run `workflow model` only to change the model later or finish selection if you skipped it.
 
 3. **Initialize your project and let setup finish:**
 
