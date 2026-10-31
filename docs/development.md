@@ -10,28 +10,28 @@ From the repository root:
 bun install
 bun run build
 bun run workflow init
-bun run dev
+bun run workflow
 ```
 
-Run `bun run workflow init` once per checkout to create local `.workflow/` configuration; Git ignores this directory. The development script starts the live API, waits for readiness, then starts Vite at **http://127.0.0.1:5173**. The backend uses **4310** and that local configuration. `bun run dev:live` is a compatibility alias. Both `dev` and `start` use real AI when tasks request it; they do not silently substitute demo responses.
+Run `bun run workflow init` once per checkout to create local `.workflow/` configuration; Git ignores this directory. `bun run workflow` opens the terminal workspace and starts a source host with the hot-reloading web app on the same port as the API (**4310** by default). Use `/web` in the terminal for its browser link, or `bun run workflow --web` to open the browser directly. These commands use real AI when tasks request it; they do not silently substitute demo responses.
 
 ### Web hot reload
 
-`bun run dev` already uses Vite's built-in hot module replacement and React Fast Refresh. Open **http://127.0.0.1:5173** while editing `web/`: CSS updates in place, and compatible React component edits preserve local state. Changes outside a Fast Refresh boundary may reload the page.
+Source hosts embed Vite's development middleware and HMR WebSocket in the existing HTTP server. The browser, `/api/` routes, and hot reload all use **http://127.0.0.1:4310**, or the port selected with `--port`. No second server, proxy, or frontend command is required.
 
-If the backend is already running on **4310**, run `bun run dev:web` to start only Vite against it. This avoids starting a competing backend for the same project. Vite proxies `/api/` requests to that backend.
+While editing `web/`, Vite updates CSS in place and React Fast Refresh preserves local state for compatible component edits. Changes outside a Fast Refresh boundary may reload the page. `--no-web` skips Vite entirely. The host closes Vite and its watchers when stopped.
 
-The web UI served directly by the backend on **4310** uses built assets; it does **not** hot reload. `bun run start` is also a built-distribution command, not a development server. Backend source changes require a backend restart; Vite only reloads the web app.
+`bun run dev` and `bun run dev:live` also invoke the source CLI with `--web`. `bun run start` and installed executables serve built production assets without Vite or hot reload. Backend source changes still require a backend restart.
 
 Use `bun run workflow --help` for the source CLI. `bun run start` serves the built distribution. Run `bun run compile` to rebuild a portable executable after changing the tool, then replace your installed copy.
 
-An existing background host keeps the code it started with. After rebuilding or upgrading, use `workflow stop` and `workflow start --background` when ready to restart it; saved tasks remain available. Refresh the browser after the host restarts.
+An existing background host keeps the code it started with. If a host was already running before these changes, use `bun run workflow stop`, then `bun run workflow` to start the source host with HMR. Reusing a built host does not turn it into a development host. After rebuilding or upgrading an installed executable, use `workflow stop` and `workflow start --background` when ready to restart it; saved tasks remain available. Refresh the browser after the host restarts.
 
 Do not run competing servers against the same project. Use disposable project directories for integration checks.
 
 ## Application structure
 
-The browser UI uses React 19 and [TanStack Start SPA mode](https://tanstack.com/start/latest/docs/framework/react/guide/spa-mode), with TanStack Router owning typed URL search state and navigation guards. Canonical session links use `?task=<id>` or `?run=<id>`; settings use `?view=settings`. Existing hash links are converted on entry. Fastify continues to own the API and serve the generated static shell.
+The browser UI uses React 19 and [TanStack Start SPA mode](https://tanstack.com/start/latest/docs/framework/react/guide/spa-mode), with TanStack Router owning typed URL search state and navigation guards. Canonical session links use `?task=<id>` or `?run=<id>`; settings use `?view=settings`. Existing hash links are converted on entry. Fastify owns the API; source hosts embed Vite for the web app, while built hosts serve the generated static shell.
 
 TanStack Query owns project, run, task, setup, and usage caches, request cancellation, polling, and SSE-driven invalidation. Revision-aware merging prevents stale responses from overwriting newer mutations. Streaming text and UI state remain local. TanStack Form owns data-entry state and submission lifecycles; TanStack Table v9 renders model usage and execution evidence. Query already covers the server-state requirements, so there is no additional TanStack DB store.
 

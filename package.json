@@ -53,9 +53,8 @@
   },
   "scripts": {
     "workflow": "bun src/cli/index.ts",
-    "dev": "bun scripts/dev.ts",
-    "dev:live": "bun scripts/dev.ts",
-    "dev:web": "bun --bun run vite --host 127.0.0.1 --strictPort",
+    "dev": "bun src/cli/index.ts --web",
+    "dev:live": "bun src/cli/index.ts --web",
     "build": "bun scripts/build.ts",
     "compile": "bun run build && bun scripts/compile.ts",
     "test:standalone": "bun run compile && bun run test:standalone:run",

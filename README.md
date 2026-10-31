@@ -210,12 +210,14 @@ Usage totals cover planning, setup, design, and execution, including failed requ
 
 ```sh
 bun run workflow init  # once per checkout; creates local configuration
-bun run dev        # backend + Vite with web hot reload at http://127.0.0.1:5173
-bun run dev:web    # Vite only, using an already-running backend on port 4310
+bun run workflow       # terminal workspace; /web shows the hot-reloading browser UI
+bun run workflow --web # open that UI directly at http://127.0.0.1:4310
 bun run test       # build + Vitest backend/integration tests
 bun run test:e2e   # build + native Playwright browser journeys and visuals
 bun run test:visual # build + Playwright screenshot tests tagged @visual
 ```
+
+Source hosts use Vite HMR and React Fast Refresh on the API's port. No separate frontend command is needed. Built and installed hosts continue serving production assets.
 
 `dev` and `start` use real AI. Paid/subscription integration testing is a separate opt-in command, `bun run test:live`. See [Development](docs/development.md) for prerequisites, focused checks, and live-test scenarios.
 

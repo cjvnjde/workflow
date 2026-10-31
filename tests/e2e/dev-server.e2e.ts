@@ -1,52 +1,43 @@
 import { expect, test } from "@playwright/test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createServer } from "vite";
-import config from "../../vite.config.js";
+import { promisify } from "node:util";
 
-test("Vite serves client modules as JavaScript and proxies only API routes", async ({
-  page,
-  baseURL,
-}) => {
-  if (!baseURL) {
-    throw new Error("The test backend URL is required");
-  }
-  const cacheDir = await mkdtemp(path.join(os.tmpdir(), "workflow-vite-test-"));
-  const server = await createServer({
-    ...config,
-    configFile: false,
-    root: fileURLToPath(new URL("../../web/", import.meta.url)),
-    cacheDir,
-    logLevel: "error",
-    server: {
-      ...config.server,
-      host: "127.0.0.1",
-      port: 0,
-      open: false,
-      // Use the application's matching rules against the isolated test backend.
-      proxy: Object.fromEntries(
-        Object.keys(config.server?.proxy ?? {}).map((prefix) => [prefix, baseURL]),
-      ),
-    },
-  });
+test("source workflow serves the dev web app and API on the host port", async ({ page }) => {
+  test.setTimeout(60_000);
+  const projectDirectory = await realpath(
+    await mkdtemp(path.join(os.tmpdir(), "workflow-source-web-")),
+  );
+  const cli = fileURLToPath(new URL("../../src/cli/index.ts", import.meta.url));
+  await writeFile(
+    path.join(projectDirectory, "package.json"),
+    JSON.stringify({ scripts: { workflow: `bun ${JSON.stringify(cli)}` } }),
+  );
+  const execute = promisify(execFile);
+  const command = (args: string[]) =>
+    execute("bun", ["run", "workflow", ...args], {
+      cwd: projectDirectory,
+      env: { ...process.env, PI_OFFLINE: "1" },
+      timeout: 30_000,
+    });
   try {
-    await server.listen();
-    const address = server.httpServer?.address();
-    if (!address || typeof address === "string") {
-      throw new Error("Vite did not start an HTTP server");
-    }
-    const origin = `http://127.0.0.1:${address.port}`;
+    await command(["init"]);
+    const { stdout } = await command(["--background", "--demo", "--port", "0", "--json"]);
+    const { url: origin } = JSON.parse(stdout) as { url: string };
     for (const pathname of ["/shared/api.ts", "/shared/api.ts?t=1"]) {
       const module = await page.request.get(`${origin}${pathname}`);
       expect(module.status()).toBe(200);
       expect(module.headers()["content-type"]).toMatch(/javascript/);
-      expect(await module.text()).toContain("export");
     }
     const project = await page.request.get(`${origin}/api/project`);
     expect(project.ok()).toBe(true);
-    expect((await project.json()).blocks.review).toBeTruthy();
+    expect((await project.json()).project).toBe(projectDirectory);
+    const missingApi = await page.request.get(`${origin}/api/does-not-exist`);
+    expect(missingApi.status()).toBe(404);
+    expect(missingApi.headers()["content-type"]).toMatch(/application\/json/);
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(origin);
@@ -69,7 +60,7 @@ test("Vite serves client modules as JavaScript and proxies only API routes", asy
     expect(icon.headers()["content-type"]).toMatch(/image\/svg\+xml/);
   } finally {
     await page.goto("about:blank");
-    await server.close();
-    await rm(cacheDir, { recursive: true, force: true });
+    await command(["stop"]);
+    await rm(projectDirectory, { recursive: true, force: true });
   }
 });

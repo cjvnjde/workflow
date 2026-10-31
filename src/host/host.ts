@@ -76,7 +76,15 @@ export async function runHost(options: {
       state: controller.signal.aborted ? "stopping" : "ready",
     });
     registerHostControl(server, { info, token, stop });
-    if (options.web) await registerWebGui(server);
+    if (options.web) {
+      if (import.meta.url.endsWith(".ts")) {
+        // Vite is development-only and is not installed in production runtimes.
+        const { registerDevelopmentWebGui } = await import("../http/dev-web-server.js");
+        await registerDevelopmentWebGui(server);
+      } else {
+        await registerWebGui(server);
+      }
+    }
     address = await server.listen({ port: options.port, host: "127.0.0.1" });
     unannounce = await announceProjectServer(application.project, address, { hostId, token });
     console.log(

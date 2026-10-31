@@ -39,12 +39,7 @@ export async function createHttpServer(app: WorkflowApplication, port = 4310) {
       reply.raw.removeListener("close", close);
     }
   };
-  const allowedOrigins = new Set([
-    `http://127.0.0.1:${port}`,
-    `http://localhost:${port}`,
-    "http://127.0.0.1:5173",
-    "http://localhost:5173",
-  ]);
+  const allowedOrigins = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`]);
   server.addHook("onListen", async () => {
     const address = server.server.address();
     if (address && typeof address !== "string") {

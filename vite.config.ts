@@ -12,6 +12,7 @@ export default defineConfig({
       client: { entry: "./main.tsx" },
       spa: { enabled: true, prerender: { outputPath: "/index" } },
       router: { quoteStyle: "double", semicolons: true },
+      vite: { installDevServerMiddleware: true },
     }),
     react(),
     babel({
@@ -34,6 +35,4 @@ export default defineConfig({
       },
     },
   },
-  // Keep client modules such as /api.ts in Vite; only API routes go to Fastify.
-  server: { port: 5173, proxy: { "/api/": "http://127.0.0.1:4310" } },
 });
