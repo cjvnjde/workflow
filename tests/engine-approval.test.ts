@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import test, { type TestContext } from "node:test";
+import { test, type TestContext } from "vitest";
 import { ApplicationFailure, asyncLocalStorage, type Context } from "@temporalio/activity";
 import { WorkflowEngine } from "../src/core/engine.js";
 import { emptyUsage } from "../src/core/execution/budget.js";

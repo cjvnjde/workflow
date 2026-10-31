@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import { promisify } from "node:util";
 import { workspaceTools } from "../src/core/execution/block-runner.js";
 import { Workspace } from "../src/core/storage/workspace.js";
@@ -62,7 +62,7 @@ test("bash inherits the server environment and returns command failures and outp
   const { project } = await fixture(t);
   const previous = process.env.WORKFLOW_SHELL_TEST_VALUE;
   process.env.WORKFLOW_SHELL_TEST_VALUE = "inherited-test-value";
-  t.after(() => {
+  t.onTestFinished(() => {
     if (previous === undefined) delete process.env.WORKFLOW_SHELL_TEST_VALUE;
     else process.env.WORKFLOW_SHELL_TEST_VALUE = previous;
   });

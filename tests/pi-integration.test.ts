@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import { z } from "zod";
 import { runPiBlock } from "../src/core/execution/block-runner.js";
 import { agentSchema, type UsageTotals } from "../src/contracts/domain.js";
@@ -185,7 +185,7 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
   await new Promise<void>((resolve) => {
     server.listen(0, "127.0.0.1", resolve);
   });
-  t.after(async () => {
+  t.onTestFinished(async () => {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => {
         if (error) {
@@ -230,7 +230,7 @@ test("real Pi sessions expose file and bash tools without inheriting history or 
   );
   const previousDirectory = process.env.WORKFLOW_HOME;
   process.env.WORKFLOW_HOME = agentDirectory;
-  t.after(() => {
+  t.onTestFinished(() => {
     if (previousDirectory === undefined) {
       delete process.env.WORKFLOW_HOME;
     } else {

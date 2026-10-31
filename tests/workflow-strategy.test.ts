@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
-import test from "node:test";
+import { test, type TestContext } from "vitest";
 import { MemoryStore } from "../src/core/memory/memory-store.js";
 import {
   assertStrategyRun,
@@ -16,7 +16,7 @@ import { usageSessionSchema } from "../src/contracts/usage-schema.js";
 import { createTemplate } from "../src/core/library/templates.js";
 import { fixture } from "./helpers.js";
 
-async function sample(t: test.TestContext) {
+async function sample(t: TestContext) {
   const { project, library } = await fixture(t);
   const run = runSchema.parse({
     id: randomUUID(),

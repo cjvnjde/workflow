@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { chmod, mkdir, readFile, stat, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import test from "node:test";
+import { test, type TestContext } from "vitest";
 import { Workspace } from "../src/core/storage/workspace.js";
 import { FileJournal } from "../src/core/storage/recovery.js";
 import { atomicWrite } from "../src/infrastructure/atomic-file.js";
 import { fixture } from "./helpers.js";
 
-async function recoveryFixture(t: import("node:test").TestContext) {
+async function recoveryFixture(t: TestContext) {
   const { project } = await fixture(t);
   const journal = await FileJournal.open(path.join(project, ".workflow", "recovery-test"));
   const workspace = await Workspace.create(project, { journal });
@@ -113,7 +113,7 @@ test("file journals track physical paths across aliases and recover outside-proj
   const { project, journal, workspace, recovery } = await recoveryFixture(t);
   const { mkdtemp, rm } = await import("node:fs/promises");
   const outside = await mkdtemp(path.join(path.dirname(project), "workflow-recovery-outside-"));
-  t.after(() => rm(outside, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(outside, { recursive: true, force: true }));
   const target = path.join(outside, "file.ts");
   await writeFile(target, "original");
   await symlink(outside, path.join(project, "linked"));

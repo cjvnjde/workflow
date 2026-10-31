@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -9,7 +9,7 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 
 test("Bun typechecking rejects React source, JSX and component prop errors", async (t) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "workflow-react-types-"));
-  t.after(() => rm(directory, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(directory, { recursive: true, force: true }));
   const config = path.join(directory, "tsconfig.json");
   await writeFile(
     config,

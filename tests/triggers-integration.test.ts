@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import test from "node:test";
+import { test } from "vitest";
 import { createApplication } from "../src/core/application.js";
 import { createHttpServer } from "../src/http/http-server.js";
 import { WorkflowClient, waitForRun } from "../src/client/client.js";

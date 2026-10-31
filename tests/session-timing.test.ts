@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { SessionTiming } from "../src/core/execution/session-timing.js";
 import type { OperationRecord } from "../src/contracts/operation-schema.js";
 

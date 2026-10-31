@@ -3,9 +3,11 @@ import config from "./stryker.config.mjs";
 /** @type {import('@stryker-mutator/api/core').PartialStrykerOptions} */
 export default {
   ...config,
-  // Explicit opt-in: every mutant runs the complete integration suite. The Bun
-  // command runner cannot select tests by coverage, so this can take days.
-  commandRunner: { command: "bun test --bail --timeout 30000 ./tests/*.test.ts" },
+  // Explicit opt-in: every mutant runs the complete runtime suite. The command
+  // runner cannot select tests by coverage, so this can take days.
+  commandRunner: {
+    command: "bun run vitest run --project unit --project integration --bail 1",
+  },
   buildCommand: "bun run build",
   mutate: ["src/**/*.ts", "web/**/*.ts", "!src/**/*.d.ts", "!src/legacy/**"],
   concurrency: 1,

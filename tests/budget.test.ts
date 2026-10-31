@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { addUsage, emptyUsage, estimateBudget, priceUsage } from "../src/core/execution/budget.js";
 import { budgetSchema, priceSchema } from "../src/contracts/domain.js";
 import { createTemplate } from "../src/core/library/templates.js";

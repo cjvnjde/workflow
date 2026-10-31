@@ -1,4 +1,7 @@
-import { expect, test, type Page, type Locator, type APIRequestContext } from "@playwright/test";
+import { expect } from "vitest";
+import { test } from "./fixtures.js";
+import { matchesText, matchesValue } from "./text.js";
+import { type Page, type Locator, type APIRequestContext } from "playwright";
 import { readFile } from "node:fs/promises";
 import { formatCode } from "../../src/core/library/source-format.js";
 
@@ -26,7 +29,11 @@ async function newTask(page: Page, prompt: string) {
   await page.getByRole("button", { name: "New task", exact: true }).click();
   await page.getByLabel("What should we work on?", { exact: true }).fill(prompt);
   await page.getByRole("button", { name: "Start task", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Awaiting approval", false),
+    )
+    .toBe(true);
 }
 async function settings(page: Page, section = "Providers & models") {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -35,14 +42,22 @@ async function settings(page: Page, section = "Providers & models") {
 
 test("legacy navigation and router history update the visible workspace", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByLabel("What should we work on?", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => page.getByLabel("What should we work on?", { exact: true }).isVisible())
+    .toBe(true);
   await page.goto("/#settings");
-  await expect(page.getByRole("button", { name: "Providers & models", exact: true })).toBeVisible();
-  await expect(page).toHaveURL(/\?view=settings$/);
+  await expect
+    .poll(() => page.getByRole("button", { name: "Providers & models", exact: true }).isVisible())
+    .toBe(true);
+  await expect.poll(() => matchesValue(page.url(), /\?view=settings$/)).toBe(true);
   await page.goBack();
-  await expect(page.getByLabel("What should we work on?", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => page.getByLabel("What should we work on?", { exact: true }).isVisible())
+    .toBe(true);
   await page.goForward();
-  await expect(page.getByRole("button", { name: "Providers & models", exact: true })).toBeVisible();
+  await expect
+    .poll(() => page.getByRole("button", { name: "Providers & models", exact: true }).isVisible())
+    .toBe(true);
 });
 
 test("router navigation preserves unsaved settings when discard is declined", async ({ page }) => {
@@ -50,16 +65,22 @@ test("router navigation preserves unsaved settings when discard is declined", as
   await page.getByRole("button", { name: "Task instructions", exact: true }).click();
   const name = page.getByLabel("Case name", { exact: true }).first();
   await name.fill("Unsaved navigation edit");
-  await expect(
-    page.getByRole("button", { name: "Discard settings changes", exact: true }),
-  ).toBeVisible();
+  await expect
+    .poll(() =>
+      page.getByRole("button", { name: "Discard settings changes", exact: true }).isVisible(),
+    )
+    .toBe(true);
   page.once("dialog", (dialog) => dialog.dismiss());
   await page.getByRole("button", { name: "New task", exact: true }).click();
-  await expect(page).toHaveURL(/\?view=settings$/);
-  await expect(name).toHaveValue("Unsaved navigation edit");
+  await expect.poll(() => matchesValue(page.url(), /\?view=settings$/)).toBe(true);
+  await expect
+    .poll(async () => matchesValue(await name.inputValue(), "Unsaved navigation edit"))
+    .toBe(true);
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "New task", exact: true }).click();
-  await expect(page.getByLabel("What should we work on?", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => page.getByLabel("What should we work on?", { exact: true }).isVisible())
+    .toBe(true);
 });
 
 test("Prettier editor formatting supports undo, errors and protects newer typing", async ({
@@ -77,9 +98,13 @@ test("Prettier editor formatting supports undo, errors and protects newer typing
   await expectCode(editor, source);
   await fillCode(editor, "const =");
   await button.click();
-  await expect(page.getByRole("alert")).toContainText(/expected|Unexpected/i);
+  await expect
+    .poll(async () =>
+      matchesText(await page.getByRole("alert").allTextContents(), /expected|Unexpected/i, true),
+    )
+    .toBe(true);
   await expectCode(editor, "const =");
-  let response: import("@playwright/test").Route | undefined;
+  let response: import("playwright").Route | undefined;
   await page.route("**/api/format", (route) => {
     response = route;
   });
@@ -91,7 +116,7 @@ test("Prettier editor formatting supports undo, errors and protects newer typing
   await response!.fulfill({
     json: { formatted: "const value = { one: 1, two: 2 };\n", cursorOffset: 0 },
   });
-  await expect(button).toBeEnabled();
+  await expect.poll(() => button.isEnabled()).toBe(true);
   await expectCode(editor, newer);
 });
 
@@ -140,9 +165,16 @@ test("generated tasks show code blocks and all connections before approval with 
   try {
     await page.goto("/");
     await newTask(page, "Preview code graph for a bug before execution");
-    await expect(page.getByRole("button", { name: "Workflow", exact: true })).toHaveClass(/active/);
-    await expect(page.locator(".react-flow__node")).toHaveCount(5);
-    await expect(page.locator(".react-flow__edge")).toHaveCount(9);
+    await expect
+      .poll(async () =>
+        matchesValue(
+          await page.getByRole("button", { name: "Workflow", exact: true }).getAttribute("class"),
+          /active/,
+        ),
+      )
+      .toBe(true);
+    await expect.poll(() => page.locator(".react-flow__node").count()).toBe(5);
+    await expect.poll(() => page.locator(".react-flow__edge").count()).toBe(9);
     const runs = await (await request.get("/api/runs")).json();
     const id = runs.find(
       (run: { task: string }) => run.task === "Preview code graph for a bug before execution",
@@ -157,11 +189,13 @@ test("generated tasks show code blocks and all connections before approval with 
       .click();
     await page.getByLabel("Step model", { exact: true }).selectOption("openai/test-model");
     await page.getByLabel("Step thinking", { exact: true }).selectOption("high");
-    await expect(page.getByText(/explicit.*ctx.ai/i)).toBeVisible();
+    await expect.poll(() => page.getByText(/explicit.*ctx.ai/i).isVisible()).toBe(true);
     await page.getByRole("button", { name: "Validate & save draft", exact: true }).click();
-    await expect(
-      page.getByRole("button", { name: "Validate & save draft", exact: true }),
-    ).toBeDisabled();
+    await expect
+      .poll(() =>
+        page.getByRole("button", { name: "Validate & save draft", exact: true }).isDisabled(),
+      )
+      .toBe(true);
     const saved = await (await request.get(`/api/runs/${id}`)).json();
     expect(
       saved.plan.nodes.find((node: { id: string }) => node.id === "review").agent,
@@ -170,14 +204,26 @@ test("generated tasks show code blocks and all connections before approval with 
     expect(saved.program.input.plan).toEqual(saved.plan);
     await page.getByRole("button", { name: "Workflow", exact: true }).click();
     await page.locator('.react-flow__node[data-id="review"]').click();
-    await expect(page.locator(".step-inspector")).toContainText("test-model · high");
+    await expect
+      .poll(async () =>
+        matchesText(
+          await page.locator(".step-inspector").allTextContents(),
+          "test-model · high",
+          true,
+        ),
+      )
+      .toBe(true);
     await page.screenshot({ path: "/tmp/workflow-planned-code-graph.png", fullPage: true });
     await page.getByRole("button", { name: "Approve & start", exact: true }).click();
-    await expect(page.locator(".workflow-node.active")).toBeVisible();
-    await expect(page.locator(".status-pill")).toHaveText("Completed");
+    await expect.poll(() => page.locator(".workflow-node.active").isVisible()).toBe(true);
+    await expect
+      .poll(async () =>
+        matchesText(await page.locator(".status-pill").allTextContents(), "Completed", false),
+      )
+      .toBe(true);
     const completed = await (await request.get(`/api/runs/${id}`)).json();
     expect(completed.plan).toEqual(saved.plan);
-    await expect(page.locator(".react-flow__edge")).toHaveCount(9);
+    await expect.poll(() => page.locator(".react-flow__edge").count()).toBe(9);
   } finally {
     await save(original);
     if (!wasConnected)
@@ -209,12 +255,23 @@ export default workflow({name:"Code review",input:z.object({request:z.string()})
     '{"request":"working files"}',
   );
   await page.getByRole("button", { name: "Create workflow draft", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Awaiting approval", false),
+    )
+    .toBe(true);
   const code = page.getByLabel("Workflow TypeScript", { exact: true });
   await expectCode(code, formatted);
   await fillCode(code, source.replace("ctx.input.request", "ctx.input.missing"));
   await page.getByRole("button", { name: "Typecheck & save draft", exact: true }).click();
-  await expect(page.getByRole("alert").filter({ hasText: /Property 'missing'/ })).toBeVisible();
+  await expect
+    .poll(() =>
+      page
+        .getByRole("alert")
+        .filter({ hasText: /Property 'missing'/ })
+        .isVisible(),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Discard code edits", exact: true }).click();
   await expectCode(code, formatted);
   await fillCode(
@@ -222,9 +279,11 @@ export default workflow({name:"Code review",input:z.object({request:z.string()})
     '{"request":"updated working files"}',
   );
   await page.getByRole("button", { name: "Typecheck & save draft", exact: true }).click();
-  await expect(
-    page.getByText("Typechecked · source and imports frozen", { exact: true }),
-  ).toBeVisible();
+  await expect
+    .poll(() =>
+      page.getByText("Typechecked · source and imports frozen", { exact: true }).isVisible(),
+    )
+    .toBe(true);
   const downloading = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download .ts", exact: true }).click();
   const downloaded = await downloading;
@@ -232,22 +291,43 @@ export default workflow({name:"Code review",input:z.object({request:z.string()})
   expect(await readFile((await downloaded.path())!, "utf8")).toBe(formatted);
   await page.screenshot({ path: "/tmp/workflow-typescript-editor.png", fullPage: true });
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Completed");
-  await expect(page.getByRole("button", { name: "Workflow", exact: true })).toHaveClass(/active/);
-  await expect(
-    page.locator(".react-flow__node").filter({ hasText: "Independent review" }),
-  ).toBeVisible();
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Completed", false),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await page.getByRole("button", { name: "Workflow", exact: true }).getAttribute("class"),
+        /active/,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      page.locator(".react-flow__node").filter({ hasText: "Independent review" }).isVisible(),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Results", exact: true }).click();
-  await expect(
-    page.getByText("Reviewed: updated working files", { exact: true }).first(),
-  ).toBeVisible();
+  await expect
+    .poll(() =>
+      page.getByText("Reviewed: updated working files", { exact: true }).first().isVisible(),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Workflow", exact: true }).click();
-  await expect(
-    page.locator(".react-flow__node").filter({ hasText: "Independent review" }),
-  ).toBeVisible();
+  await expect
+    .poll(() =>
+      page.locator(".react-flow__node").filter({ hasText: "Independent review" }).isVisible(),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Editor", exact: true }).click();
-  await expect(code).toHaveAttribute("aria-readonly", "true");
-  await expect(code).toHaveAttribute("contenteditable", "false");
+  await expect
+    .poll(async () => matchesValue(await code.getAttribute("aria-readonly"), "true"))
+    .toBe(true);
+  await expect
+    .poll(async () => matchesValue(await code.getAttribute("contenteditable"), "false"))
+    .toBe(true);
 });
 
 test("TypeScript draft creation can be cancelled while preserving the source", async ({ page }) => {
@@ -265,13 +345,19 @@ test("TypeScript draft creation can be cancelled while preserving the source", a
   await page.getByRole("button", { name: "Create workflow draft", exact: true }).click();
   await page.getByRole("button", { name: "Cancel workflow creation", exact: true }).click();
   release();
-  await expect(page.getByText("Workflow creation cancelled.", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => page.getByText("Workflow creation cancelled.", { exact: true }).isVisible())
+    .toBe(true);
   await expectCode(page.getByLabel("New workflow TypeScript", { exact: true }), source);
-  await expect(
-    page.getByRole("button", { name: "Create workflow draft", exact: true }),
-  ).toBeEnabled();
+  await expect
+    .poll(() =>
+      page.getByRole("button", { name: "Create workflow draft", exact: true }).isEnabled(),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Discard TypeScript draft", exact: true }).click();
-  await expect(page.getByLabel("New workflow TypeScript", { exact: true })).toHaveCount(0);
+  await expect
+    .poll(() => page.getByLabel("New workflow TypeScript", { exact: true }).count())
+    .toBe(0);
 });
 
 test("a user reviews a bug graph, approves it and sees review feedback return to the fix step", async ({
@@ -282,26 +368,64 @@ test("a user reviews a bug graph, approves it and sees review feedback return to
     pageErrors.push(error.message);
   });
   await page.goto("/");
-  await expect(page.getByText("DEMO", { exact: true })).toBeVisible();
+  await expect.poll(() => page.getByText("DEMO", { exact: true }).isVisible()).toBe(true);
   await page.getByLabel("What should we work on?").fill("Fix the empty-input bug");
   await page.getByRole("button", { name: "Start task", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
-  await expect(page.locator(".react-flow__node")).toHaveCount(5);
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Awaiting approval", false),
+    )
+    .toBe(true);
+  await expect.poll(() => page.locator(".react-flow__node").count()).toBe(5);
   await page.locator(".react-flow__node[data-id='work']").click();
   await page.getByText("Instructions & tools", { exact: true }).click();
-  await expect(page.locator(".step-inspector")).toContainText("Full file access, Bash, Git");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".step-inspector").allTextContents(),
+        "Full file access, Bash, Git",
+        true,
+      ),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Completed", {
-    timeout: 10_000,
-  });
+  await expect
+    .poll(
+      async () =>
+        matchesText(await page.locator(".status-pill").allTextContents(), "Completed", false),
+      {
+        timeout: 10_000,
+      },
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Activity", exact: true }).click();
   await page.getByRole("button", { name: "Show all steps", exact: true }).click();
-  await expect(page.locator(".activity")).toContainText("RETRY → work");
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".activity").allTextContents(), "RETRY → work", true),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Workflow", exact: true }).click();
-  await expect(page.locator(".react-flow__node[data-id='work']")).toContainText("2/3 visits");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".react-flow__node[data-id='work']").allTextContents(),
+        "2/3 visits",
+        true,
+      ),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Artifacts", exact: true }).click();
   await page.getByText("review / feedback", { exact: true }).click();
-  await expect(page.locator(".artifact-list")).toContainText("demonstration data");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".artifact-list").allTextContents(),
+        "demonstration data",
+        true,
+      ),
+    )
+    .toBe(true);
   expect(pageErrors).toEqual([]);
 });
 
@@ -309,7 +433,11 @@ test("a user can edit a draft model and reject a graph without execution", async
   await page.goto("/");
   await page.getByLabel("What should we work on?").fill("Add a dark mode switch");
   await page.getByRole("button", { name: "Start task", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Awaiting approval", false),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Edit workflow", exact: true }).click();
   await page.getByRole("button", { name: "JSON", exact: true }).click();
   const editor = page.getByLabel("Workflow graph JSON", { exact: true });
@@ -329,10 +457,16 @@ test("a user can edit a draft model and reject a graph without execution", async
   };
   await fillCode(editor, JSON.stringify(edited, null, 2));
   await page.getByRole("button", { name: "Validate & save draft", exact: true }).click();
-  await expect(page.getByRole("heading", { name: edited.title })).toBeVisible();
+  await expect.poll(() => page.getByRole("heading", { name: edited.title }).isVisible()).toBe(true);
   await page.getByRole("button", { name: "Reject", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Rejected");
-  await expect(page.getByText("0/30 step visits", { exact: false })).toBeVisible();
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Rejected", false),
+    )
+    .toBe(true);
+  const task = await page.request.get(`/api/tasks/${new URL(page.url()).searchParams.get("task")}`);
+  const run = await page.request.get(`/api/runs/${(await task.json()).runId}`);
+  expect((await run.json()).attempts).toEqual([]);
 });
 
 test("a user pauses a Temporal workflow, reloads the page, and resumes the remaining graph", async ({
@@ -341,18 +475,48 @@ test("a user pauses a Temporal workflow, reloads the page, and resumes the remai
   await page.goto("/");
   await page.getByLabel("What should we work on?").fill("Pause and resume a feature safely");
   await page.getByRole("button", { name: "Start task", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Awaiting approval", false),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
   await page.getByRole("button", { name: "Pause after active steps", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Paused", { timeout: 10_000 });
+  await expect
+    .poll(
+      async () =>
+        matchesText(await page.locator(".status-pill").allTextContents(), "Paused", false),
+      { timeout: 10_000 },
+    )
+    .toBe(true);
   const budget = page.locator(".workflow-counts");
   const checkpoint = await budget.textContent();
   await page.reload();
-  await expect(page.locator(".status-pill")).toHaveText("Paused");
-  await expect(budget).toHaveText(checkpoint ?? "");
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Paused", false),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () => matchesText(await budget.allTextContents(), checkpoint ?? "", false))
+    .toBe(true);
   await page.getByRole("button", { name: "Resume workflow", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Completed", { timeout: 15_000 });
-  await expect(page.locator(".react-flow__node[data-id='prepare']")).toContainText(/1\/\d+ visits/);
+  await expect
+    .poll(
+      async () =>
+        matchesText(await page.locator(".status-pill").allTextContents(), "Completed", false),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".react-flow__node[data-id='prepare']").allTextContents(),
+        /1\/\d+ visits/,
+        true,
+      ),
+    )
+    .toBe(true);
 });
 
 test("a delayed approval response cannot replace a completed workflow with old state", async ({
@@ -361,7 +525,11 @@ test("a delayed approval response cannot replace a completed workflow with old s
   await page.goto("/");
   await page.getByLabel("What should we work on?").fill("Delayed approval response regression");
   await page.getByRole("button", { name: "Start task", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Awaiting approval", false),
+    )
+    .toBe(true);
   let release!: () => void;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
@@ -373,12 +541,24 @@ test("a delayed approval response cannot replace a completed workflow with old s
   });
   try {
     await page.getByRole("button", { name: "Approve & start", exact: true }).click();
-    await expect(page.locator(".status-pill")).toHaveText("Completed", { timeout: 15_000 });
+    await expect
+      .poll(
+        async () =>
+          matchesText(await page.locator(".status-pill").allTextContents(), "Completed", false),
+        { timeout: 15_000 },
+      )
+      .toBe(true);
   } finally {
     release();
   }
-  await expect(page.getByRole("button", { name: "Use in a new task", exact: true })).toBeEnabled();
-  await expect(page.locator(".status-pill")).toHaveText("Completed");
+  await expect
+    .poll(() => page.getByRole("button", { name: "Use in a new task", exact: true }).isEnabled())
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Completed", false),
+    )
+    .toBe(true);
 });
 
 test("an action response cannot switch the UI back to a previously selected run", async ({
@@ -387,10 +567,22 @@ test("an action response cannot switch the UI back to a previously selected run"
   await page.goto("/");
   for (const task of ["Selection regression first", "Selection regression second"]) {
     await newTask(page, task);
-    await expect(page.locator(".task-request > p")).toHaveText(task);
+    await expect
+      .poll(async () =>
+        matchesText(await page.locator(".task-request > p").allTextContents(), task, false),
+      )
+      .toBe(true);
   }
   await page.locator(".task-item").filter({ hasText: "Selection regression first" }).click();
-  await expect(page.locator(".task-request > p")).toHaveText("Selection regression first");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".task-request > p").allTextContents(),
+        "Selection regression first",
+        false,
+      ),
+    )
+    .toBe(true);
   let release!: () => void;
   let received!: () => void;
   const gate = new Promise<void>((resolve) => {
@@ -409,13 +601,35 @@ test("an action response cannot switch the UI back to a previously selected run"
     await page.getByRole("button", { name: "Reject", exact: true }).click();
     await responseReady;
     await page.locator(".task-item").filter({ hasText: "Selection regression second" }).click();
-    await expect(page.locator(".task-request > p")).toHaveText("Selection regression second");
+    await expect
+      .poll(async () =>
+        matchesText(
+          await page.locator(".task-request > p").allTextContents(),
+          "Selection regression second",
+          false,
+        ),
+      )
+      .toBe(true);
   } finally {
     release();
   }
-  await expect(page.getByRole("button", { name: "Use in a new task", exact: true })).toBeEnabled();
-  await expect(page.locator(".task-request > p")).toHaveText("Selection regression second");
-  await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
+  await expect
+    .poll(() => page.getByRole("button", { name: "Use in a new task", exact: true }).isEnabled())
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".task-request > p").allTextContents(),
+        "Selection regression second",
+        false,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Awaiting approval", false),
+    )
+    .toBe(true);
 });
 
 test("a delayed task creation response preserves a newer task draft", async ({ page }) => {
@@ -462,9 +676,15 @@ test("a delayed task creation response preserves a newer task draft", async ({ p
   } finally {
     release();
   }
-  await expect(page.locator(".task-item").filter({ hasText: task.prompt })).toBeVisible();
-  await expect(composer).toHaveValue("Keep this newer draft in focus");
-  await expect(page.getByRole("button", { name: "Start task", exact: true })).toBeEnabled();
+  await expect
+    .poll(() => page.locator(".task-item").filter({ hasText: task.prompt }).isVisible())
+    .toBe(true);
+  await expect
+    .poll(async () => matchesValue(await composer.inputValue(), "Keep this newer draft in focus"))
+    .toBe(true);
+  await expect
+    .poll(() => page.getByRole("button", { name: "Start task", exact: true }).isEnabled())
+    .toBe(true);
 });
 
 test("the UI shows a draft budget estimate, execution version and configured spending limit", async ({
@@ -480,15 +700,41 @@ test("the UI shows a draft budget estimate, execution version and configured spe
   });
   try {
     await page.getByRole("button", { name: "Start task", exact: true }).click();
-    await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
+    await expect
+      .poll(async () =>
+        matchesText(
+          await page.locator(".status-pill").allTextContents(),
+          "Awaiting approval",
+          false,
+        ),
+      )
+      .toBe(true);
     await page.locator(".run-metrics > summary").click();
     const budget = page.locator(".run-metrics");
-    await expect(budget).toContainText("ESTIMATED EXECUTION COST$0.0000");
-    await expect(budget).toContainText("EXECUTION LIMIT$2.5");
-    await expect(budget).toContainText(/Version [a-f0-9]{12}/);
+    await expect
+      .poll(async () =>
+        matchesText(await budget.allTextContents(), "ESTIMATED EXECUTION COST$0.0000", true),
+      )
+      .toBe(true);
+    await expect
+      .poll(async () => matchesText(await budget.allTextContents(), "EXECUTION LIMIT$2.5", true))
+      .toBe(true);
+    await expect
+      .poll(async () => matchesText(await budget.allTextContents(), /Version [a-f0-9]{12}/, true))
+      .toBe(true);
     await page.getByRole("button", { name: "Approve & start", exact: true }).click();
-    await expect(page.locator(".status-pill")).toHaveText("Completed", { timeout: 15_000 });
-    await expect(budget).toContainText("REPORTED EXECUTION COST$0.0000");
+    await expect
+      .poll(
+        async () =>
+          matchesText(await page.locator(".status-pill").allTextContents(), "Completed", false),
+        { timeout: 15_000 },
+      )
+      .toBe(true);
+    await expect
+      .poll(async () =>
+        matchesText(await budget.allTextContents(), "REPORTED EXECUTION COST$0.0000", true),
+      )
+      .toBe(true);
   } finally {
     const latest = await (await request.get("/api/settings/execution")).json();
     const restored = await request.put("/api/settings/execution", {
@@ -510,7 +756,11 @@ test("manual block editing is reviewed before applying and preserves existing wo
   await page.goto("/");
   await page.getByLabel("What should we work on?").fill("Library snapshot protection");
   await page.getByRole("button", { name: "Start task", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Awaiting approval", false),
+    )
+    .toBe(true);
   const runs = await (await request.get("/api/runs")).json();
   const id = runs.find((run: { task: string }) => run.task === "Library snapshot protection").id;
   const oldRun = await (await request.get(`/api/runs/${id}`)).json();
@@ -526,7 +776,7 @@ test("manual block editing is reviewed before applying and preserves existing wo
   );
   try {
     await page.getByRole("button", { name: "Save block", exact: true }).click();
-    await expect(page.getByText(/Block saved. New workflows/)).toBeVisible();
+    await expect.poll(() => page.getByText(/Block saved. New workflows/).isVisible()).toBe(true);
     expect(
       (await (await request.get("/api/project")).json()).blocks.review.definition.executor.source,
     ).toBe((await formatCode(source)).formatted);
@@ -578,7 +828,11 @@ test("unsaved graph edits block approval and survive switching between runs", as
   await page.goto("/");
   for (const task of ["Preserve edits first", "Preserve edits second"]) {
     await newTask(page, task);
-    await expect(page.locator(".task-request > p")).toHaveText(task);
+    await expect
+      .poll(async () =>
+        matchesText(await page.locator(".task-request > p").allTextContents(), task, false),
+      )
+      .toBe(true);
   }
   await page.getByRole("button", { name: "Edit workflow", exact: true }).click();
   await page.getByRole("button", { name: "JSON", exact: true }).click();
@@ -586,19 +840,43 @@ test("unsaved graph edits block approval and survive switching between runs", as
   const plan = JSON.parse(await readCode(editor));
   plan.title = "Unsaved title that must survive";
   await fillCode(editor, JSON.stringify(plan, null, 2));
-  await expect(page.getByRole("button", { name: "Approve & start", exact: true })).toBeDisabled();
+  await expect
+    .poll(() => page.getByRole("button", { name: "Approve & start", exact: true }).isDisabled())
+    .toBe(true);
   await page.locator(".task-item").filter({ hasText: "Preserve edits first" }).click();
-  await expect(page.locator(".task-request > p")).toHaveText("Preserve edits first");
-  await expect(page.getByRole("button", { name: "Approve & start", exact: true })).toBeEnabled();
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".task-request > p").allTextContents(),
+        "Preserve edits first",
+        false,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(() => page.getByRole("button", { name: "Approve & start", exact: true }).isEnabled())
+    .toBe(true);
   await page.locator(".task-item").filter({ hasText: "Preserve edits second" }).click();
-  await expect(page.locator(".task-request > p")).toHaveText("Preserve edits second");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".task-request > p").allTextContents(),
+        "Preserve edits second",
+        false,
+      ),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Edit workflow", exact: true }).click();
   await page.getByRole("button", { name: "JSON", exact: true }).click();
   await expectCode(editor, /Unsaved title that must survive/);
-  await expect(page.getByRole("button", { name: "Approve & start", exact: true })).toBeDisabled();
+  await expect
+    .poll(() => page.getByRole("button", { name: "Approve & start", exact: true }).isDisabled())
+    .toBe(true);
   await page.getByRole("button", { name: "Validate & save draft", exact: true }).click();
-  await expect(page.getByRole("heading", { name: plan.title })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Approve & start", exact: true })).toBeEnabled();
+  await expect.poll(() => page.getByRole("heading", { name: plan.title }).isVisible()).toBe(true);
+  await expect
+    .poll(() => page.getByRole("button", { name: "Approve & start", exact: true }).isEnabled())
+    .toBe(true);
   expect(streams).toBe(1);
 });
 
@@ -628,15 +906,25 @@ test("step controls validate edits, preview the graph and save model and handoff
   await page.goto("/");
   await page.getByLabel("What should we work on?").fill("Structured workflow editor regression");
   await page.getByRole("button", { name: "Start task", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Awaiting approval", false),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Edit workflow", exact: true }).click();
   const title = page.getByLabel("Workflow title", { exact: true });
   await title.fill("");
-  await expect(title).toBeVisible();
-  await expect(page.locator(".validation-error")).toContainText("title");
-  await expect(
-    page.getByRole("button", { name: "Validate & save draft", exact: true }),
-  ).toBeDisabled();
+  await expect.poll(() => title.isVisible()).toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".validation-error").allTextContents(), "title", true),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      page.getByRole("button", { name: "Validate & save draft", exact: true }).isDisabled(),
+    )
+    .toBe(true);
   await title.fill("Reviewed with step controls");
   await page.getByLabel("Step name", { exact: true }).fill("Prepare a focused change");
   await page
@@ -644,7 +932,11 @@ test("step controls validate edits, preview the graph and save model and handoff
     .fill("Identify the smallest safe implementation.");
   await page.getByLabel("Maximum visits", { exact: true }).fill("2");
   await page.getByLabel("Step model", { exact: true }).selectOption("openai/test-step-model");
-  await expect(page.getByLabel("Step thinking", { exact: true })).toHaveValue("off");
+  await expect
+    .poll(async () =>
+      matchesValue(await page.getByLabel("Step thinking", { exact: true }).inputValue(), "off"),
+    )
+    .toBe(true);
   await page.getByLabel("Step thinking", { exact: true }).selectOption("high");
   await page.getByLabel("On retry", { exact: true }).selectOption("prepare");
   await page.getByRole("button", { name: "Add handoff", exact: true }).click();
@@ -652,24 +944,46 @@ test("step controls validate edits, preview the graph and save model and handoff
   await page.getByLabel("Artifact 1", { exact: true }).selectOption("feedback");
   await page.getByLabel("Input alias 1", { exact: true }).fill("previous-feedback");
   await page.getByRole("button", { name: "Workflow", exact: true }).click();
-  await expect(page.locator(".react-flow__node[data-id='prepare']")).toContainText(
-    "Prepare a focused change",
-  );
-  await expect(page.locator(".graph-legend")).toContainText("Unsaved preview");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".react-flow__node[data-id='prepare']").allTextContents(),
+        "Prepare a focused change",
+        true,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".graph-legend").allTextContents(), "Unsaved preview", true),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Editor", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Approve & start", exact: true })).toBeDisabled();
+  await expect
+    .poll(() => page.getByRole("button", { name: "Approve & start", exact: true }).isDisabled())
+    .toBe(true);
   await page.getByLabel("On pass", { exact: true }).selectOption("$complete");
-  await expect(page.locator(".validation-error")).toContainText("reachable");
-  await expect(
-    page.getByRole("button", { name: "Validate & save draft", exact: true }),
-  ).toBeDisabled();
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".validation-error").allTextContents(), "reachable", true),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      page.getByRole("button", { name: "Validate & save draft", exact: true }).isDisabled(),
+    )
+    .toBe(true);
   await page.getByLabel("On pass", { exact: true }).selectOption("work");
-  await expect(page.locator(".validation-error")).toHaveCount(0);
+  await expect.poll(() => page.locator(".validation-error").count()).toBe(0);
   await page.getByRole("button", { name: "Validate & save draft", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Reviewed with step controls", exact: true }),
-  ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Approve & start", exact: true })).toBeEnabled();
+  await expect
+    .poll(() =>
+      page.getByRole("heading", { name: "Reviewed with step controls", exact: true }).isVisible(),
+    )
+    .toBe(true);
+  await expect
+    .poll(() => page.getByRole("button", { name: "Approve & start", exact: true }).isEnabled())
+    .toBe(true);
 
   const runs = await (await request.get("/api/runs")).json();
   const id = runs.find((run: { title: string }) => run.title === "Reviewed with step controls").id;
@@ -694,9 +1008,15 @@ test("step controls validate edits, preview the graph and save model and handoff
   await fillCode(json, "{invalid");
   await page.getByRole("button", { name: "Step controls", exact: true }).click();
   await expectCode(json, "{invalid");
-  await expect(page.locator(".validation-error")).toContainText("JSON");
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".validation-error").allTextContents(), "JSON", true),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Discard graph edits", exact: true }).click();
-  await expect(title).toHaveValue("Reviewed with step controls");
+  await expect
+    .poll(async () => matchesValue(await title.inputValue(), "Reviewed with step controls"))
+    .toBe(true);
 });
 
 test("a stale list response cannot undo a saved title in the run list", async ({
@@ -706,7 +1026,15 @@ test("a stale list response cannot undo a saved title in the run list", async ({
   await page.goto("/");
   await page.getByLabel("What should we work on?").fill("Run list revision regression");
   await page.getByRole("button", { name: "Start task", exact: true }).click();
-  await expect(page.locator(".task-request > p")).toHaveText("Run list revision regression");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".task-request > p").allTextContents(),
+        "Run list revision regression",
+        false,
+      ),
+    )
+    .toBe(true);
   const staleList = await (await request.get("/api/runs")).json();
   let staleResponses = 0;
   await page.route("**/api/runs", async (route) => {
@@ -720,11 +1048,21 @@ test("a stale list response cannot undo a saved title in the run list", async ({
   await page.getByRole("button", { name: "Edit workflow", exact: true }).click();
   await page.getByLabel("Workflow title", { exact: true }).fill("Saved title must survive");
   await page.getByRole("button", { name: "Validate & save draft", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Saved title must survive", exact: true }),
-  ).toBeVisible();
+  await expect
+    .poll(() =>
+      page.getByRole("heading", { name: "Saved title must survive", exact: true }).isVisible(),
+    )
+    .toBe(true);
   await expect.poll(() => staleResponses).toBeGreaterThan(0);
-  await expect(page.locator(".task-item.selected strong")).toHaveText("Saved title must survive");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".task-item.selected strong").allTextContents(),
+        "Saved title must survive",
+        false,
+      ),
+    )
+    .toBe(true);
 });
 
 test("a remote draft edit preserves local text and requires reviewing the latest version", async ({
@@ -734,7 +1072,15 @@ test("a remote draft edit preserves local text and requires reviewing the latest
   await page.goto("/");
   await page.getByLabel("What should we work on?").fill("Concurrent browser graph review");
   await page.getByRole("button", { name: "Start task", exact: true }).click();
-  await expect(page.locator(".task-request > p")).toHaveText("Concurrent browser graph review");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".task-request > p").allTextContents(),
+        "Concurrent browser graph review",
+        false,
+      ),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Edit workflow", exact: true }).click();
   await page.getByRole("button", { name: "JSON", exact: true }).click();
   const editor = page.getByLabel("Workflow graph JSON", { exact: true });
@@ -747,16 +1093,22 @@ test("a remote draft edit preserves local text and requires reviewing the latest
     data: { ...plan, title: "Remote saved change" },
   });
   expect(remote.ok()).toBe(true);
-  await expect(page.getByRole("heading", { name: "Remote saved change" })).toBeVisible();
+  await expect
+    .poll(() => page.getByRole("heading", { name: "Remote saved change" }).isVisible())
+    .toBe(true);
   await expectCode(editor, /Local unsaved change/);
-  await expect(
-    page.getByRole("button", { name: "Validate & save draft", exact: true }),
-  ).toBeDisabled();
+  await expect
+    .poll(() =>
+      page.getByRole("button", { name: "Validate & save draft", exact: true }).isDisabled(),
+    )
+    .toBe(true);
   await page
     .getByRole("button", { name: "Discard edits & load latest draft", exact: true })
     .click();
   await expectCode(editor, /Remote saved change/);
-  await expect(page.getByRole("button", { name: "Approve & start", exact: true })).toBeEnabled();
+  await expect
+    .poll(() => page.getByRole("button", { name: "Approve & start", exact: true }).isEnabled())
+    .toBe(true);
 });
 
 test("browser setup completes ChatGPT sign-in, saves a project model, and supports API-key cancellation", async ({
@@ -765,32 +1117,52 @@ test("browser setup completes ChatGPT sign-in, saves a project model, and suppor
 }) => {
   await page.goto("/");
   await settings(page);
-  await expect(
-    page.getByRole("heading", { name: "Providers & models", exact: true }),
-  ).toBeVisible();
+  await expect
+    .poll(() => page.getByRole("heading", { name: "Providers & models", exact: true }).isVisible())
+    .toBe(true);
   await page.getByRole("button", { name: "Continue with ChatGPT", exact: true }).click();
   const link = page.getByRole("link", { name: "Open ChatGPT sign-in" });
-  await expect(link).toHaveAttribute("href", "https://auth.openai.com/test-sign-in");
+  await expect
+    .poll(async () =>
+      matchesValue(await link.getAttribute("href"), "https://auth.openai.com/test-sign-in"),
+    )
+    .toBe(true);
   await page.reload();
   await settings(page);
-  await expect(link).toBeVisible();
+  await expect.poll(() => link.isVisible()).toBe(true);
   await page.getByLabel("Paste test callback", { exact: true }).fill("test-callback");
   await page.getByRole("button", { name: "Continue sign-in", exact: true }).click();
-  await expect(page.getByText("ChatGPT connected", { exact: true })).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Continue with ChatGPT", exact: true }),
-  ).toHaveCount(0);
-  await expect(link).toHaveCount(0);
+  await expect
+    .poll(() => page.getByText("ChatGPT connected", { exact: true }).isVisible())
+    .toBe(true);
+  await expect
+    .poll(() => page.getByRole("button", { name: "Continue with ChatGPT", exact: true }).count())
+    .toBe(0);
+  await expect.poll(() => link.count()).toBe(0);
   await page.reload();
-  await expect(page.getByText("ChatGPT connected", { exact: true })).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Continue with ChatGPT", exact: true }),
-  ).toHaveCount(0);
-  await expect(page.locator(".provider-list")).toContainText("OpenAI");
+  await expect
+    .poll(() => page.getByText("ChatGPT connected", { exact: true }).isVisible())
+    .toBe(true);
+  await expect
+    .poll(() => page.getByRole("button", { name: "Continue with ChatGPT", exact: true }).count())
+    .toBe(0);
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".provider-list").allTextContents(), "OpenAI", true),
+    )
+    .toBe(true);
   await page.getByLabel("Model", { exact: true }).selectOption("openai/test-model");
   await page.getByLabel("Thinking level", { exact: true }).selectOption("high");
   await page.getByRole("button", { name: "Save project model", exact: true }).click();
-  await expect(page.locator(".setup-notice")).toContainText("Project defaults saved");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".setup-notice").allTextContents(),
+        "Project defaults saved",
+        true,
+      ),
+    )
+    .toBe(true);
   const project = await (await request.get("/api/project")).json();
   expect(project.config.agent).toMatchObject({
     provider: "openai",
@@ -801,24 +1173,38 @@ test("browser setup completes ChatGPT sign-in, saves a project model, and suppor
   await page.getByLabel("API-key provider", { exact: true }).selectOption("test");
   await page.getByRole("button", { name: "Connect with API key", exact: true }).click();
   const key = page.getByLabel("Enter test API key", { exact: true });
-  await expect(key).toHaveAttribute("type", "password");
+  await expect
+    .poll(async () => matchesValue(await key.getAttribute("type"), "password"))
+    .toBe(true);
   await key.fill("test-value-not-submitted");
   await page.getByRole("button", { name: "Cancel sign-in", exact: true }).click();
-  await expect(page.getByLabel("Provider sign-in")).toContainText("cancelled");
-  await expect(key).toHaveCount(0);
+  await expect
+    .poll(async () =>
+      matchesText(await page.getByLabel("Provider sign-in").allTextContents(), "cancelled", true),
+    )
+    .toBe(true);
+  await expect.poll(() => key.count()).toBe(0);
   await page.getByRole("button", { name: "Connect with API key", exact: true }).click();
   await key.fill("test-only-submitted-key");
   await page.getByRole("button", { name: "Continue sign-in", exact: true }).click();
-  await expect(page.locator(".provider-list")).toContainText("Test provider");
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".provider-list").allTextContents(), "Test provider", true),
+    )
+    .toBe(true);
   page.once("dialog", (dialog) => {
     void dialog.accept();
   });
   await page.getByRole("button", { name: "Disconnect Test provider", exact: true }).click();
-  await expect(page.locator(".provider-list")).not.toContainText("Test provider");
-  await expect(page.getByLabel("Provider sign-in")).toHaveCount(0);
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".provider-list").allTextContents(), "Test provider", true),
+    )
+    .not.toBe(true);
+  await expect.poll(() => page.getByLabel("Provider sign-in").count()).toBe(0);
   await page.screenshot({ path: "/tmp/workflow-setup-desktop.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.locator(".task-sidebar")).toBeHidden();
+  await expect.poll(() => page.locator(".task-sidebar").isHidden()).toBe(true);
   await page.screenshot({ path: "/tmp/workflow-setup-mobile.png", fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
@@ -839,14 +1225,16 @@ test("the central composer accepts attachments, runs automatically, and works on
   try {
     await page.goto("/");
     await page.screenshot({ path: "/tmp/workflow-redesign-home-desktop.png", fullPage: true });
-    await expect(page.getByRole("combobox")).toHaveCount(0);
+    await expect.poll(() => page.getByRole("combobox").count()).toBe(0);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: "/tmp/workflow-redesign-home-mobile.png", fullPage: true });
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
     await page.getByRole("button", { name: "Open navigation", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
+    await expect
+      .poll(() => page.getByRole("button", { name: "Settings", exact: true }).isVisible())
+      .toBe(true);
     await page.getByRole("button", { name: "Close navigation", exact: true }).click();
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.getByLabel("Attach files", { exact: true }).setInputFiles({
@@ -854,27 +1242,55 @@ test("the central composer accepts attachments, runs automatically, and works on
       mimeType: "text/markdown",
       buffer: Buffer.from("Keep the task interface simple."),
     });
-    await expect(page.getByRole("list", { name: "Attached files", exact: true })).toContainText(
-      "requirements.md",
-    );
+    await expect
+      .poll(async () =>
+        matchesText(
+          await page.getByRole("list", { name: "Attached files", exact: true }).allTextContents(),
+          "requirements.md",
+          true,
+        ),
+      )
+      .toBe(true);
     const composer = page.getByLabel("What should we work on?", { exact: true });
     await composer.fill("Implement the attached requirements");
     await composer.press("Enter");
-    await expect(page.locator(".working-card")).toBeVisible();
+    await expect.poll(() => page.locator(".working-card").isVisible()).toBe(true);
     await page.screenshot({ path: "/tmp/workflow-redesign-working.png", fullPage: true });
-    await expect(page.locator(".status-pill")).toHaveText("Completed", { timeout: 15000 });
-    await expect(page.getByRole("alert")).toHaveCount(0);
-    await expect(page.locator(".request-attachments")).toContainText("requirements.md");
+    await expect
+      .poll(
+        async () =>
+          matchesText(await page.locator(".status-pill").allTextContents(), "Completed", false),
+        { timeout: 15000 },
+      )
+      .toBe(true);
+    await expect.poll(() => page.getByRole("alert").count()).toBe(0);
+    await expect
+      .poll(async () =>
+        matchesText(
+          await page.locator(".request-attachments").allTextContents(),
+          "requirements.md",
+          true,
+        ),
+      )
+      .toBe(true);
     await page.getByRole("button", { name: "Activity", exact: true }).click();
-    await expect(page.locator(".activity")).toContainText("DEMO simulation");
+    await expect
+      .poll(async () =>
+        matchesText(await page.locator(".activity").allTextContents(), "DEMO simulation", true),
+      )
+      .toBe(true);
     const taskId = new URL(page.url()).searchParams.get("task");
     const detail = await (await request.get(`/api/tasks/${taskId}`)).json();
     expect(detail.attachments[0].name).toBe("requirements.md");
     await page.reload();
-    await expect(page.locator(".status-pill")).toHaveText("Completed");
+    await expect
+      .poll(async () =>
+        matchesText(await page.locator(".status-pill").allTextContents(), "Completed", false),
+      )
+      .toBe(true);
     await page.getByRole("button", { name: "New task", exact: true }).click();
     await page.getByLabel("Search tasks", { exact: true }).fill("attached requirements");
-    await expect(page.locator(".task-item")).toHaveCount(1);
+    await expect.poll(() => page.locator(".task-item").count()).toBe(1);
   } finally {
     const current = await (await request.get("/api/settings/orchestration")).json();
     await request.put("/api/settings/orchestration", {
@@ -904,9 +1320,13 @@ test("settings manages described models, task cases, skills and enabled MCP conn
     void dialog.dismiss();
   });
   await page.getByRole("button", { name: "New task", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+  await expect
+    .poll(() => page.getByRole("heading", { name: "Settings", exact: true }).isVisible())
+    .toBe(true);
   await page.getByRole("button", { name: "Save settings", exact: true }).click();
-  await expect(page.getByText("All changes saved", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => page.getByText("All changes saved", { exact: true }).isVisible())
+    .toBe(true);
   await page.getByRole("button", { name: "Model profiles", exact: true }).click();
   await page.getByRole("button", { name: "Add model profile", exact: true }).click();
   await page.getByLabel("Profile name", { exact: true }).fill("Careful reviewer");
@@ -917,9 +1337,18 @@ test("settings manages described models, task cases, skills and enabled MCP conn
   await page.getByLabel("Session timeout (minutes)", { exact: true }).fill("20");
   await page.getByLabel("Maximum tool calls", { exact: true }).fill("150");
   await page.getByLabel("Profile model", { exact: true }).selectOption("openai/test-model");
-  await expect(page.getByLabel("Session timeout (minutes)", { exact: true })).toHaveValue("20");
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await page.getByLabel("Session timeout (minutes)", { exact: true }).inputValue(),
+        "20",
+      ),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Save settings", exact: true }).click();
-  await expect(page.getByText("All changes saved", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => page.getByText("All changes saved", { exact: true }).isVisible())
+    .toBe(true);
   await page.screenshot({ path: "/tmp/workflow-redesign-profiles.png", fullPage: true });
   await page.getByRole("button", { name: "Skills & MCP", exact: true }).click();
   await page.getByRole("button", { name: "Add skill", exact: true }).click();
@@ -940,11 +1369,21 @@ test("settings manages described models, task cases, skills and enabled MCP conn
     }),
   );
   await page.getByRole("button", { name: "Connect & discover tools", exact: true }).click();
-  await expect(page.locator(".mcp-tools")).toContainText("inspect");
-  await expect(page.locator(".mcp-tools")).toContainText("publish");
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".mcp-tools").allTextContents(), "inspect", true),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".mcp-tools").allTextContents(), "publish", true),
+    )
+    .toBe(true);
   await page.getByLabel("Enable Project tools", { exact: true }).check();
   await page.getByRole("button", { name: "Save settings", exact: true }).click();
-  await expect(page.getByText("All changes saved", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => page.getByText("All changes saved", { exact: true }).isVisible())
+    .toBe(true);
   const stored = (await (await request.get("/api/settings/orchestration")).json()).settings;
   expect(stored.profiles[0].description).toContain("independent review");
   expect(stored.profiles[0].agent.timeoutMs).toBe(1200000);
@@ -974,15 +1413,24 @@ test("block form preserves multiline edits and warns before discarding them", as
     void dialog.dismiss();
   });
   await page.getByRole("button", { name: "Execution", exact: true }).click();
-  await expect(page.getByLabel("Block name", { exact: true })).toHaveValue("Read-only audit");
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await page.getByLabel("Block name", { exact: true }).inputValue(),
+        "Read-only audit",
+      ),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Save block", exact: true }).click();
-  await expect(page.getByText(/Block saved. New workflows/)).toBeVisible();
+  await expect.poll(() => page.getByText(/Block saved. New workflows/).isVisible()).toBe(true);
   // Local edits must stay separate from the saved baseline.
   const blockId = await page.getByLabel("Block ID", { exact: true }).inputValue();
   const instructions = source;
   const savedInstructions = await readCode(instructions);
   await fillCode(instructions, savedInstructions + "\n// A second edit after saving\n");
-  await expect(page.getByRole("button", { name: "Save block", exact: true })).toBeEnabled();
+  await expect
+    .poll(() => page.getByRole("button", { name: "Save block", exact: true }).isEnabled())
+    .toBe(true);
   expect(
     (await (await request.get("/api/library")).json()).blocks[blockId].definition.executor.source,
   ).toBe(savedInstructions);
@@ -1000,12 +1448,18 @@ test("block form preserves multiline edits and warns before discarding them", as
           .source,
     )
     .toBe(savedInstructions + "\n// A second edit after saving\n");
-  await expect(page.getByRole("button", { name: "Save block", exact: true })).toBeDisabled();
+  await expect
+    .poll(() => page.getByRole("button", { name: "Save block", exact: true }).isDisabled())
+    .toBe(true);
   page.once("dialog", (dialog) => {
     void dialog.accept();
   });
   await page.getByRole("button", { name: "Remove block", exact: true }).click();
-  await expect(page.locator(".block-catalog")).not.toContainText("Read-only audit");
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".block-catalog").allTextContents(), "Read-only audit", true),
+    )
+    .not.toBe(true);
 });
 
 test("an essential follow-up stays inside the task workspace and resumes planning", async ({
@@ -1050,15 +1504,21 @@ test("an essential follow-up stays inside the task workspace and resumes plannin
   await page.goto("/");
   await page.getByLabel("What should we work on?", { exact: true }).fill(task.prompt);
   await page.getByRole("button", { name: "Start task", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "One detail before we start", exact: true }),
-  ).toBeVisible();
+  await expect
+    .poll(() =>
+      page.getByRole("heading", { name: "One detail before we start", exact: true }).isVisible(),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Internal service", exact: true }).click();
   await page.getByRole("button", { name: "Continue planning", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Building your workflow", exact: true }),
-  ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Continue planning", exact: true })).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.getByRole("heading", { name: "Building your workflow", exact: true }).isVisible(),
+    )
+    .toBe(true);
+  await expect
+    .poll(() => page.getByRole("button", { name: "Continue planning", exact: true }).count())
+    .toBe(0);
 });
 
 async function ensureDesignConnection(request: APIRequestContext) {
@@ -1162,7 +1622,7 @@ test("editing model choices in migrated TypeScript preserves execution limits", 
     const updatedSource = originalSource.replace('"thinking":"high"', '"thinking":"off"');
     await fillCode(code, updatedSource);
     await page.getByRole("button", { name: "Save block", exact: true }).click();
-    await expect(page.getByText(/Block saved. New workflows/)).toBeVisible();
+    await expect.poll(() => page.getByText(/Block saved. New workflows/).isVisible()).toBe(true);
     const saved = (await (await request.get("/api/library")).json()).blocks["profile-limits"];
     expect(saved.definition.executor.source).toBe((await formatCode(updatedSource)).formatted);
     expect(
@@ -1206,30 +1666,48 @@ test("AI settings chat generates profiles, refines with context, reviews before 
   await settings(page, "Model profiles");
   await page.getByRole("button", { name: /^(Generate|Regenerate) with AI$/ }).click();
   const chat = page.getByRole("dialog", { name: "Design model profiles with AI", exact: true });
-  await expect(chat).toBeVisible();
+  await expect.poll(() => chat.isVisible()).toBe(true);
   const input = chat.getByLabel("Message AI designer", { exact: true });
-  await expect(input).toHaveValue(/model profiles for this project/);
+  await expect
+    .poll(async () => matchesValue(await input.inputValue(), /model profiles for this project/))
+    .toBe(true);
   await input.press("Enter");
-  await expect(chat.getByText("Designing model profiles…", { exact: true })).toBeVisible();
-  await expect(chat.getByRole("button", { name: "Apply changes", exact: true })).toBeEnabled();
+  await expect
+    .poll(() => chat.getByText("Designing model profiles…", { exact: true }).isVisible())
+    .toBe(true);
+  await expect
+    .poll(() => chat.getByRole("button", { name: "Apply changes", exact: true }).isEnabled())
+    .toBe(true);
   expect(
     (await (await request.get("/api/settings/orchestration")).json()).settings.profiles,
   ).toEqual(original.settings.profiles);
   await input.fill("Use one profile and call it Project lead.");
   await input.press("Enter");
-  await expect(
-    chat.getByText("Refined the earlier proposal into one project lead profile.", { exact: true }),
-  ).toBeVisible();
+  await expect
+    .poll(() =>
+      chat
+        .getByText("Refined the earlier proposal into one project lead profile.", { exact: true })
+        .isVisible(),
+    )
+    .toBe(true);
   await chat.getByText("Review proposed settings", { exact: true }).click();
-  await expect(chat.getByText("Project lead", { exact: true })).toBeVisible();
-  await expect(chat.locator(".design-preview small")).toContainText("planning model");
+  await expect.poll(() => chat.getByText("Project lead", { exact: true }).isVisible()).toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(
+        await chat.locator(".design-preview small").allTextContents(),
+        "planning model",
+        true,
+      ),
+    )
+    .toBe(true);
   await page.screenshot({ path: "/tmp/workflow-mocha-design-desktop.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(chat).toBeVisible();
+  await expect.poll(() => chat.isVisible()).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: "/tmp/workflow-mocha-design-mobile.png", fullPage: true });
   await chat.getByRole("button", { name: "Minimize design chat", exact: true }).click();
-  await expect(chat).toHaveCount(0);
+  await expect.poll(() => chat.count()).toBe(0);
   const saveBounds = await page
     .getByRole("button", { name: "Save settings", exact: true })
     .boundingBox();
@@ -1245,14 +1723,20 @@ test("AI settings chat generates profiles, refines with context, reviews before 
     .getByLabel("Design chats")
     .getByRole("button", { name: "Model profiles", exact: true })
     .click();
-  await expect(chat).toContainText("Use one profile and call it Project lead.");
+  await expect
+    .poll(async () =>
+      matchesText(await chat.allTextContents(), "Use one profile and call it Project lead.", true),
+    )
+    .toBe(true);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.reload();
   await page
     .getByRole("navigation", { name: "Settings sections" })
     .getByRole("button", { name: "Model profiles", exact: true })
     .click();
-  await expect(chat.getByText("One profile for project leadership", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => chat.getByText("One profile for project leadership", { exact: true }).isVisible())
+    .toBe(true);
   let release!: () => void;
   let received!: () => void;
   const gate = new Promise<void>((resolve) => {
@@ -1270,14 +1754,32 @@ test("AI settings chat generates profiles, refines with context, reviews before 
   try {
     await chat.getByRole("button", { name: "Apply changes", exact: true }).click();
     await started;
-    await expect(page.getByLabel("Planning model", { exact: true })).toBeDisabled();
+    await expect
+      .poll(() => page.getByLabel("Planning model", { exact: true }).isDisabled())
+      .toBe(true);
   } finally {
     release();
   }
-  await expect(chat.getByText("Changes applied", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Profile name", { exact: true })).toHaveCount(1);
-  await expect(page.getByLabel("Profile name", { exact: true })).toHaveValue("Project lead");
-  await expect(page.getByLabel("Planning model", { exact: true })).toHaveValue("project-lead");
+  await expect
+    .poll(() => chat.getByText("Changes applied", { exact: true }).isVisible())
+    .toBe(true);
+  await expect.poll(() => page.getByLabel("Profile name", { exact: true }).count()).toBe(1);
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await page.getByLabel("Profile name", { exact: true }).inputValue(),
+        "Project lead",
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await page.getByLabel("Planning model", { exact: true }).inputValue(),
+        "project-lead",
+      ),
+    )
+    .toBe(true);
   const saved = (await (await request.get("/api/settings/orchestration")).json()).settings;
   expect(saved.profiles).toHaveLength(1);
   expect(saved.cases).toEqual(original.settings.cases);
@@ -1299,14 +1801,18 @@ test("AI blocks chat applies reviewed instructions and blocks applying over unsa
   await chat.getByLabel("Message AI designer", { exact: true }).fill(instructions);
   await chat.getByRole("button", { name: "Send to AI designer", exact: true }).click();
   const apply = chat.getByRole("button", { name: "Apply changes", exact: true });
-  await expect(apply).toBeEnabled();
+  await expect.poll(() => apply.isEnabled()).toBe(true);
   expect((await (await request.get("/api/project")).json()).blocks.review.prompt).toBe(
     before.blocks.review.prompt,
   );
   await chat.getByText("Review proposed settings", { exact: true }).click();
-  await expect(
-    chat.getByText("Review should cite independent acceptance evidence", { exact: true }),
-  ).toBeVisible();
+  await expect
+    .poll(() =>
+      chat
+        .getByText("Review should cite independent acceptance evidence", { exact: true })
+        .isVisible(),
+    )
+    .toBe(true);
   await chat.getByRole("button", { name: "Minimize design chat", exact: true }).click();
   await page.getByRole("button", { name: /Independent review/ }).click();
   await fillCode(
@@ -1317,17 +1823,19 @@ test("AI blocks chat applies reviewed instructions and blocks applying over unsa
     .getByLabel("Design chats")
     .getByRole("button", { name: "Workflow", exact: true })
     .click();
-  await expect(apply).toBeDisabled();
-  await expect(chat.getByText(/Save or discard your form edits/)).toBeVisible();
+  await expect.poll(() => apply.isDisabled()).toBe(true);
+  await expect.poll(() => chat.getByText(/Save or discard your form edits/).isVisible()).toBe(true);
   await chat.getByRole("button", { name: "Minimize design chat", exact: true }).click();
   await page.getByRole("button", { name: "Discard block changes", exact: true }).click();
   await page
     .getByLabel("Design chats")
     .getByRole("button", { name: "Workflow", exact: true })
     .click();
-  await expect(apply).toBeEnabled();
+  await expect.poll(() => apply.isEnabled()).toBe(true);
   await apply.click();
-  await expect(chat.getByText("Changes applied", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => chat.getByText("Changes applied", { exact: true }).isVisible())
+    .toBe(true);
   expect((await (await request.get("/api/project")).json()).blocks.review.prompt).toBe(
     instructions,
   );
@@ -1363,9 +1871,13 @@ test("global designer follows the settings section in the same conversation", as
     const chat = page.getByRole("dialog", { name: "Design workflow with AI", exact: true });
     await chat.getByLabel("Message AI designer", { exact: true }).fill(prompt!);
     await chat.getByRole("button", { name: "Send to AI designer", exact: true }).click();
-    await expect(chat.getByRole("button", { name: "Apply changes", exact: true })).toBeEnabled();
+    await expect
+      .poll(() => chat.getByRole("button", { name: "Apply changes", exact: true }).isEnabled())
+      .toBe(true);
     await chat.getByRole("button", { name: "Apply changes", exact: true }).click();
-    await expect(chat.getByText("Changes applied", { exact: true })).toBeVisible();
+    await expect
+      .poll(() => chat.getByText("Changes applied", { exact: true }).isVisible())
+      .toBe(true);
     await chat.getByRole("button", { name: "Minimize design chat", exact: true }).click();
   }
   const saved = (await (await request.get("/api/settings/orchestration")).json()).settings;
@@ -1381,19 +1893,37 @@ test("global designer follows the settings section in the same conversation", as
     .getByRole("button", { name: "Workflow", exact: true })
     .click();
   const chat = page.getByRole("dialog", { name: "Design workflow with AI", exact: true });
-  await expect(chat).toContainText("For release readiness, inspect tests and changelog.");
-  await expect(chat).toContainText("Prefer existing TypeScript conventions");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await chat.allTextContents(),
+        "For release readiness, inspect tests and changelog.",
+        true,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(await chat.allTextContents(), "Prefer existing TypeScript conventions", true),
+    )
+    .toBe(true);
   await chat
     .getByLabel("Message AI designer", { exact: true })
     .fill("Explain what the proposal changed.");
   await chat.getByRole("button", { name: "Send to AI designer", exact: true }).click();
-  await expect(
-    chat.getByText(
-      "The proposal uses your connected catalog and preserves the other settings sections.",
-      { exact: true },
-    ),
-  ).toBeVisible();
-  await expect(chat.getByRole("button", { name: "Apply changes", exact: true })).toHaveCount(0);
+  await expect
+    .poll(() =>
+      chat
+        .getByText(
+          "The proposal uses your connected catalog and preserves the other settings sections.",
+          { exact: true },
+        )
+        .isVisible(),
+    )
+    .toBe(true);
+  await expect
+    .poll(() => chat.getByRole("button", { name: "Apply changes", exact: true }).count())
+    .toBe(0);
 });
 
 test("graph blocks can be arranged and keep their positions through execution and reload", async ({
@@ -1403,7 +1933,7 @@ test("graph blocks can be arranged and keep their positions through execution an
   await page.goto("/");
   await newTask(page, "Drag the graph for this bug review");
   const node = page.locator(".react-flow__node[data-id='work']");
-  await expect(node).toBeVisible();
+  await expect.poll(() => node.isVisible()).toBe(true);
   const before = await node.evaluate((element) => (element as HTMLElement).style.transform);
   const box = await node.boundingBox();
   expect(box).toBeTruthy();
@@ -1416,14 +1946,26 @@ test("graph blocks can be arranged and keep their positions through execution an
     .not.toBe(before);
   const arranged = await node.evaluate((element) => (element as HTMLElement).style.transform);
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
-  await expect(page.locator(".react-flow__node.active")).toHaveCount(1);
-  await expect(page.getByRole("button", { name: "Focus active step", exact: true })).toBeVisible();
-  await expect(page.locator(".status-pill")).toHaveText("Completed", { timeout: 15_000 });
+  await expect.poll(() => page.locator(".react-flow__node.active").count()).toBe(1);
+  await expect
+    .poll(() => page.getByRole("button", { name: "Focus active step", exact: true }).isVisible())
+    .toBe(true);
+  await expect
+    .poll(
+      async () =>
+        matchesText(await page.locator(".status-pill").allTextContents(), "Completed", false),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
   await expect
     .poll(() => node.evaluate((element) => (element as HTMLElement).style.transform))
     .toBe(arranged);
   await page.reload();
-  await expect(page.locator(".status-pill")).toHaveText("Completed");
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Completed", false),
+    )
+    .toBe(true);
   await expect
     .poll(() => node.evaluate((element) => (element as HTMLElement).style.transform))
     .toBe(arranged);
@@ -1446,23 +1988,57 @@ test("failed results are prominent, safely render Markdown and support copying a
   await page.goto("/");
   await newTask(page, "Review this bug [result-fixture]");
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Failed", { timeout: 15_000 });
-  await expect(page.locator(".result-banner")).toContainText("Branch review blocked");
-  await expect(page.locator(".notification-toast")).toContainText("FAILED");
+  await expect
+    .poll(
+      async () =>
+        matchesText(await page.locator(".status-pill").allTextContents(), "Failed", false),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".result-banner").allTextContents(),
+        "Branch review blocked",
+        true,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".notification-toast").allTextContents(), "FAILED", true),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: /View full results/ }).click();
   const result = page.locator(".result-artifact").first();
-  await expect(
-    result.getByRole("heading", { name: "Review status: blocked", exact: true }),
-  ).toBeVisible();
-  await expect(result.locator("table th")).toHaveText(["Check", "Result"]);
-  await expect(result.locator("pre code")).toHaveText("const reviewed = false;\n");
-  await expect(result.locator("script, img, iframe, a[href^='javascript:']")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      result.getByRole("heading", { name: "Review status: blocked", exact: true }).isVisible(),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(await result.locator("table th").allTextContents(), ["Check", "Result"], false),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(
+        await result.locator("pre code").allTextContents(),
+        "const reviewed = false;\n",
+        false,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(() => result.locator("script, img, iframe, a[href^='javascript:']").count())
+    .toBe(0);
   expect(
     await page.evaluate(() => (window as unknown as Record<string, unknown>).markdownInjected),
   ).toBeUndefined();
   expect(remoteImages).toEqual([]);
   await result.getByRole("button", { name: "Copy Markdown", exact: true }).click();
-  await expect(result.getByText("Markdown copied", { exact: true })).toHaveCount(1);
+  await expect.poll(() => result.getByText("Markdown copied", { exact: true }).count()).toBe(1);
   const markdown = await page.evaluate(() => navigator.clipboard.readText());
   expect(markdown).toContain("## Review status: blocked");
   expect(markdown).toContain("| Check | Result |");
@@ -1486,7 +2062,13 @@ test("failed-run recovery opens a new reviewed task and retains the original his
   await page.goto("/");
   await newTask(page, "Review current changes [result-fixture]");
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Failed", { timeout: 15_000 });
+  await expect
+    .poll(
+      async () =>
+        matchesText(await page.locator(".status-pill").allTextContents(), "Failed", false),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
   const originalUrl = page.url();
   const response = page.waitForResponse(
     (response) => response.url().endsWith("/api/tasks") && response.request().method() === "POST",
@@ -1497,35 +2079,73 @@ test("failed-run recovery opens a new reviewed task and retains the original his
   const created = await (await response).json();
   expect(created.sourceRunId).toBeTruthy();
   expect(created.approval).toBe("review");
-  await expect(page).toHaveURL(new RegExp(`task=${created.id}$`));
-  await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
+  await expect.poll(() => matchesValue(page.url(), new RegExp(`task=${created.id}$`))).toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Awaiting approval", false),
+    )
+    .toBe(true);
   await page.goto(originalUrl);
-  await expect(page.locator(".status-pill")).toHaveText("Failed");
-  await expect(page.locator(".result-banner")).toContainText("Branch review blocked");
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Failed", false),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".result-banner").allTextContents(),
+        "Branch review blocked",
+        true,
+      ),
+    )
+    .toBe(true);
 });
 
 test("file recovery and continuation planning remain separate actions", async ({ page }) => {
   await page.goto("/");
   await newTask(page, "Fix the issue [recovery-conflict]");
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Needs attention", { timeout: 15000 });
+  await expect
+    .poll(
+      async () =>
+        matchesText(await page.locator(".status-pill").allTextContents(), "Needs attention", false),
+      { timeout: 15000 },
+    )
+    .toBe(true);
   const recovery = page.waitForResponse(
     (response) => response.url().endsWith("/recover") && response.request().method() === "POST",
   );
   await page.getByRole("button", { name: "Retry file recovery", exact: true }).click();
   expect((await recovery).ok()).toBeTruthy();
-  await expect(page.locator(".status-pill")).toHaveText("Needs attention");
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Needs attention", false),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Stop execution", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Cancelled");
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Cancelled", false),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Keep current files", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Keep current files", exact: true })).toHaveCount(
-    0,
-  );
-  await expect(page.locator(".status-pill")).toHaveText("Cancelled");
+  await expect
+    .poll(() => page.getByRole("button", { name: "Keep current files", exact: true }).count())
+    .toBe(0);
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Cancelled", false),
+    )
+    .toBe(true);
   await page
     .getByRole("button", { name: "Plan recovery with prior evidence", exact: true })
     .click();
-  await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Awaiting approval", false),
+    )
+    .toBe(true);
 });
 
 test("same-scope AI chats stay independent, draggable and restorable", async ({
@@ -1538,7 +2158,7 @@ test("same-scope AI chats stay independent, draggable and restorable", async ({
   await settings(page, "Blocks");
   await page.getByRole("button", { name: "Open AI designer", exact: true }).click();
   const dialogs = page.getByRole("dialog", { name: "Design workflow with AI", exact: true });
-  await expect(dialogs).toHaveCount(1);
+  await expect.poll(() => dialogs.count()).toBe(1);
   const firstId = await dialogs.first().getAttribute("id");
   const first = page.locator(`#${firstId}`);
   const start = (await first.boundingBox())!;
@@ -1553,7 +2173,7 @@ test("same-scope AI chats stay independent, draggable and restorable", async ({
     .fill("Independent conversation A: review carefully.");
   await first.getByRole("button", { name: "Send to AI designer", exact: true }).click();
   await first.getByRole("button", { name: "New design conversation", exact: true }).click();
-  await expect(dialogs).toHaveCount(2);
+  await expect.poll(() => dialogs.count()).toBe(2);
   const second = dialogs.filter({ hasNot: page.locator(`#${firstId}`) }).last();
   const secondId = await second.getAttribute("id");
   expect(secondId).not.toBe(firstId);
@@ -1561,30 +2181,60 @@ test("same-scope AI chats stay independent, draggable and restorable", async ({
     .getByLabel("Message AI designer", { exact: true })
     .fill("Independent conversation B: summarize changes.");
   await second.getByRole("button", { name: "Send to AI designer", exact: true }).click();
-  await expect(first.getByRole("button", { name: "Apply changes", exact: true })).toBeEnabled();
-  await expect(second.getByRole("button", { name: "Apply changes", exact: true })).toBeEnabled();
-  await expect(first).toContainText("Independent conversation A");
-  await expect(first).not.toContainText("Independent conversation B");
-  await expect(second).toContainText("Independent conversation B");
-  await expect(second).not.toContainText("Independent conversation A");
+  await expect
+    .poll(() => first.getByRole("button", { name: "Apply changes", exact: true }).isEnabled())
+    .toBe(true);
+  await expect
+    .poll(() => second.getByRole("button", { name: "Apply changes", exact: true }).isEnabled())
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(await first.allTextContents(), "Independent conversation A", true),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(await first.allTextContents(), "Independent conversation B", true),
+    )
+    .not.toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(await second.allTextContents(), "Independent conversation B", true),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(await second.allTextContents(), "Independent conversation A", true),
+    )
+    .not.toBe(true);
   await first.getByLabel("Message AI designer", { exact: true }).fill("Unsent follow-up A");
   await first.getByRole("button", { name: "Minimize design chat", exact: true }).click();
-  await expect(first).toBeHidden();
-  await expect(second).toBeVisible();
+  await expect.poll(() => first.isHidden()).toBe(true);
+  await expect.poll(() => second.isVisible()).toBe(true);
   await page
     .getByLabel("Design chats")
     .getByRole("button", { name: "Workflow", exact: true })
     .click();
-  await expect(first.getByLabel("Message AI designer", { exact: true })).toHaveValue(
-    "Unsent follow-up A",
-  );
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await first.getByLabel("Message AI designer", { exact: true }).inputValue(),
+        "Unsent follow-up A",
+      ),
+    )
+    .toBe(true);
   const position = (await first.boundingBox())!;
   await page.reload();
-  await expect(page.locator(`#${firstId}`)).toBeVisible();
-  await expect(page.locator(`#${secondId}`)).toBeVisible();
-  await expect(first.getByLabel("Message AI designer", { exact: true })).toHaveValue(
-    "Unsent follow-up A",
-  );
+  await expect.poll(() => page.locator(`#${firstId}`).isVisible()).toBe(true);
+  await expect.poll(() => page.locator(`#${secondId}`).isVisible()).toBe(true);
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await first.getByLabel("Message AI designer", { exact: true }).inputValue(),
+        "Unsent follow-up A",
+      ),
+    )
+    .toBe(true);
   expect((await first.boundingBox())!.x).toBeCloseTo(position.x, 0);
   await page.screenshot({ path: "/tmp/workflow-multiple-chats.png", fullPage: true });
 });
@@ -1596,35 +2246,77 @@ test("activity is searchable, filters tools and checks, and retains raw failure 
   await page.goto("/");
   await newTask(page, "Fix the regression [activity-fixture]");
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Completed", { timeout: 15_000 });
+  await expect
+    .poll(
+      async () =>
+        matchesText(await page.locator(".status-pill").allTextContents(), "Completed", false),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Activity", exact: true }).click();
   const activity = page.getByRole("region", { name: "Workflow activity", exact: true });
   await activity.getByRole("button", { name: /^Tools/ }).click();
-  await expect(activity.locator(".event")).toHaveCount(4);
+  await expect.poll(() => activity.locator(".event").count()).toBe(4);
   const command = activity.locator(".event.tool_start").filter({ hasText: "Run command" });
-  await expect(command).toContainText("bun test --filter regression");
-  await expect(command.locator("pre")).not.toBeVisible();
+  await expect
+    .poll(async () =>
+      matchesText(await command.allTextContents(), "bun test --filter regression", true),
+    )
+    .toBe(true);
+  await expect.poll(() => command.locator("pre").isVisible()).not.toBe(true);
   await command.getByText("View details", { exact: true }).click();
-  await expect(command.locator("pre")).toContainText('"timeout": 60');
-  await expect(activity.locator(".event.tool_end.error")).toContainText("expected 5, received 4");
+  await expect
+    .poll(async () =>
+      matchesText(await command.locator("pre").allTextContents(), '"timeout": 60', true),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(
+        await activity.locator(".event.tool_end.error").allTextContents(),
+        "expected 5, received 4",
+        true,
+      ),
+    )
+    .toBe(true);
   await activity.getByLabel("Search activity", { exact: true }).fill("REGRESSION");
-  await expect(activity.locator(".event")).toHaveCount(2);
+  await expect.poll(() => activity.locator(".event").count()).toBe(2);
   await activity.getByRole("button", { name: /^Checks/ }).click();
-  await expect(activity.locator(".event")).toHaveCount(1);
+  await expect.poll(() => activity.locator(".event").count()).toBe(1);
   await activity.getByText("View details", { exact: true }).click();
-  await expect(activity.locator("pre")).toContainText("Detailed diagnostic for regression");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await activity.locator("pre").allTextContents(),
+        "Detailed diagnostic for regression",
+        true,
+      ),
+    )
+    .toBe(true);
   await activity.getByLabel("Search activity", { exact: true }).fill("");
   await activity.getByRole("button", { name: /^Usage/ }).click();
-  await expect(activity).toContainText("2 requests · 1,500 tokens · $0.0123 reported");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await activity.allTextContents(),
+        "2 requests · 1,500 tokens · $0.0123 reported",
+        true,
+      ),
+    )
+    .toBe(true);
   await activity.getByLabel("Activity step", { exact: true }).selectOption("review");
-  await expect(activity).toContainText("No activity matches these filters.");
+  await expect
+    .poll(async () =>
+      matchesText(await activity.allTextContents(), "No activity matches these filters.", true),
+    )
+    .toBe(true);
   await activity.getByRole("button", { name: "Clear filters", exact: true }).click();
-  await expect(activity.locator(".event")).not.toHaveCount(0);
+  await expect.poll(() => activity.locator(".event").count()).not.toBe(0);
   await activity.getByRole("button", { name: "Show all steps", exact: true }).click();
   await page.screenshot({ path: "/tmp/workflow-activity-desktop.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await activity.getByLabel("Search activity", { exact: true }).fill("src/example.ts");
-  await expect(activity.locator(".event")).toHaveCount(1);
+  await expect.poll(() => activity.locator(".event").count()).toBe(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.screenshot({ path: "/tmp/workflow-activity-mobile.png", fullPage: true });
 });
@@ -1637,18 +2329,20 @@ test("expanded workspaces keep graph context, search and draft edits with keyboa
   await page.goto("/");
   await newTask(page, "Fix the expanded workspace fixture bug");
   const normalGraph = page.locator(".graph-panel");
-  await expect(normalGraph.locator(".react-flow__node[data-id='work']")).toBeVisible();
+  await expect
+    .poll(() => normalGraph.locator(".react-flow__node[data-id='work']").isVisible())
+    .toBe(true);
   const originalHeight = (await normalGraph.boundingBox())!.height;
   await page.getByRole("button", { name: "Expand workspace", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Expanded workflow workspace", exact: true });
-  await expect(dialog).toBeVisible();
+  await expect.poll(() => dialog.isVisible()).toBe(true);
   expect((await dialog.boundingBox())!.width).toBeGreaterThan(1380);
   expect((await dialog.locator(".graph-panel").boundingBox())!.height).toBeGreaterThan(
     originalHeight + 150,
   );
   await dialog.getByRole("button", { name: "Fit workflow", exact: true }).click();
   await dialog.locator(".react-flow__node[data-id='work']").click();
-  await expect(dialog.locator(".step-inspector")).toBeVisible();
+  await expect.poll(() => dialog.locator(".step-inspector").isVisible()).toBe(true);
   await expect
     .poll(async () => {
       const panel = (await dialog.locator(".graph-panel").boundingBox())!;
@@ -1662,13 +2356,37 @@ test("expanded workspaces keep graph context, search and draft edits with keyboa
   await dialog.getByRole("button", { name: "Activity", exact: true }).click();
   await dialog.getByLabel("Search activity", { exact: true }).fill("Keep my search");
   await page.keyboard.press("Escape");
-  await expect(dialog).not.toBeVisible();
-  await expect(page.getByLabel("Search activity", { exact: true })).toHaveValue("Keep my search");
-  await expect(page.getByLabel("Activity step", { exact: true })).toHaveValue("work");
-  await expect(page.getByRole("button", { name: "Expand workspace", exact: true })).toBeFocused();
+  await expect.poll(() => dialog.isVisible()).not.toBe(true);
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await page.getByLabel("Search activity", { exact: true }).inputValue(),
+        "Keep my search",
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesValue(await page.getByLabel("Activity step", { exact: true }).inputValue(), "work"),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      page
+        .getByRole("button", { name: "Expand workspace", exact: true })
+        .evaluate((element) => element === document.activeElement),
+    )
+    .toBe(true);
 
   await page.getByRole("button", { name: "Expand workspace", exact: true }).click();
-  await expect(dialog.getByLabel("Search activity", { exact: true })).toHaveValue("Keep my search");
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await dialog.getByLabel("Search activity", { exact: true }).inputValue(),
+        "Keep my search",
+      ),
+    )
+    .toBe(true);
   for (let i = 0; i < 8; i++) {
     await page.keyboard.press("Tab");
     expect(await dialog.evaluate((el) => el.contains(document.activeElement))).toBe(true);
@@ -1693,7 +2411,7 @@ test("expanded workspaces keep graph context, search and draft edits with keyboa
     .boundingBox())!;
   expect(mobileExpand.x + mobileExpand.width).toBeLessThanOrEqual(390);
   await page.getByRole("button", { name: "Expand workspace", exact: true }).click();
-  await expect(dialog.locator(".step-inspector")).toBeVisible();
+  await expect.poll(() => dialog.locator(".step-inspector").isVisible()).toBe(true);
   await dialog.getByRole("button", { name: "Fit workflow", exact: true }).click();
   expect((await dialog.boundingBox())!.width).toBeLessThanOrEqual(390);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
@@ -1702,7 +2420,7 @@ test("expanded workspaces keep graph context, search and draft edits with keyboa
   ).toBeGreaterThan(0);
   await page.screenshot({ path: "/tmp/workflow-expanded-mobile.png", fullPage: true });
   await page.keyboard.press("Escape");
-  await expect(dialog).not.toBeVisible();
+  await expect.poll(() => dialog.isVisible()).not.toBe(true);
   expect(await page.evaluate(() => document.body.style.overflow)).not.toBe("hidden");
 });
 
@@ -1719,9 +2437,11 @@ test("deleting a workflow removes its task from history and stale responses cann
   });
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Delete workflow", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "What should we work on?", exact: true }),
-  ).toBeVisible();
+  await expect
+    .poll(() =>
+      page.getByRole("heading", { name: "What should we work on?", exact: true }).isVisible(),
+    )
+    .toBe(true);
   // Return the old snapshot on a later poll. Changing selection deliberately
   // aborts the old request, so holding that aborted route cannot exercise merging.
   await page.route("**/api/tasks", async (route) => {
@@ -1730,19 +2450,25 @@ test("deleting a workflow removes its task from history and stale responses cann
     waiting();
   });
   await received;
-  await expect(
-    page.locator(".task-item").filter({ hasText: "Delete this draft from history" }),
-  ).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.locator(".task-item").filter({ hasText: "Delete this draft from history" }).count(),
+    )
+    .toBe(0);
   await page.unrouteAll({ behavior: "wait" });
   await page.reload();
-  await expect(
-    page.locator(".task-item").filter({ hasText: "Delete this draft from history" }),
-  ).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.locator(".task-item").filter({ hasText: "Delete this draft from history" }).count(),
+    )
+    .toBe(0);
   await page.goto(originalUrl);
   await page.reload();
-  await expect(
-    page.getByRole("heading", { name: "What should we work on?", exact: true }),
-  ).toBeVisible();
+  await expect
+    .poll(() =>
+      page.getByRole("heading", { name: "What should we work on?", exact: true }).isVisible(),
+    )
+    .toBe(true);
 });
 
 test("discard controls restore blocks, model defaults and settings without saving", async ({
@@ -1757,17 +2483,22 @@ test("discard controls restore blocks, model defaults and settings without savin
   await page.getByLabel("Block name", { exact: true }).fill("Discard this new block");
   await page.getByRole("button", { name: "Open AI designer", exact: true }).click();
   const opened = page.getByRole("dialog", { name: "Design workflow with AI", exact: true });
-  await expect(opened).toBeVisible();
-  await expect(page.getByLabel("Block name", { exact: true })).toHaveValue(
-    "Discard this new block",
-  );
+  await expect.poll(() => opened.isVisible()).toBe(true);
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await page.getByLabel("Block name", { exact: true }).inputValue(),
+        "Discard this new block",
+      ),
+    )
+    .toBe(true);
   await opened.getByRole("button", { name: "Close design chat", exact: true }).click();
   await page.getByRole("button", { name: "Cancel new block", exact: true }).click();
-  await expect(page.getByLabel("Block name", { exact: true })).toHaveCount(0);
-  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect.poll(() => page.getByLabel("Block name", { exact: true }).count()).toBe(0);
+  await expect.poll(() => page.getByRole("alert").count()).toBe(0);
   await page.getByRole("button", { name: "Open AI designer", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Design workflow with AI", exact: true });
-  await expect(dialog).toBeVisible();
+  await expect.poll(() => dialog.isVisible()).toBe(true);
   await dialog.getByRole("button", { name: "Close design chat", exact: true }).click();
   await page.locator(".block-catalog button").filter({ hasText: "Independent review" }).click();
   const instructions = page.getByLabel("Block TypeScript", { exact: true });
@@ -1778,17 +2509,21 @@ test("discard controls restore blocks, model defaults and settings without savin
   expect(await (await request.get("/api/library")).json()).toEqual(originalLibrary);
   await page.getByRole("button", { name: "Providers & models", exact: true }).click();
   const model = page.getByLabel("Model", { exact: true });
-  await expect(model).toBeEnabled();
+  await expect.poll(() => model.isEnabled()).toBe(true);
   const savedModel = await model.inputValue();
   const thinking = page.getByLabel("Thinking level", { exact: true });
   const savedThinking = await thinking.inputValue();
   if (savedModel === "openai/test-model")
     await thinking.selectOption(savedThinking === "high" ? "off" : "high");
   else await model.selectOption("openai/test-model");
-  await expect(page.getByRole("button", { name: "Discard all edits", exact: true })).toBeVisible();
+  await expect
+    .poll(() => page.getByRole("button", { name: "Discard all edits", exact: true }).isVisible())
+    .toBe(true);
   await page.getByRole("button", { name: "Discard model changes", exact: true }).click();
-  await expect(model).toHaveValue(savedModel);
-  await expect(thinking).toHaveValue(savedThinking);
+  await expect.poll(async () => matchesValue(await model.inputValue(), savedModel)).toBe(true);
+  await expect
+    .poll(async () => matchesValue(await thinking.inputValue(), savedThinking))
+    .toBe(true);
   const originalSettings = await (await request.get("/api/settings/orchestration")).json();
   const originalExecution = await (await request.get("/api/settings/execution")).json();
   await page.getByRole("button", { name: "Task instructions", exact: true }).click();
@@ -1798,9 +2533,11 @@ test("discard controls restore blocks, model defaults and settings without savin
   await page.getByRole("button", { name: "Model profiles", exact: true }).click();
   await page.getByRole("button", { name: "Add model profile", exact: true }).click();
   await page.getByRole("button", { name: "Discard settings changes", exact: true }).click();
-  await expect(page.getByText("All changes saved", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => page.getByText("All changes saved", { exact: true }).isVisible())
+    .toBe(true);
   await page.getByRole("button", { name: "Task instructions", exact: true }).click();
-  await expect(name).toHaveValue(savedName);
+  await expect.poll(async () => matchesValue(await name.inputValue(), savedName)).toBe(true);
   expect(await (await request.get("/api/settings/orchestration")).json()).toEqual(originalSettings);
   expect(await (await request.get("/api/settings/execution")).json()).toEqual(originalExecution);
 });
@@ -1812,8 +2549,10 @@ test("one TypeScript editor saves typed code, rejects errors, downloads and disc
   await page.goto("/");
   await settings(page, "Blocks");
   await page.getByRole("button", { name: "Add block", exact: true }).click();
-  await expect(page.getByLabel("Execution", { exact: true })).toHaveCount(0);
-  await expect(page.getByLabel("Preferred model profile", { exact: true })).toHaveCount(0);
+  await expect.poll(() => page.getByLabel("Execution", { exact: true }).count()).toBe(0);
+  await expect
+    .poll(() => page.getByLabel("Preferred model profile", { exact: true }).count())
+    .toBe(0);
   await page.getByLabel("Block name", { exact: true }).fill("Process files without AI");
   const id = await page.getByLabel("Block ID", { exact: true }).inputValue();
   const editor = page.getByLabel("Block TypeScript", { exact: true });
@@ -1822,11 +2561,15 @@ export default block({output:z.object({answer:z.number()}),async run(ctx){ctx.su
   const formatted = (await formatCode(source)).formatted;
   await fillCode(editor, source.replace("answer:42", 'answer:"wrong"'));
   await page.getByRole("button", { name: "Save block", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("TypeScript");
+  await expect
+    .poll(async () =>
+      matchesText(await page.getByRole("alert").allTextContents(), "TypeScript", true),
+    )
+    .toBe(true);
   expect((await (await request.get("/api/library")).json()).blocks[id]).toBeUndefined();
   await fillCode(editor, source);
   await page.getByRole("button", { name: "Save block", exact: true }).click();
-  await expect(page.getByText(/Block saved. New workflows/)).toBeVisible();
+  await expect.poll(() => page.getByText(/Block saved. New workflows/).isVisible()).toBe(true);
   const saved = (await (await request.get("/api/library")).json()).blocks[id];
   expect(saved.definition.executor).toMatchObject({ kind: "code", source: formatted });
   expect(saved.definition.agent).toBeUndefined();
@@ -1871,9 +2614,9 @@ test("multiline fields grow for typing and pasted text, cap height, and shrink a
   await task.fill(manyLines);
   await expect.poll(async () => (await task.boundingBox())!.height).toBeGreaterThan(emptyHeight);
   const discard = page.getByRole("button", { name: "Discard task draft", exact: true });
-  await expect(discard).toBeVisible();
+  await expect.poll(() => discard.isVisible()).toBe(true);
   await discard.click();
-  await expect(task).toHaveValue("");
+  await expect.poll(async () => matchesValue(await task.inputValue(), "")).toBe(true);
   await expect.poll(async () => (await task.boundingBox())!.height).toBe(emptyHeight);
   expect(
     await page.evaluate(() => document.querySelectorAll("textarea:not([style*=height])").length),
@@ -1890,7 +2633,7 @@ test("floating chats resize independently, retain dimensions and stay usable on 
   await settings(page, "Blocks");
   await page.getByRole("button", { name: "Open AI designer", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Design workflow with AI", exact: true });
-  await expect(dialog).toBeVisible();
+  await expect.poll(() => dialog.isVisible()).toBe(true);
   const id = await dialog.getAttribute("id");
   const header = (await dialog.locator("header").boundingBox())!;
   await page.mouse.move(header.x + 80, header.y + 20);
@@ -1911,10 +2654,10 @@ test("floating chats resize independently, retain dimensions and stay usable on 
   await dialog.getByRole("button", { name: "New design conversation", exact: true }).click();
   const first = page.locator(`#${id}`);
   const all = page.getByRole("dialog", { name: "Design workflow with AI", exact: true });
-  await expect(all).toHaveCount(2);
+  await expect.poll(() => all.count()).toBe(2);
   expect((await all.last().boundingBox())!.width).toBe(440);
   await page.reload();
-  await expect(first).toBeVisible();
+  await expect.poll(() => first.isVisible()).toBe(true);
   await expect.poll(async () => (await first.boundingBox())!.width).toBe(resized.width);
   expect((await first.boundingBox())!.height).toBe(resized.height);
   await all.last().getByRole("button", { name: "Close design chat", exact: true }).click();
@@ -1928,11 +2671,23 @@ test("floating chats resize independently, retain dimensions and stay usable on 
   const message = first.getByLabel("Message AI designer", { exact: true });
   await message.fill(Array.from({ length: 50 }, () => "A long design request").join("\n"));
   await expect.poll(() => message.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
-  await expect(
-    first.getByRole("button", { name: "Send to AI designer", exact: true }),
-  ).toBeInViewport();
+  await expect
+    .poll(() =>
+      first
+        .getByRole("button", { name: "Send to AI designer", exact: true })
+        .evaluate((element) => {
+          const { promise, resolve } = Promise.withResolvers<boolean>();
+          const observer = new IntersectionObserver(([entry]) => {
+            observer.disconnect();
+            resolve(entry!.intersectionRatio > 0);
+          });
+          observer.observe(element);
+          return promise;
+        }),
+    )
+    .toBe(true);
   await first.getByRole("button", { name: "Discard message", exact: true }).click();
-  await expect(message).toHaveValue("");
+  await expect.poll(async () => matchesValue(await message.inputValue(), "")).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.screenshot({ path: "/tmp/workflow-resized-chat-mobile.png", fullPage: true });
 });
@@ -1998,22 +2753,30 @@ test("an AI proposal can be discarded without applying and its conversation stay
   await chat.getByRole("button", { name: "New design conversation", exact: true }).click();
   // Creation is asynchronous: filling .last() before the new window exists
   // writes to the previous chat and then tries to send the new empty one.
-  await expect(chat).toHaveCount(2);
+  await expect.poll(() => chat.count()).toBe(2);
   const current = chat.last();
   await current
     .getByLabel("Message AI designer", { exact: true })
     .fill("Inspect error cases in review");
   await current.getByRole("button", { name: "Send to AI designer", exact: true }).click();
   await current.getByRole("button", { name: "Discard proposal", exact: true }).click();
-  await expect(current.getByRole("button", { name: "Apply changes", exact: true })).toHaveCount(0);
-  await expect(current).toContainText("Inspect error cases in review");
+  await expect
+    .poll(() => current.getByRole("button", { name: "Apply changes", exact: true }).count())
+    .toBe(0);
+  await expect
+    .poll(async () =>
+      matchesText(await current.allTextContents(), "Inspect error cases in review", true),
+    )
+    .toBe(true);
   expect(await (await request.get("/api/library")).json()).toEqual(before);
   const id = await current.getAttribute("id");
   await page.reload();
-  await expect(page.locator(`#${id}`)).toBeVisible();
-  await expect(
-    page.locator(`#${id}`).getByRole("button", { name: "Apply changes", exact: true }),
-  ).toHaveCount(0);
+  await expect.poll(() => page.locator(`#${id}`).isVisible()).toBe(true);
+  await expect
+    .poll(() =>
+      page.locator(`#${id}`).getByRole("button", { name: "Apply changes", exact: true }).count(),
+    )
+    .toBe(0);
 });
 
 test("uploads and MCP discovery can be cancelled without late results or clearing the task", async ({
@@ -2022,7 +2785,7 @@ test("uploads and MCP discovery can be cancelled without late results or clearin
   await page.goto("/");
   const task = page.getByLabel("What should we work on?", { exact: true });
   await task.fill("Keep this task while cancelling its attachment");
-  let upload: import("@playwright/test").Route | undefined;
+  let upload: import("playwright").Route | undefined;
   await page.route("**/api/attachments", (route) => {
     upload = route;
   });
@@ -2033,13 +2796,21 @@ test("uploads and MCP discovery can be cancelled without late results or clearin
   });
   await expect.poll(() => !!upload).toBe(true);
   await page.getByRole("button", { name: "Cancel upload", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Attach files", exact: true })).toBeEnabled();
+  await expect
+    .poll(() => page.getByRole("button", { name: "Attach files", exact: true }).isEnabled())
+    .toBe(true);
   await upload!.abort().catch(() => {});
-  await expect(
-    page.getByRole("list", { name: "Attached files", exact: true }).getByRole("listitem"),
-  ).toHaveCount(0);
-  await expect(task).toHaveValue("Keep this task while cancelling its attachment");
-  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.getByRole("list", { name: "Attached files", exact: true }).getByRole("listitem").count(),
+    )
+    .toBe(0);
+  await expect
+    .poll(async () =>
+      matchesValue(await task.inputValue(), "Keep this task while cancelling its attachment"),
+    )
+    .toBe(true);
+  await expect.poll(() => page.getByRole("alert").count()).toBe(0);
   await task.fill("");
   await settings(page, "Skills & MCP");
   await page.getByRole("button", { name: "Add MCP server", exact: true }).click();
@@ -2048,21 +2819,23 @@ test("uploads and MCP discovery can be cancelled without late results or clearin
   const card = page
     .locator("article")
     .filter({ has: page.getByLabel("Enable Cancellable discovery", { exact: true }) });
-  let discovery: import("@playwright/test").Route | undefined;
+  let discovery: import("playwright").Route | undefined;
   await page.route("**/api/settings/mcp/inspect", (route) => {
     discovery = route;
   });
   await card.getByRole("button", { name: "Connect & discover tools", exact: true }).click();
   await expect.poll(() => !!discovery).toBe(true);
   await card.getByRole("button", { name: "Cancel discovery", exact: true }).click();
-  await expect(
-    card.getByRole("button", { name: "Connect & discover tools", exact: true }),
-  ).toBeEnabled();
+  await expect
+    .poll(() =>
+      card.getByRole("button", { name: "Connect & discover tools", exact: true }).isEnabled(),
+    )
+    .toBe(true);
   await discovery!.abort().catch(() => {});
-  await expect(card.locator(".mcp-tools")).toHaveCount(0);
-  await expect(card.getByRole("alert")).toHaveCount(0);
+  await expect.poll(() => card.locator(".mcp-tools").count()).toBe(0);
+  await expect.poll(() => card.getByRole("alert").count()).toBe(0);
   await page.getByRole("button", { name: "Discard settings changes", exact: true }).click();
-  await expect(card).toHaveCount(0);
+  await expect.poll(() => card.count()).toBe(0);
 });
 
 test("CodeMirror highlights TypeScript, indents, undoes, searches and bounds long documents", async ({
@@ -2072,7 +2845,7 @@ test("CodeMirror highlights TypeScript, indents, undoes, searches and bounds lon
   await page.getByText("Use a TypeScript workflow", { exact: true }).click();
   const editor = page.getByLabel("New workflow TypeScript", { exact: true });
   await fillCode(editor, "const answer: number = 42;");
-  await expect(editor.locator(".cm-line span").first()).toBeVisible();
+  await expect.poll(() => editor.locator(".cm-line span").first().isVisible()).toBe(true);
   await editor.press("ControlOrMeta+Home");
   await editor.press("Tab");
   await expectCode(editor, "  const answer: number = 42;");
@@ -2081,9 +2854,9 @@ test("CodeMirror highlights TypeScript, indents, undoes, searches and bounds lon
   await editor.press("ControlOrMeta+f");
   const search = page.getByPlaceholder("Find", { exact: true });
   await search.fill("answer");
-  await expect(page.locator(".cm-searchMatch")).toHaveCount(1);
+  await expect.poll(() => page.locator(".cm-searchMatch").count()).toBe(1);
   await search.press("Escape");
-  await expect(search).not.toBeVisible();
+  await expect.poll(() => search.isVisible()).not.toBe(true);
   await fillCode(
     editor,
     Array.from({ length: 100 }, (_, i) => `const line${i} = ${i};`).join("\n"),
@@ -2115,20 +2888,36 @@ test("global AI designer retains conversation and drafts across task, settings a
   const input = chat.getByLabel("Message AI designer", { exact: true });
   await input.fill("Reduce the workflow limit to 15 steps");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await expect(input).toHaveValue("Reduce the workflow limit to 15 steps");
+  await expect
+    .poll(async () =>
+      matchesValue(await input.inputValue(), "Reduce the workflow limit to 15 steps"),
+    )
+    .toBe(true);
   await page.reload();
-  await expect(input).toHaveValue("Reduce the workflow limit to 15 steps");
+  await expect
+    .poll(async () =>
+      matchesValue(await input.inputValue(), "Reduce the workflow limit to 15 steps"),
+    )
+    .toBe(true);
   const sent = page.waitForRequest((req) => /\/api\/design\/[^/]+\/messages$/.test(req.url()));
   await chat.getByRole("button", { name: "Send to AI designer", exact: true }).click();
   expect((await sent).postDataJSON().context.page).toBe("settings");
-  await expect(chat.getByRole("button", { name: "Apply changes", exact: true })).toBeEnabled();
+  await expect
+    .poll(() => chat.getByRole("button", { name: "Apply changes", exact: true }).isEnabled())
+    .toBe(true);
   await page.getByRole("button", { name: "New task", exact: true }).click();
-  await expect(chat.getByText("Reduced the workflow limit.", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => chat.getByText("Reduced the workflow limit.", { exact: true }).isVisible())
+    .toBe(true);
   await chat.getByRole("button", { name: "Apply changes", exact: true }).click();
-  await expect(chat.getByText("Changes applied", { exact: false })).toBeVisible();
+  await expect
+    .poll(() => chat.getByText("Changes applied", { exact: false }).isVisible())
+    .toBe(true);
   await chat.getByRole("button", { name: "Minimize design chat", exact: true }).click();
   await page.getByRole("button", { name: "Open AI designer", exact: true }).click();
-  await expect(chat.getByText("Reduced the workflow limit.", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => chat.getByText("Reduced the workflow limit.", { exact: true }).isVisible())
+    .toBe(true);
   await chat.getByRole("button", { name: "Minimize design chat", exact: true }).click();
   await newTask(page, "Fix the current focus issue");
   await page.getByRole("button", { name: "Open AI designer", exact: true }).click();
@@ -2141,12 +2930,16 @@ test("global AI designer retains conversation and drafts across task, settings a
   expect(context.page).toBe("task");
   expect(context.taskId).toMatch(/^[a-f0-9-]{36}$/);
   expect(context.runId).toMatch(/^[a-f0-9-]{36}$/);
-  await expect(
-    chat.getByText(
-      "The proposal uses your connected catalog and preserves the other settings sections.",
-      { exact: true },
-    ),
-  ).toBeVisible();
+  await expect
+    .poll(() =>
+      chat
+        .getByText(
+          "The proposal uses your connected catalog and preserves the other settings sections.",
+          { exact: true },
+        )
+        .isVisible(),
+    )
+    .toBe(true);
 });
 
 test("only the global designer remains and each message captures its settings section and block", async ({
@@ -2156,14 +2949,22 @@ test("only the global designer remains and each message captures its settings se
   await ensureDesignConnection(request);
   await page.goto("/");
   await settings(page, "Blocks");
-  await expect(page.getByRole("button", { name: "Open AI designer", exact: true })).toHaveCount(1);
-  await expect(
-    page.locator("main").getByRole("button", { name: "Design with AI", exact: true }),
-  ).toHaveCount(0);
+  await expect
+    .poll(() => page.getByRole("button", { name: "Open AI designer", exact: true }).count())
+    .toBe(1);
+  await expect
+    .poll(() =>
+      page.locator("main").getByRole("button", { name: "Design with AI", exact: true }).count(),
+    )
+    .toBe(0);
   await page.getByRole("button", { name: /Independent review/ }).click();
   await page.getByRole("button", { name: "Open AI designer", exact: true }).click();
   const chat = page.getByRole("dialog", { name: "Design workflow with AI", exact: true });
-  await expect(chat).toContainText("Blocks · review context included");
+  await expect
+    .poll(async () =>
+      matchesText(await chat.allTextContents(), "Blocks · review context included", true),
+    )
+    .toBe(true);
   const replies = chat.getByText(
     "The proposal uses your connected catalog and preserves the other settings sections.",
     { exact: true },
@@ -2177,23 +2978,29 @@ test("only the global designer remains and each message captures its settings se
     section: "blocks",
     blockId: "review",
   });
-  await expect(replies).toHaveCount(previousReplies + 1);
+  await expect.poll(() => replies.count()).toBe(previousReplies + 1);
   await chat.getByRole("button", { name: "Minimize design chat", exact: true }).click();
   await page
     .getByRole("navigation", { name: "Settings sections" })
     .getByRole("button", { name: "Execution", exact: true })
     .click();
   await page.getByRole("button", { name: "Open AI designer", exact: true }).click();
-  await expect(
-    page.locator("main").getByRole("button", { name: "Design with AI", exact: true }),
-  ).toHaveCount(0);
-  await expect(chat).toContainText("Execution settings context included");
+  await expect
+    .poll(() =>
+      page.locator("main").getByRole("button", { name: "Design with AI", exact: true }).count(),
+    )
+    .toBe(0);
+  await expect
+    .poll(async () =>
+      matchesText(await chat.allTextContents(), "Execution settings context included", true),
+    )
+    .toBe(true);
   await chat.getByLabel("Message AI designer", { exact: true }).fill("Explain these limits");
   const second = page.waitForRequest((req) => /\/api\/design\/[^/]+\/messages$/.test(req.url()));
   await chat.getByRole("button", { name: "Send to AI designer", exact: true }).click();
   const sent = await second;
   expect(sent.postDataJSON().context).toEqual({ page: "settings", section: "execution" });
-  await expect(replies).toHaveCount(previousReplies + 2);
+  await expect.poll(() => replies.count()).toBe(previousReplies + 2);
   const saved = await (await request.get(sent.url().replace(/\/messages$/, ""))).json();
   expect(
     saved.messages
@@ -2226,7 +3033,7 @@ repeatUntil("repair",{body:parallel([step("d",job),step("e",job)]),until:()=>tru
   const run = await response.json();
   await page.goto(`/#run=${run.id}`);
   await page.getByRole("button", { name: "Expand workspace", exact: true }).click();
-  await expect(page.locator(".workflow-node")).toHaveCount(7);
+  await expect.poll(() => page.locator(".workflow-node").count()).toBe(7);
   await expect.poll(() => page.locator(".react-flow__edge-path").count()).toBeGreaterThan(10);
   await expect
     .poll(() =>
@@ -2276,15 +3083,25 @@ test("saved block playground validates JSON and creates a reviewable single-step
   await page.getByRole("button", { name: "Add contract notes", exact: true }).click();
   await page.getByLabel("Required inputs", { exact: true }).fill("name: string");
   await page.getByRole("button", { name: "Save block", exact: true }).click();
-  await expect(page.getByText(/Block saved. New workflows/)).toBeVisible();
+  await expect.poll(() => page.getByText(/Block saved. New workflows/).isVisible()).toBe(true);
   await page.getByText("Test this block", { exact: true }).click();
   await page.getByLabel("Input JSON", { exact: true }).fill("invalid");
   await page.getByRole("button", { name: "Create block test", exact: true }).click();
-  await expect(page.getByRole("alert")).toBeVisible();
+  await expect.poll(() => page.getByRole("alert").isVisible()).toBe(true);
   await page.getByLabel("Input JSON", { exact: true }).fill('{"name":"Workflow"}');
   await page.getByRole("button", { name: "Create block test", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
-  await expect(page.locator(".workflow-node")).toHaveCount(1);
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Awaiting approval", false),
+    )
+    .toBe(true);
+  await expect.poll(() => page.locator(".workflow-node").count()).toBe(1);
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Completed", { timeout: 15000 });
+  await expect
+    .poll(
+      async () =>
+        matchesText(await page.locator(".status-pill").allTextContents(), "Completed", false),
+      { timeout: 15000 },
+    )
+    .toBe(true);
 });

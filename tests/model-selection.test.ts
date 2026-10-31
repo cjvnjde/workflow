@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { chooseModel } from "../src/cli/terminal-commands.js";
@@ -13,7 +13,7 @@ test("choosing a global model saves compatible thinking and preserves supported 
   const directory = await mkdtemp(path.join(os.tmpdir(), "workflow-model-choice-"));
   const previous = process.env.WORKFLOW_HOME;
   process.env.WORKFLOW_HOME = directory;
-  t.after(async () => {
+  t.onTestFinished(async () => {
     if (previous === undefined) delete process.env.WORKFLOW_HOME;
     else process.env.WORKFLOW_HOME = previous;
     await rm(directory, { recursive: true, force: true });

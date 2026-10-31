@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import { emptyUsage } from "../src/core/execution/budget.js";
 import { createAccountingContext, UsageStore } from "../src/core/storage/usage-store.js";
 import { runSchema } from "../src/contracts/domain.js";

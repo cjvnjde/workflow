@@ -1,4 +1,7 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect } from "vitest";
+import { test } from "./fixtures.js";
+import { matchesText, matchesValue } from "./text.js";
+import { type Locator, type Page } from "playwright";
 
 async function fillCode(editor: Locator, source: string) {
   await editor.press("ControlOrMeta+a");
@@ -59,7 +62,11 @@ async function createComposition(
     JSON.stringify({ request }),
   );
   await page.getByRole("button", { name: "Create workflow draft", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Awaiting approval", false),
+    )
+    .toBe(true);
 }
 
 test("composition previews loop and parallel boundaries, exposes conditions, and preserves dragged layout", async ({
@@ -68,21 +75,48 @@ test("composition previews loop and parallel boundaries, exposes conditions, and
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await createComposition(page);
-  await expect(page.getByRole("button", { name: "Workflow", exact: true })).toHaveClass(/active/);
-  await expect(page.locator(".workflow-node")).toHaveCount(6);
-  await expect(page.locator(".composition-group")).toHaveCount(3);
-  await expect(page.locator(".composition-group")).toContainText([
-    "Repeat until",
-    "Independent changes",
-    "Condition",
-  ]);
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await page.getByRole("button", { name: "Workflow", exact: true }).getAttribute("class"),
+        /active/,
+      ),
+    )
+    .toBe(true);
+  await expect.poll(() => page.locator(".workflow-node").count()).toBe(6);
+  await expect.poll(() => page.locator(".composition-group").count()).toBe(3);
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".composition-group").allTextContents(),
+        ["Repeat until", "Independent changes", "Condition"],
+        true,
+      ),
+    )
+    .toBe(true);
 
   await page.locator('.composition-group[data-id="review-cycle"] .composition-heading').click();
-  await expect(page.locator(".step-inspector")).toContainText("at most 2 iterations");
-  await expect(page.locator(".step-inspector")).toContainText("approved");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".step-inspector").allTextContents(),
+        "at most 2 iterations",
+        true,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".step-inspector").allTextContents(), "approved", true),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Close group details", exact: true }).click();
   await page.locator('.composition-group[data-id="publish-approved"] .composition-heading').click();
-  await expect(page.locator(".step-inspector")).toContainText("approved");
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".step-inspector").allTextContents(), "approved", true),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "Close group details", exact: true }).click();
 
   const frontend = page.locator('.workflow-node[data-id="frontend"]');
@@ -114,32 +148,140 @@ test("parallel steps highlight together, loops show rounds, and final results ar
   page.on("pageerror", (error) => errors.push(error.message));
   await createComposition(page);
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
-  await expect(page.locator(".workflow-node.active")).toHaveCount(2);
-  await expect(page.locator(".workflow-counts")).toContainText("2 steps running in parallel");
-  await expect(page.locator('.workflow-node[data-id="frontend"]')).toHaveClass(/active/);
-  await expect(page.locator('.workflow-node[data-id="backend"]')).toHaveClass(/active/);
-  await expect(page.locator(".working-card")).toContainText("Implement interface");
-  await expect(page.locator(".working-card")).toContainText("Implement service");
+  await expect.poll(() => page.locator(".workflow-node.active").count()).toBe(2);
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".workflow-counts").allTextContents(),
+        "2 steps running in parallel",
+        true,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await page.locator('.workflow-node[data-id="frontend"]').getAttribute("class"),
+        /active/,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await page.locator('.workflow-node[data-id="backend"]').getAttribute("class"),
+        /active/,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".working-card").allTextContents(),
+        "Implement interface",
+        true,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".working-card").allTextContents(), "Implement service", true),
+    )
+    .toBe(true);
   await page.screenshot({
     path: "/tmp/workflow-composition-running.png",
     fullPage: true,
   });
-  await expect(page.locator(".status-pill")).toHaveText("Completed", {
-    timeout: 20_000,
-  });
-  await expect(page.locator(".workflow-counts")).not.toContainText("running in parallel");
-  await expect(page.locator('.workflow-node[data-id="review"]')).toContainText("2/2 visits");
-  await expect(page.locator('.composition-group[data-id="review-cycle"]')).toContainText("round 2");
-  await expect(page.locator('.composition-group[data-id="review-cycle"]')).toContainText(
-    "exit (true)",
-  );
-  await expect(page.locator('.workflow-node[data-id="blocked"]')).toContainText("skipped");
-  await expect(page.locator(".result-banner")).toContainText("Changes are ready to publish.");
+  await expect
+    .poll(
+      async () =>
+        matchesText(await page.locator(".status-pill").allTextContents(), "Completed", false),
+      {
+        timeout: 20_000,
+      },
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".workflow-counts").allTextContents(),
+        "running in parallel",
+        true,
+      ),
+    )
+    .not.toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator('.workflow-node[data-id="review"]').allTextContents(),
+        "2/2 visits",
+        true,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator('.composition-group[data-id="review-cycle"]').allTextContents(),
+        "round 2",
+        true,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator('.composition-group[data-id="review-cycle"]').allTextContents(),
+        "exit (true)",
+        true,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator('.workflow-node[data-id="blocked"]').allTextContents(),
+        "skipped",
+        true,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".result-banner").allTextContents(),
+        "Changes are ready to publish.",
+        true,
+      ),
+    )
+    .toBe(true);
   await page.getByRole("button", { name: "View full results", exact: false }).click();
-  await expect(page.locator(".results-panel")).toContainText("Exit predicate evaluated");
-  await expect(page.locator(".results-panel")).toContainText("false → repeat");
-  await expect(page.getByRole("heading", { name: "Ready to publish", exact: true })).toBeVisible();
-  await expect(page.locator(".results-panel")).toContainText("Both changes passed review.");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".results-panel").allTextContents(),
+        "Exit predicate evaluated",
+        true,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".results-panel").allTextContents(), "false → repeat", true),
+    )
+    .toBe(true);
+  await expect
+    .poll(() => page.getByRole("heading", { name: "Ready to publish", exact: true }).isVisible())
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".results-panel").allTextContents(),
+        "Both changes passed review.",
+        true,
+      ),
+    )
+    .toBe(true);
   expect(errors).toEqual([]);
 });
 
@@ -151,21 +293,40 @@ test("saving composition source refreshes the reviewed graph before approval", a
     'concurrency: 1, label: "Limited concurrency"',
   );
   await fillCode(page.getByLabel("Workflow TypeScript", { exact: true }), revised);
-  await expect(page.getByRole("button", { name: "Approve & start", exact: true })).toBeDisabled();
+  await expect
+    .poll(() => page.getByRole("button", { name: "Approve & start", exact: true }).isDisabled())
+    .toBe(true);
   await page.getByRole("button", { name: "Typecheck & save draft", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Approve & start", exact: true })).toBeEnabled();
+  await expect
+    .poll(() => page.getByRole("button", { name: "Approve & start", exact: true }).isEnabled())
+    .toBe(true);
   await page.getByRole("button", { name: "Workflow", exact: true }).click();
-  await expect(
-    page.locator(".composition-group").filter({ hasText: "Limited concurrency" }),
-  ).toBeVisible();
+  await expect
+    .poll(() =>
+      page.locator(".composition-group").filter({ hasText: "Limited concurrency" }).isVisible(),
+    )
+    .toBe(true);
   await page
     .locator(".composition-group")
     .filter({ hasText: "Limited concurrency" })
     .locator(".composition-heading")
     .click();
-  await expect(page.locator(".step-inspector")).toContainText("up to 1 independent branch");
-  await expect(page.locator(".workflow-counts")).toContainText("0/30 step visits");
-  await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await page.locator(".step-inspector").allTextContents(),
+        "up to 1 independent branch",
+        true,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(await page.locator(".status-pill").allTextContents(), "Awaiting approval", false),
+    )
+    .toBe(true);
+  const run = await page.request.get(`/api/runs/${new URL(page.url()).searchParams.get("run")}`);
+  expect((await run.json()).attempts).toEqual([]);
 });
 
 test("parallel live responses stay with their own step when a sibling finishes", async ({
@@ -181,25 +342,62 @@ test("parallel live responses stay with their own step when a sibling finishes",
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
   await page.getByRole("button", { name: "Activity", exact: true }).click();
   const streams = page.locator(".live-output");
-  await expect(streams).toHaveCount(2);
-  await expect(streams.filter({ hasText: "Frontend stream" })).toContainText(
-    "Inspecting frontend. Frontend notes stay here.",
-  );
-  await expect(streams.filter({ hasText: "Frontend stream" })).not.toContainText("Backend notes");
-  await expect(streams.filter({ hasText: "Backend stream" })).toContainText(
-    "Inspecting backend. Backend notes stay here.",
-  );
+  await expect.poll(() => streams.count()).toBe(2);
+  await expect
+    .poll(async () =>
+      matchesText(
+        await streams.filter({ hasText: "Frontend stream" }).allTextContents(),
+        "Inspecting frontend. Frontend notes stay here.",
+        true,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(
+        await streams.filter({ hasText: "Frontend stream" }).allTextContents(),
+        "Backend notes",
+        true,
+      ),
+    )
+    .not.toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(
+        await streams.filter({ hasText: "Backend stream" }).allTextContents(),
+        "Inspecting backend. Backend notes stay here.",
+        true,
+      ),
+    )
+    .toBe(true);
   await page.getByLabel("Activity step", { exact: true }).selectOption("stream-frontend");
-  await expect(streams).toHaveCount(1);
-  await expect(streams).not.toContainText("Inspecting backend");
+  await expect.poll(() => streams.count()).toBe(1);
+  await expect
+    .poll(async () => matchesText(await streams.allTextContents(), "Inspecting backend", true))
+    .not.toBe(true);
   await page.getByLabel("Activity step", { exact: true }).selectOption("");
-  await expect(
-    page.locator(".activity-feed .event.node_end").filter({ hasText: "Backend finished." }),
-  ).toBeVisible();
-  await expect(streams).toHaveCount(1);
-  await expect(streams).toContainText("Frontend notes stay here.");
-  await expect(page.locator(".status-pill")).toHaveText("Completed", {
-    timeout: 15_000,
-  });
-  await expect(streams).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page
+        .locator(".activity-feed .event.node_end")
+        .filter({ hasText: "Backend finished." })
+        .isVisible(),
+    )
+    .toBe(true);
+  await expect.poll(() => streams.count()).toBe(1);
+  await expect
+    .poll(async () =>
+      matchesText(await streams.allTextContents(), "Frontend notes stay here.", true),
+    )
+    .toBe(true);
+  await expect
+    .poll(
+      async () =>
+        matchesText(await page.locator(".status-pill").allTextContents(), "Completed", false),
+      {
+        timeout: 15_000,
+      },
+    )
+    .toBe(true);
+  await expect.poll(() => streams.count()).toBe(0);
 });

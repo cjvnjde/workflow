@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium, expect } from "@playwright/test";
+import { chromium } from "playwright";
 import {
   projectOperations,
   type OperationRecord,
@@ -74,9 +74,11 @@ export default workflow({name:"Demo · checkout total regression",flow:sequence(
   const draft = (await created.json()) as WorkflowRun;
   await page.goto(`/#run=${draft.id}`);
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Completed", {
-    timeout: 30_000,
-  });
+  await page.waitForFunction(
+    () => document.querySelector(".status-pill")?.textContent?.trim() === "Completed",
+    undefined,
+    { timeout: 30_000 },
+  );
   const run = (await (await context.request.get(`/api/runs/${draft.id}`)).json()) as WorkflowRun;
   const base = Date.UTC(2026, 9, 30, 10, 0, 0);
   const time = (milliseconds: number) => new Date(base + milliseconds).toISOString();
@@ -261,7 +263,7 @@ export default workflow({name:"Demo · checkout total regression",flow:sequence(
     name: "Execution inspector",
     exact: true,
   });
-  await expect(inspector).toContainText(`${operations.length} recorded operation attempts`);
+  await inspector.getByText(`${operations.length} recorded operation attempts`).waitFor();
   for (const notification of await page
     .getByRole("button", { name: "Dismiss notification", exact: true })
     .all())
@@ -294,7 +296,7 @@ export default workflow({name:"Demo · checkout total regression",flow:sequence(
     .locator(".call-select")
     .filter({ hasText: "Update currency calculation" })
     .click();
-  await expect(inspector.locator(".recorded-diff")).toContainText("Math.round");
+  await inspector.locator(".recorded-diff").filter({ hasText: "Math.round" }).waitFor();
   await capture("tool-calls.png", ".inspection-layout");
   if (pageErrors.length) throw new Error(pageErrors.join("\n"));
   console.log(

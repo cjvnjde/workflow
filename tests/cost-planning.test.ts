@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
-import test from "node:test";
+import { test } from "vitest";
 import { emptyUsage } from "../src/core/execution/budget.js";
 import { WorkflowEngine } from "../src/core/engine.js";
 import { Tasks } from "../src/core/tasks/tasks.js";

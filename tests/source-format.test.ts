@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { formatCode, formatBlock } from "../src/core/library/source-format.js";
 import { bundleSchema } from "../src/contracts/domain.js";
 

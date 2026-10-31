@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { recoveryAdvice, runReport } from "../web/features/execution/run-report.js";
 import type { WorkflowRun, RunEvent } from "../src/contracts/domain.js";

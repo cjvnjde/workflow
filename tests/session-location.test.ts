@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { parseSessionLocation, sessionLink } from "../web/features/sessions/session-location.js";
 
 const id = "f9f57e16-68bf-4da1-8a6f-ce3400f27480";

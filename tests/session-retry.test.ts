@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import test, { type TestContext } from "node:test";
+import { test, type TestContext } from "vitest";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { runAgentSession } from "../src/core/models/agent-session.js";
@@ -94,7 +94,7 @@ async function responseFixture(t: TestContext, respond: (turn: number) => Reply)
   );
   const previous = process.env.WORKFLOW_HOME;
   process.env.WORKFLOW_HOME = directory;
-  t.after(() => {
+  t.onTestFinished(() => {
     if (previous === undefined) delete process.env.WORKFLOW_HOME;
     else process.env.WORKFLOW_HOME = previous;
   });

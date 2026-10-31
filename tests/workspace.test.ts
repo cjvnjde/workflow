@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { link, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import os from "node:os";
 import { initializeProject, loadLibrary } from "../src/core/library/library.js";
 import { Workspace } from "../src/core/storage/workspace.js";
@@ -27,7 +27,7 @@ test("file tools can update source, tests, manifests and project configuration",
 test("file tools accept absolute paths and links without a project-root allowlist", async (t) => {
   const { project } = await fixture(t);
   const outside = await mkdtemp(path.join(os.tmpdir(), "workflow-outside-"));
-  t.after(() => rm(outside, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(outside, { recursive: true, force: true }));
   const workspace = await Workspace.create(project);
   const target = path.join(outside, "file.txt");
   await workspace.write(target, "original");

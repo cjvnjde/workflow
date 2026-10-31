@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import test from "node:test";
+import { test } from "vitest";
 import { TreeSitterClient } from "@opentui/core";
 import { createTestRenderer } from "@opentui/core/testing";
 import { TerminalController } from "../src/terminal/controller.js";

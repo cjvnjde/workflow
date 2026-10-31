@@ -1,4 +1,7 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect } from "vitest";
+import { test } from "./fixtures.js";
+import { matchesText, matchesValue } from "./text.js";
+import { type APIRequestContext, type Page } from "playwright";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import {
@@ -41,9 +44,15 @@ async function completed(page: Page, request: APIRequestContext, prompt?: string
   const run = await create(request, prompt);
   await page.goto(`/#run=${run.id}`);
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Completed", {
-    timeout: 20000,
-  });
+  await expect
+    .poll(
+      async () =>
+        matchesText(await page.locator(".status-pill").allTextContents(), "Completed", false),
+      {
+        timeout: 20000,
+      },
+    )
+    .toBe(true);
   await page
     .getByRole("navigation", { name: "Workflow views" })
     .getByRole("button", { name: "Data", exact: true })
@@ -80,43 +89,99 @@ test("data inspector shows planned sources, parallel named inputs and exact hist
     name: "Step data inspector",
     exact: true,
   });
-  await expect(inspector.getByRole("combobox", { name: "Visit", exact: true })).toBeDisabled();
-  await expect(inspector).toContainText("Deferred · resolved when this step starts");
-  await expect(inspector).toContainText("ctx.output(frontend)");
+  await expect
+    .poll(() => inspector.getByRole("combobox", { name: "Visit", exact: true }).isDisabled())
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(
+        await inspector.allTextContents(),
+        "Deferred · resolved when this step starts",
+        true,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () => matchesText(await inspector.allTextContents(), "ctx.output(frontend)", true))
+    .toBe(true);
   await inspector.getByRole("combobox", { name: "Step", exact: true }).selectOption("frontend");
-  await expect(inspector).toContainText("Literal value");
-  await expect(inspector).toContainText('"kind": "frontend"');
+  await expect
+    .poll(async () => matchesText(await inspector.allTextContents(), "Literal value", true))
+    .toBe(true);
+  await expect
+    .poll(async () => matchesText(await inspector.allTextContents(), '"kind": "frontend"', true))
+    .toBe(true);
   expect(contentRequests).toBe(0);
   await inspector.getByRole("combobox", { name: "Step", exact: true }).selectOption("report");
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
-  await expect(page.locator(".status-pill")).toHaveText("Completed", {
-    timeout: 20000,
-  });
-  await expect(inspector.getByRole("combobox", { name: "Visit", exact: true })).toHaveValue("2");
+  await expect
+    .poll(
+      async () =>
+        matchesText(await page.locator(".status-pill").allTextContents(), "Completed", false),
+      {
+        timeout: 20000,
+      },
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await inspector.getByRole("combobox", { name: "Visit", exact: true }).inputValue(),
+        "2",
+      ),
+    )
+    .toBe(true);
   await inspector.getByRole("combobox", { name: "Visit", exact: true }).selectOption("1");
-  await expect(
-    inspector.getByRole("heading", {
-      name: "Compare both branches · visit 1",
-      exact: true,
-    }),
-  ).toBeVisible();
+  await expect
+    .poll(() =>
+      inspector
+        .getByRole("heading", {
+          name: "Compare both branches · visit 1",
+          exact: true,
+        })
+        .isVisible(),
+    )
+    .toBe(true);
   expect(contentRequests).toBe(0);
   const raw = value(inspector, "Raw inputs"),
     effective = value(inspector, "Effective inputs");
   await raw.locator("summary").click();
   await effective.locator("summary").click();
-  await expect(raw).toContainText("frontend.ts");
-  await expect(raw).toContainText("backend.ts");
-  await expect(raw.getByRole("heading", { name: /frontend\s*object/ })).toBeVisible();
-  await expect(raw.getByRole("heading", { name: /backend\s*object/ })).toBeVisible();
-  await expect(raw).not.toContainText("compact");
-  await expect(effective).toContainText("compact");
+  await expect
+    .poll(async () => matchesText(await raw.allTextContents(), "frontend.ts", true))
+    .toBe(true);
+  await expect
+    .poll(async () => matchesText(await raw.allTextContents(), "backend.ts", true))
+    .toBe(true);
+  await expect
+    .poll(() => raw.getByRole("heading", { name: /frontend\s*object/ }).isVisible())
+    .toBe(true);
+  await expect
+    .poll(() => raw.getByRole("heading", { name: /backend\s*object/ }).isVisible())
+    .toBe(true);
+  await expect
+    .poll(async () => matchesText(await raw.allTextContents(), "compact", true))
+    .not.toBe(true);
+  await expect
+    .poll(async () => matchesText(await effective.allTextContents(), "compact", true))
+    .toBe(true);
   const output = value(inspector, "Typed output");
   await output.locator("summary").click();
-  await expect(
-    output.locator(".evidence-fields > section").filter({ hasText: /round\s*number/ }),
-  ).toContainText("1");
-  await expect(inspector).toContainText("Inputs computed from");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await output
+          .locator(".evidence-fields > section")
+          .filter({ hasText: /round\s*number/ })
+          .allTextContents(),
+        "1",
+        true,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () => matchesText(await inspector.allTextContents(), "Inputs computed from", true))
+    .toBe(true);
   const toast = page.getByRole("button", {
     name: "Dismiss notification",
     exact: true,
@@ -124,20 +189,50 @@ test("data inspector shows planned sources, parallel named inputs and exact hist
   if (await toast.isVisible()) await toast.click();
   await inspector.screenshot({ path: "/tmp/workflow-feature4-data.png" });
   await inspector.getByRole("button", { name: "Frontend · visit 1", exact: true }).click();
-  await expect(inspector.getByRole("combobox", { name: "Step", exact: true })).toHaveValue(
-    "frontend",
-  );
-  await expect(inspector.getByRole("combobox", { name: "Visit", exact: true })).toHaveValue("1");
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await inspector.getByRole("combobox", { name: "Step", exact: true }).inputValue(),
+        "frontend",
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await inspector.getByRole("combobox", { name: "Visit", exact: true }).inputValue(),
+        "1",
+      ),
+    )
+    .toBe(true);
   await value(inspector, "Typed output").locator("summary").click();
-  await expect(value(inspector, "Typed output")).toContainText("frontend.ts");
+  await expect
+    .poll(async () =>
+      matchesText(await value(inspector, "Typed output").allTextContents(), "frontend.ts", true),
+    )
+    .toBe(true);
   await inspector.getByRole("combobox", { name: "Step", exact: true }).selectOption("report");
-  await expect(inspector.getByRole("combobox", { name: "Visit", exact: true })).toHaveValue("2");
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await inspector.getByRole("combobox", { name: "Visit", exact: true }).inputValue(),
+        "2",
+      ),
+    )
+    .toBe(true);
   await value(inspector, "Typed output").locator("summary").click();
-  await expect(
-    value(inspector, "Typed output")
-      .locator(".evidence-fields > section")
-      .filter({ hasText: /round\s*number/ }),
-  ).toContainText("2");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await value(inspector, "Typed output")
+          .locator(".evidence-fields > section")
+          .filter({ hasText: /round\s*number/ })
+          .allTextContents(),
+        "2",
+        true,
+      ),
+    )
+    .toBe(true);
 });
 
 test("AI session context loads lazily and full search, copy and download survive preview limits", async ({
@@ -297,22 +392,38 @@ test("AI session context loads lazily and full search, copy and download survive
     },
   );
   await inspector.getByRole("button", { name: "Refresh data", exact: true }).click();
-  await expect(inspector).toContainText("fixture/independent-reviewer");
+  await expect
+    .poll(async () =>
+      matchesText(await inspector.allTextContents(), "fixture/independent-reviewer", true),
+    )
+    .toBe(true);
   expect(fetched).toBe(0);
   const session = inspector.getByLabel(`AI session ${sessionId}`, {
     exact: true,
   });
   await session.locator(":scope > summary").click();
-  await expect(session).toContainText("explicit context only");
-  await expect(session).toContainText("high thinking · 1 request · 400 tokens");
+  await expect
+    .poll(async () => matchesText(await session.allTextContents(), "explicit context only", true))
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(await session.allTextContents(), "high thinking · 1 request · 400 tokens", true),
+    )
+    .toBe(true);
   expect(fetched).toBe(0);
   const original = value(session, "Original call prompt");
   await original.locator("summary").click();
-  await expect(original).toContainText("Preview: characters");
+  await expect
+    .poll(async () => matchesText(await original.allTextContents(), "Preview: characters", true))
+    .toBe(true);
   await original
     .getByLabel("Search Original call prompt", { exact: true })
     .fill("FINAL_SEARCH_TARGET");
-  await expect(original.locator("mark")).toHaveText("FINAL_SEARCH_TARGET");
+  await expect
+    .poll(async () =>
+      matchesText(await original.locator("mark").allTextContents(), "FINAL_SEARCH_TARGET", false),
+    )
+    .toBe(true);
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await original.getByRole("button", { name: "Copy Original call prompt", exact: true }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(long);
@@ -320,15 +431,41 @@ test("AI session context loads lazily and full search, copy and download survive
   await original.getByRole("link", { name: "Download", exact: true }).click();
   expect(await readFile((await (await download).path())!, "utf8")).toBe(long);
   await value(session, "System instructions").locator("summary").click();
-  await expect(value(session, "System instructions")).toContainText(
-    "Inspect only the explicit selected evidence",
-  );
+  await expect
+    .poll(async () =>
+      matchesText(
+        await value(session, "System instructions").allTextContents(),
+        "Inspect only the explicit selected evidence",
+        true,
+      ),
+    )
+    .toBe(true);
   await value(session, "Available tool definitions").locator("summary").click();
-  await expect(value(session, "Available tool definitions")).toContainText('"submit_result"');
+  await expect
+    .poll(async () =>
+      matchesText(
+        await value(session, "Available tool definitions").allTextContents(),
+        '"submit_result"',
+        true,
+      ),
+    )
+    .toBe(true);
   await value(session, "Session prompt 2 (continuation)").locator("summary").click();
-  await expect(session).toContainText("without repeating the inspection");
+  await expect
+    .poll(async () =>
+      matchesText(await session.allTextContents(), "without repeating the inspection", true),
+    )
+    .toBe(true);
   await value(session, "Prompt 2 image 1").locator("summary").click();
-  await expect(session).toContainText("Image evidence exceeded the capture limit");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await session.allTextContents(),
+        "Image evidence exceeded the capture limit",
+        true,
+      ),
+    )
+    .toBe(true);
   const toast = page.getByRole("button", {
     name: "Dismiss notification",
     exact: true,
@@ -347,9 +484,19 @@ test("AI session context loads lazily and full search, copy and download survive
   };
   payload.sessions = [];
   await inspector.getByRole("button", { name: "Refresh data", exact: true }).click();
-  await expect(inspector).toContainText("This historical visit did not capture exact inputs");
-  await expect(inspector).toContainText("shortened previews");
-  await expect(value(inspector, "Raw inputs")).toHaveCount(0);
+  await expect
+    .poll(async () =>
+      matchesText(
+        await inspector.allTextContents(),
+        "This historical visit did not capture exact inputs",
+        true,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () => matchesText(await inspector.allTextContents(), "shortened previews", true))
+    .toBe(true);
+  await expect.poll(() => value(inspector, "Raw inputs").count()).toBe(0);
 });
 
 test("a delayed historical lookup cannot replace the newly selected visit", async ({
@@ -358,25 +505,43 @@ test("a delayed historical lookup cannot replace the newly selected visit", asyn
 }) => {
   const { run, inspector } = await completed(page, request);
   const first = await (await request.get(`/api/runs/${run.id}/attempts/report/1/evidence`)).json();
-  let delayed: import("@playwright/test").Route | undefined;
+  let delayed: import("playwright").Route | undefined;
   await page.route(`**/api/runs/${run.id}/attempts/report/1/evidence`, (route) => {
     delayed = route;
   });
   await inspector.getByRole("combobox", { name: "Visit", exact: true }).selectOption("1");
   await expect.poll(() => !!delayed).toBe(true);
   await inspector.getByRole("combobox", { name: "Visit", exact: true }).selectOption("2");
-  await expect(
-    inspector.getByRole("heading", {
-      name: "Compare both branches · visit 2",
-      exact: true,
-    }),
-  ).toBeVisible();
+  await expect
+    .poll(() =>
+      inspector
+        .getByRole("heading", {
+          name: "Compare both branches · visit 2",
+          exact: true,
+        })
+        .isVisible(),
+    )
+    .toBe(true);
   await delayed!.fulfill({ json: first }).catch(() => {});
   await value(inspector, "Typed output").locator("summary").click();
-  await expect(
-    value(inspector, "Typed output")
-      .locator(".evidence-fields > section")
-      .filter({ hasText: /round\s*number/ }),
-  ).toContainText("2");
-  await expect(inspector.getByRole("combobox", { name: "Visit", exact: true })).toHaveValue("2");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await value(inspector, "Typed output")
+          .locator(".evidence-fields > section")
+          .filter({ hasText: /round\s*number/ })
+          .allTextContents(),
+        "2",
+        true,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await inspector.getByRole("combobox", { name: "Visit", exact: true }).inputValue(),
+        "2",
+      ),
+    )
+    .toBe(true);
 });

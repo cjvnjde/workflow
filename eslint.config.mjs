@@ -17,7 +17,7 @@ export default defineConfig(
     "reports/mutation/**",
     "reports/mutation-smoke/**",
     "test-results/**",
-    "playwright-report/**",
+    ".vitest/**",
     ".workflow/**",
     ".agents/**",
     ".codex/**",

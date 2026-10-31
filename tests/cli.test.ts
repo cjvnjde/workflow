@@ -12,7 +12,7 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import test, { type TestContext } from "node:test";
+import { test, type TestContext } from "vitest";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { z } from "zod";
@@ -24,7 +24,7 @@ const packageDirectory = fileURLToPath(new URL("../", import.meta.url));
 
 async function commandFixture(t: TestContext) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-"));
-  t.after(async () => {
+  t.onTestFinished(async () => {
     await rm(directory, { recursive: true, force: true });
   });
   const project = path.join(directory, "consumer project");
@@ -136,7 +136,7 @@ test("the package ships a Bun executable and UI, not project state or a developm
     .parse(JSON.parse(await readFile(path.join(packageDirectory, "package.json"), "utf8")));
   assert.equal(manifest.bin.workflow, "dist/cli.js");
   const directory = await mkdtemp(path.join(os.tmpdir(), "workflow-pack-"));
-  t.after(async () => {
+  t.onTestFinished(async () => {
     await rm(directory, { recursive: true, force: true });
   });
   const archive = path.join(directory, "workflow.tgz");

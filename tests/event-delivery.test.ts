@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
-import test, { type TestContext } from "node:test";
+import { test, type TestContext } from "vitest";
 import { setImmediate } from "node:timers/promises";
 import { WorkflowEngine } from "../src/core/engine.js";
 import type { RunEvent } from "../src/contracts/domain.js";

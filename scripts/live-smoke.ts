@@ -6,7 +6,7 @@ import { mkdtemp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { chromium, expect } from "@playwright/test";
+import { chromium } from "playwright";
 import { availableModels } from "../src/core/models/available-models.js";
 import { providerStatus } from "../src/core/models/provider-status.js";
 import { initializeProject } from "../src/core/library/library.js";
@@ -249,7 +249,12 @@ async function finish(task: TaskRequest, publicationStep?: string) {
     fullPage: true,
   });
   assert.equal(run.status, "completed", run.error ?? run.attempts.at(-1)?.result?.summary ?? "");
-  await expect(page.locator(".status-pill")).toHaveText("Completed");
+  await until(
+    "Expected UI text",
+    () => page.locator(".status-pill").textContent(),
+    (text) => text?.trim() === "Completed",
+    5_000,
+  );
   return run;
 }
 async function approveAndFinish(task: TaskRequest, checkPublicationOrder = false) {
@@ -259,9 +264,16 @@ async function approveAndFinish(task: TaskRequest, checkPublicationOrder = false
   assert.ok(draft.plan.nodes.length, "Generated workflows must preview all planned steps");
   assert.equal(draft.program?.composition, "structured");
   assert.ok(draft.program.structure, "Generated composition must contain a reviewed structure");
-  await expect(page.getByRole("button", { name: "Workflow", exact: true })).toHaveClass(/active/);
+  await until(
+    "Active workflow tab",
+    () => page.getByRole("button", { name: "Workflow", exact: true }).getAttribute("class"),
+    (value) => /active/.test(value ?? ""),
+    5_000,
+  );
   for (const node of draft.plan.nodes)
-    await expect(page.locator(`.react-flow__node[data-id="${node.id}"]`)).toBeVisible();
+    await page
+      .locator(`.react-flow__node[data-id="${node.id}"]`)
+      .waitFor({ state: "visible", timeout: 5_000 });
   await page.screenshot({
     path: path.join(directory, `${task.id}-graph.png`),
     fullPage: true,
@@ -272,7 +284,12 @@ async function approveAndFinish(task: TaskRequest, checkPublicationOrder = false
       : undefined;
   if (checkPublicationOrder && (!draft.program || !!draft.program.composition))
     assert.ok(publicationStep, "The plan must include a dedicated publication step");
-  await expect(page.getByRole("button", { name: "Approve & start", exact: true })).toBeEnabled();
+  await until(
+    "Enabled control",
+    () => page.getByRole("button", { name: "Approve & start", exact: true }).isEnabled(),
+    (enabled) => enabled,
+    5_000,
+  );
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
   if (draft.program) {
     assert.ok(
@@ -330,11 +347,21 @@ async function checkCancellation() {
     (run) => run.status === "cancelled",
     30_000,
   );
-  await expect(page.locator(".status-pill")).toHaveText("Cancelled");
+  await until(
+    "Expected UI text",
+    () => page.locator(".status-pill").textContent(),
+    (text) => text?.trim() === "Cancelled",
+    5_000,
+  );
   await Bun.sleep(8500);
   await assert.rejects(stat(path.join(project, "cancel-late")), /ENOENT/);
   await page.reload();
-  await expect(page.locator(".status-pill")).toHaveText("Cancelled");
+  await until(
+    "Expected UI text",
+    () => page.locator(".status-pill").textContent(),
+    (text) => text?.trim() === "Cancelled",
+    5_000,
+  );
   assert.equal((await git("rev-list", "--all")).stdout, "");
   reports.push({ task: execution, run: stoppedRun });
   console.log(
@@ -377,7 +404,9 @@ async function checkAutomatic() {
   await page.getByRole("button", { name: "Execution", exact: true }).click();
   await page.getByLabel("Workflow approval", { exact: true }).selectOption("automatic");
   await page.getByRole("button", { name: "Save settings", exact: true }).click();
-  await expect(page.getByText("All changes saved", { exact: true })).toBeVisible();
+  await page
+    .getByText("All changes saved", { exact: true })
+    .waitFor({ state: "visible", timeout: 5_000 });
   const automatic = await taskFromComposer(
     "Use one inspection step to summarize the exported functions in math.ts as a concise Markdown artifact. Do not edit files or make a commit.",
   );
@@ -429,7 +458,12 @@ export default workflow({name:"Live composed workflow",flow:sequence(repeatUntil
   // This may be a hash-only navigation from a previous task in the same page.
   // Reload to exercise opening the new run's deep link as a fresh document.
   await page.reload();
-  await expect(page.getByRole("button", { name: "Workflow", exact: true })).toHaveClass(/active/);
+  await until(
+    "Active workflow tab",
+    () => page.getByRole("button", { name: "Workflow", exact: true }).getAttribute("class"),
+    (value) => /active/.test(value ?? ""),
+    5_000,
+  );
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
   const run = await until(
     "Composed execution",
@@ -448,7 +482,12 @@ export default workflow({name:"Live composed workflow",flow:sequence(repeatUntil
     a.startedAt < b.finishedAt! && b.startedAt < a.finishedAt!,
     "Parallel model steps must overlap",
   );
-  await expect(page.locator(".result-banner")).toContainText("Parallel model calls");
+  await until(
+    "Expected UI text",
+    () => page.locator(".result-banner").textContent(),
+    (text) => text?.includes("Parallel model calls") === true,
+    5_000,
+  );
   await writeFile(path.join(directory, "composition-run.json"), JSON.stringify(run, null, 2));
   await page.screenshot({
     path: path.join(directory, "composition.png"),
@@ -504,7 +543,9 @@ async function checkWorkflows() {
         `Expected a reviewable proposal, received: ${design?.messages.at(-1)?.content}`,
     );
     await chat.getByRole("button", { name: "Apply changes", exact: true }).click();
-    await expect(chat.getByText("Changes applied", { exact: true })).toBeVisible();
+    await chat
+      .getByText("Changes applied", { exact: true })
+      .waitFor({ state: "visible", timeout: 5_000 });
     await chat.getByRole("button", { name: "Minimize design chat", exact: true }).click();
     assert.equal((await loadOrchestration(project)).settings.profiles[0]?.name, "Project lead");
     console.log("PASS: real settings chat generates and applies a model profile.");
@@ -572,16 +613,21 @@ async function checkWorkflows() {
     name: "Expanded workflow workspace",
     exact: true,
   });
-  await expect(workspace).toBeVisible();
+  await workspace.waitFor({ state: "visible", timeout: 5_000 });
   await workspace.getByLabel("Search activity", { exact: true }).fill("bash");
-  await expect(workspace.locator(".event").first()).toBeVisible();
+  await workspace.locator(".event").first().waitFor({ state: "visible", timeout: 5_000 });
   await page.screenshot({
     path: path.join(directory, "expanded-activity.png"),
     fullPage: true,
   });
   await page.keyboard.press("Escape");
-  await expect(workspace).not.toBeVisible();
-  await expect(page.getByLabel("Search activity", { exact: true })).toHaveValue("bash");
+  await workspace.waitFor({ state: "hidden", timeout: 5_000 });
+  await until(
+    "Expected input value",
+    () => page.getByLabel("Search activity", { exact: true }).inputValue(),
+    (value) => value === "bash",
+    5_000,
+  );
   await page.getByRole("button", { name: "Workflow", exact: true }).click();
   await page.getByRole("button", { name: "Expand workspace", exact: true }).click();
   await workspace.getByRole("button", { name: "Fit workflow", exact: true }).click();
@@ -592,10 +638,15 @@ async function checkWorkflows() {
   await workspace.getByRole("button", { name: "Close expanded view", exact: true }).click();
   await page.getByRole("button", { name: /View full results/ }).click();
   const artifact = page.locator(".result-artifact").first();
-  await expect(artifact.locator(".markdown-body")).toBeVisible();
+  await artifact.locator(".markdown-body").waitFor({ state: "visible", timeout: 5_000 });
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await artifact.getByRole("button", { name: "Copy Markdown", exact: true }).click();
-  await expect(artifact.getByText("Markdown copied", { exact: true })).toHaveCount(1);
+  await until(
+    "Copied Markdown confirmation",
+    () => artifact.getByText("Markdown copied", { exact: true }).count(),
+    (count) => count === 1,
+    5_000,
+  );
   const markdown = await page.evaluate(() => navigator.clipboard.readText());
   assert.ok(markdown.length > 0);
   const downloadStarted = page.waitForEvent("download");
@@ -657,7 +708,9 @@ async function checkBlockDesigner() {
   );
   assert.equal(proposed?.bundle.definition.executor?.kind, "code");
   await chat.getByRole("button", { name: "Apply changes", exact: true }).click();
-  await expect(chat.getByText("Changes applied", { exact: true })).toBeVisible();
+  await chat
+    .getByText("Changes applied", { exact: true })
+    .waitFor({ state: "visible", timeout: 5_000 });
   await chat.getByRole("button", { name: "Minimize design chat", exact: true }).click();
   const { loadLibrary } = await import("../src/core/library/library.js");
   const current = await loadLibrary(project);

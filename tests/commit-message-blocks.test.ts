@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import path from "node:path";
 import { mkdir, readFile, writeFile, copyFile } from "node:fs/promises";
 import { fixture } from "./helpers.js";

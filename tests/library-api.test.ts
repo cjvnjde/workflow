@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { WorkflowEngine } from "../src/core/engine.js";
 import { createServer } from "../src/http/server.js";
 import { createTemplate } from "../src/core/library/templates.js";

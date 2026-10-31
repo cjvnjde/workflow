@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, stat, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import test, { type TestContext } from "node:test";
+import { test, type TestContext } from "vitest";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { visibleWidth } from "@earendil-works/pi-tui";
@@ -20,7 +20,7 @@ async function terminalFixture(t: TestContext) {
   const bun = Bun.which("bun");
   assert.ok(bun);
   await symlink(bun, path.join(bin, "bun"));
-  t.after(async () => {
+  t.onTestFinished(async () => {
     await rm(directory, { recursive: true, force: true });
   });
 

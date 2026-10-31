@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import test, { type TestContext } from "node:test";
+import { test, type TestContext } from "vitest";
 import { BrowserAuth } from "../src/core/models/browser-auth.js";
 import { WorkflowEngine } from "../src/core/engine.js";
 import { createServer } from "../src/http/server.js";
@@ -12,7 +12,7 @@ async function context(t: TestContext) {
   const result = await fixture(t);
   const previous = process.env.WORKFLOW_HOME;
   process.env.WORKFLOW_HOME = path.join(result.project, "user-settings");
-  t.after(() => {
+  t.onTestFinished(() => {
     if (previous === undefined) {
       delete process.env.WORKFLOW_HOME;
     } else {
@@ -140,7 +140,7 @@ test("browser OAuth supports callback prompt cancellation, explicit cancel and s
       throw new Error("sensitive-provider-response-that-must-not-leak");
     }),
   );
-  t.after(() => auth.close());
+  t.onTestFinished(() => auth.close());
   const first = await auth.start({ provider: "openai", method: "oauth" });
   await assert.rejects(auth.start({ provider: "openai", method: "oauth" }), /already in progress/);
   auth.cancel(first.id);

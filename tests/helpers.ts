@@ -1,14 +1,14 @@
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { TestContext } from "node:test";
+import type { TestContext } from "vitest";
 import { initializeProject } from "../src/core/library/library.js";
 import type { BlockExecution, BlockRunner } from "../src/core/execution/block-runner.js";
 
 export async function fixture(t: TestContext) {
   const project = await realpath(await mkdtemp(path.join(os.tmpdir(), "workflow-test-")));
   const cleanups: (() => Promise<unknown>)[] = [];
-  t.after(async () => {
+  t.onTestFinished(async () => {
     try {
       for (const cleanup of cleanups.toReversed()) {
         await cleanup();

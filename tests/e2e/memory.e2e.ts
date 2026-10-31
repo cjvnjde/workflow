@@ -1,4 +1,7 @@
-import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { expect } from "vitest";
+import { test } from "./fixtures.js";
+import { matchesText, matchesValue } from "./text.js";
+import { type BrowserContext, type Page } from "playwright";
 import { randomUUID } from "node:crypto";
 import {
   memoryEntrySchema,
@@ -171,9 +174,15 @@ test("memory starts off and notes and explicit preferences save independently of
 }) => {
   const store = await fixture(context);
   const panel = await open(page);
-  await expect(panel).toContainText("Project memory is off");
-  await expect(panel).toContainText("No saved entries yet");
-  await expect(panel.getByRole("button", { name: "Save settings", exact: true })).toHaveCount(0);
+  await expect
+    .poll(async () => matchesText(await panel.allTextContents(), "Project memory is off", true))
+    .toBe(true);
+  await expect
+    .poll(async () => matchesText(await panel.allTextContents(), "No saved entries yet", true))
+    .toBe(true);
+  await expect
+    .poll(() => panel.getByRole("button", { name: "Save settings", exact: true }).count())
+    .toBe(0);
   await panel.getByRole("button", { name: "New note", exact: true }).click();
   await panel.getByLabel("Memory title", { exact: true }).fill("Repository checks");
   await panel
@@ -184,11 +193,23 @@ test("memory starts off and notes and explicit preferences save independently of
     .fill("Run the focused unit test and the project typecheck.");
   await panel.getByLabel("Memory tags", { exact: true }).fill("checks, typescript");
   await panel.getByRole("button", { name: "Save memory entry", exact: true }).click();
-  await expect(panel).toContainText("Memory entry saved. Project memory remains disabled.");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await panel.allTextContents(),
+        "Memory entry saved. Project memory remains disabled.",
+        true,
+      ),
+    )
+    .toBe(true);
   expect(store.enabled).toBe(false);
   expect([...store.entries.values()][0]?.kind).toBe("note");
   await panel.getByRole("button", { name: "New preference", exact: true }).click();
-  await expect(panel).toContainText("Workflow does not infer preferences");
+  await expect
+    .poll(async () =>
+      matchesText(await panel.allTextContents(), "Workflow does not infer preferences", true),
+    )
+    .toBe(true);
   await panel.getByLabel("Memory title", { exact: true }).fill("Review preference");
   await panel.getByLabel("Short description", { exact: true }).fill("How I want code reviewed.");
   await panel
@@ -198,16 +219,26 @@ test("memory starts off and notes and explicit preferences save independently of
   await expect.poll(() => store.entries.size).toBe(2);
   expect([...store.entries.values()][1]?.kind).toBe("preference");
   await panel.getByRole("button", { name: "Enable project memory", exact: true }).click();
-  await expect(panel).toContainText("Project memory is on");
+  await expect
+    .poll(async () => matchesText(await panel.allTextContents(), "Project memory is on", true))
+    .toBe(true);
   await panel.getByRole("button", { name: "Disable project memory", exact: true }).click();
-  await expect(panel).toContainText("Saved entries are retained");
+  await expect
+    .poll(async () =>
+      matchesText(await panel.allTextContents(), "Saved entries are retained", true),
+    )
+    .toBe(true);
   await page.reload();
   await page
     .getByRole("navigation", { name: "Settings sections" })
     .getByRole("button", { name: "Memory", exact: true })
     .click();
-  await expect(panel).toContainText("Repository checks");
-  await expect(panel).toContainText("Review preference");
+  await expect
+    .poll(async () => matchesText(await panel.allTextContents(), "Repository checks", true))
+    .toBe(true);
+  await expect
+    .poll(async () => matchesText(await panel.allTextContents(), "Review preference", true))
+    .toBe(true);
   expect(store.enabled).toBe(false);
   expect(store.reads).toEqual([]);
 });
@@ -220,11 +251,22 @@ test("memory loads selected details only and preserves a draft across revision c
     second = note("Backend review");
   const store = await fixture(context, [first, second]);
   const panel = await open(page);
-  await expect(panel).toContainText(first.description);
+  await expect
+    .poll(async () => matchesText(await panel.allTextContents(), first.description, true))
+    .toBe(true);
   expect(store.reads).toEqual([]);
-  await expect(panel).not.toContainText(first.details);
+  await expect
+    .poll(async () => matchesText(await panel.allTextContents(), first.details, true))
+    .not.toBe(true);
   await panel.getByRole("button", { name: new RegExp(first.title) }).click();
-  await expect(panel.getByLabel("Memory details", { exact: true })).toHaveValue(first.details);
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await panel.getByLabel("Memory details", { exact: true }).inputValue(),
+        first.details,
+      ),
+    )
+    .toBe(true);
   expect(store.reads).toEqual([first.id]);
   await panel
     .getByLabel("Memory details", { exact: true })
@@ -237,31 +279,61 @@ test("memory loads selected details only and preserves a draft across revision c
   store.entries.set(first.id, remote);
   store.revision++;
   await panel.getByRole("button", { name: "Save memory entry", exact: true }).click();
-  await expect(panel.getByRole("alert")).toContainText("Memory changed in another client");
-  await expect(panel.getByLabel("Memory details", { exact: true })).toHaveValue(
-    "My unsaved guidance remains visible.",
-  );
+  await expect
+    .poll(async () =>
+      matchesText(
+        await panel.getByRole("alert").allTextContents(),
+        "Memory changed in another client",
+        true,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await panel.getByLabel("Memory details", { exact: true }).inputValue(),
+        "My unsaved guidance remains visible.",
+      ),
+    )
+    .toBe(true);
   await panel.getByRole("button", { name: "Review latest saved entry", exact: true }).click();
-  await expect(panel.locator(".memory-latest")).toContainText(remote.details);
-  await expect(panel.getByLabel("Memory details", { exact: true })).toHaveValue(
-    "My unsaved guidance remains visible.",
-  );
+  await expect
+    .poll(async () =>
+      matchesText(await panel.locator(".memory-latest").allTextContents(), remote.details, true),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await panel.getByLabel("Memory details", { exact: true }).inputValue(),
+        "My unsaved guidance remains visible.",
+      ),
+    )
+    .toBe(true);
   await panel
     .getByRole("button", {
       name: "Save my edits over this version",
       exact: true,
     })
     .click();
-  await expect(panel).toContainText("Memory entry saved");
+  await expect
+    .poll(async () => matchesText(await panel.allTextContents(), "Memory entry saved", true))
+    .toBe(true);
   expect(store.entries.get(first.id)?.details).toBe("My unsaved guidance remains visible.");
   expect(store.entries.get(second.id)?.details).toBe(second.details);
   await panel.getByLabel("Search memory descriptions", { exact: true }).fill("Backend");
-  await expect(panel.locator(".memory-entry")).toHaveCount(1);
-  await expect(panel.locator(".memory-entry")).toContainText(second.title);
+  await expect.poll(() => panel.locator(".memory-entry").count()).toBe(1);
+  await expect
+    .poll(async () =>
+      matchesText(await panel.locator(".memory-entry").allTextContents(), second.title, true),
+    )
+    .toBe(true);
   await panel.getByLabel("Search memory descriptions", { exact: true }).fill("");
   page.once("dialog", (dialog) => dialog.accept());
   await panel.getByRole("button", { name: "Delete entry", exact: true }).click();
-  await expect(panel).toContainText("Memory entry deleted");
+  await expect
+    .poll(async () => matchesText(await panel.allTextContents(), "Memory entry deleted", true))
+    .toBe(true);
   expect(store.entries.has(first.id)).toBe(false);
 });
 
@@ -279,19 +351,43 @@ test("observation annotations keep recorded facts separate and fit mobile screen
     name: "Recorded observation facts",
     exact: true,
   });
-  await expect(facts).toContainText("not a quality score");
-  await expect(facts).toContainText("3 matched · 1 unmatched · 4 recorded");
-  await expect(facts).toContainText("At least $0.0030");
-  await expect(facts).toContainText("fixture/independent-reviewer");
-  await expect(facts.getByRole("link")).toHaveAttribute(
-    "href",
-    `/?run=${observed.observation!.sources[0]!.runId}`,
-  );
+  await expect
+    .poll(async () => matchesText(await facts.allTextContents(), "not a quality score", true))
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(await facts.allTextContents(), "3 matched · 1 unmatched · 4 recorded", true),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () => matchesText(await facts.allTextContents(), "At least $0.0030", true))
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesText(await facts.allTextContents(), "fixture/independent-reviewer", true),
+    )
+    .toBe(true);
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await facts.getByRole("link").getAttribute("href"),
+        `/?run=${observed.observation!.sources[0]!.runId}`,
+      ),
+    )
+    .toBe(true);
   await panel
     .getByLabel("Your annotation", { exact: true })
     .fill("This sample is too small to judge quality. Keep independent checks.");
   await panel.getByRole("button", { name: "Save memory entry", exact: true }).click();
-  await expect(panel).toContainText("Your annotation: you can edit this guidance");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await panel.allTextContents(),
+        "Your annotation: you can edit this guidance",
+        true,
+      ),
+    )
+    .toBe(true);
   expect(store.entries.get(observed.id)?.observation).toEqual(observed.observation);
   expect(store.writes.at(-1)?.body).not.toHaveProperty("observation");
   await panel.screenshot({ path: "/tmp/workflow-feature5-memory.png" });
@@ -311,20 +407,44 @@ test("memory loading errors recover and late detail responses cannot replace the
   const store = await fixture(context, [first, second]);
   store.loadFailure = true;
   const panel = await open(page);
-  await expect(panel.getByRole("alert")).toContainText("Memory storage temporarily unavailable");
+  await expect
+    .poll(async () =>
+      matchesText(
+        await panel.getByRole("alert").allTextContents(),
+        "Memory storage temporarily unavailable",
+        true,
+      ),
+    )
+    .toBe(true);
   store.loadFailure = false;
   await panel.getByRole("button", { name: "Retry loading memory", exact: true }).click();
-  await expect(panel).toContainText(first.title);
-  let delayed: import("@playwright/test").Route | undefined;
+  await expect
+    .poll(async () => matchesText(await panel.allTextContents(), first.title, true))
+    .toBe(true);
+  let delayed: import("playwright").Route | undefined;
   await page.route(`**/api/memory/entries/${first.id}`, (route) => {
     delayed = route;
   });
   await panel.getByRole("button", { name: new RegExp(first.title) }).click();
   await expect.poll(() => !!delayed).toBe(true);
   await panel.getByRole("button", { name: new RegExp(second.title) }).click();
-  await expect(panel.getByLabel("Memory details", { exact: true })).toHaveValue(second.details);
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await panel.getByLabel("Memory details", { exact: true }).inputValue(),
+        second.details,
+      ),
+    )
+    .toBe(true);
   await delayed!.fulfill({ json: first }).catch(() => {});
-  await expect(panel.getByLabel("Memory title", { exact: true })).toHaveValue(second.title);
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await panel.getByLabel("Memory title", { exact: true }).inputValue(),
+        second.title,
+      ),
+    )
+    .toBe(true);
   await panel
     .getByLabel("Memory details", { exact: true })
     .fill("A draft that must survive leaving the section.");
@@ -333,7 +453,12 @@ test("memory loading errors recover and late detail responses cannot replace the
     .getByRole("navigation", { name: "Settings sections" })
     .getByRole("button", { name: "Execution", exact: true })
     .click();
-  await expect(panel.getByLabel("Memory details", { exact: true })).toHaveValue(
-    "A draft that must survive leaving the section.",
-  );
+  await expect
+    .poll(async () =>
+      matchesValue(
+        await panel.getByLabel("Memory details", { exact: true }).inputValue(),
+        "A draft that must survive leaving the section.",
+      ),
+    )
+    .toBe(true);
 });

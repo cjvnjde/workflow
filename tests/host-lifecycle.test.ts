@@ -4,7 +4,7 @@ import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import test, { type TestContext } from "node:test";
+import { test, type TestContext } from "vitest";
 import { WorkflowClient, waitForRun } from "../src/client/client.js";
 import { hostInfoSchema } from "../src/host/host-discovery.js";
 import { projectHostStatus, stopProjectHost } from "../src/host/host-lifecycle.js";

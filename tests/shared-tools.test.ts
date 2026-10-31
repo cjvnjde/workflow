@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import { WorkflowEngine } from "../src/core/engine.js";
 import { localExecutionEnvironment } from "../src/core/execution/execution-environment.js";
 import { WorkflowVersions } from "../src/infrastructure/workflow-versions.js";

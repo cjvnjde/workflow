@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { operationBody } from "../web/features/execution/operation-presentation.js";
 import { executionTimeline } from "../web/features/execution/execution-timeline.js";
 import { projectOperations, type RunEvent, type WorkflowRun } from "../src/contracts/index.js";

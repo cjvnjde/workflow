@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { chromium } from "@playwright/test";
+import { chromium } from "playwright";
 import { TextAttributes, TreeSitterClient, type RGBA } from "@opentui/core";
 import { createTestRenderer } from "@opentui/core/testing";
 import { WorkflowClient } from "../src/client/client.js";

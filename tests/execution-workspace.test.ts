@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import path from "node:path";
 import { writeFile, readFile, rm } from "node:fs/promises";
 import { fixture } from "./helpers.js";
@@ -24,7 +24,7 @@ test("independent writers overlap in real worktrees, join, and integrate with co
   await git(project, "commit", "-m", "baseline");
   const paths = [`${project}-writer-a`, `${project}-writer-b`];
   for (const dir of paths) await git(project, "worktree", "add", "--detach", dir, "HEAD");
-  t.after(async () => {
+  t.onTestFinished(async () => {
     for (const dir of paths) await rm(dir, { recursive: true, force: true });
   });
   assert.equal(await executionWorkspace(project, paths[0], AbortSignal.timeout(10000)), paths[0]);
@@ -102,7 +102,7 @@ test("integration conflicts stop combined acceptance and preserve both worktrees
   await git(project, "commit", "-m", "baseline");
   const paths = [`${project}-conflict-a`, `${project}-conflict-b`];
   const commits: string[] = [];
-  t.after(async () => {
+  t.onTestFinished(async () => {
     for (const dir of paths) await rm(dir, { recursive: true, force: true });
   });
   for (const [index, dir] of paths.entries()) {
@@ -142,7 +142,7 @@ test("failed isolated edits restore their own worktree without touching the proj
   await git(project, "commit", "-m", "baseline");
   const isolated = `${project}-rollback`;
   await git(project, "worktree", "add", "--detach", isolated, "HEAD");
-  t.after(() => rm(isolated, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(isolated, { recursive: true, force: true }));
   await writeFile(path.join(project, "owned.txt"), "unrelated main edits");
   const engine = new WorkflowEngine(project, "live", async (execution) => {
     const workspace = await Workspace.create(execution.project, {
@@ -180,7 +180,7 @@ test("concurrent calls cannot claim the same isolated worktree", async (t) => {
   await git(project, "commit", "-m", "baseline");
   const isolated = `${project}-shared`;
   await git(project, "worktree", "add", "--detach", isolated, "HEAD");
-  t.after(() => rm(isolated, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(isolated, { recursive: true, force: true }));
   let release!: () => void;
   const rejected = new Promise<void>((resolve) => {
     release = resolve;

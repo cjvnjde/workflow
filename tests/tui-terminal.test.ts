@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { cp, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import test from "node:test";
+import { test } from "vitest";
 import { fixture } from "./helpers.js";
 import { userPaths } from "../src/infrastructure/user-paths.js";
 import { projectHostStatus, stopProjectHost } from "../src/host/host-lifecycle.js";

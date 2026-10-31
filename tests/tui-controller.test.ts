@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { cp } from "node:fs/promises";
 import { userPaths } from "../src/infrastructure/user-paths.js";
-import test, { type TestContext } from "node:test";
+import { test, type TestContext } from "vitest";
 import { createApplication, type ApplicationServices } from "../src/core/application.js";
 import { createHttpServer } from "../src/http/http-server.js";
 import { WorkflowClient } from "../src/client/client.js";
@@ -42,7 +42,7 @@ async function context(
   await cp(cache, path.join(project, "user-settings", "cache", "temporal"), {
     recursive: true,
   }).catch(() => {});
-  t.after(() => {
+  t.onTestFinished(() => {
     if (previous === undefined) delete process.env.WORKFLOW_HOME;
     else process.env.WORKFLOW_HOME = previous;
   });

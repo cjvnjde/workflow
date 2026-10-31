@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { createServer } from "node:http";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -92,7 +92,7 @@ test("real model-session accounting follows the original project rather than its
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(
+  t.onTestFinished(
     () =>
       new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
@@ -122,7 +122,7 @@ test("real model-session accounting follows the original project rather than its
   );
   const previous = process.env.WORKFLOW_HOME;
   process.env.WORKFLOW_HOME = home;
-  t.after(() => {
+  t.onTestFinished(() => {
     if (previous === undefined) delete process.env.WORKFLOW_HOME;
     else process.env.WORKFLOW_HOME = previous;
   });
