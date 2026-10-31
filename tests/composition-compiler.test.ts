@@ -36,6 +36,40 @@ test("composition discovery supports shorthand properties, default aliases and i
   }
 });
 
+test("native compiler preserves type-only imports and checks safety in imported modules", async (t) => {
+  const { project } = await fixture(t);
+  await writeFile(
+    path.join(project, "host-types.d.ts"),
+    'declare module "node:fs" { export interface Stats { size: number } }',
+  );
+  const source = `/// <reference path="./host-types.d.ts" />
+import type {Stats} from "node:fs";
+import {value} from "./helper.ts";
+import {workflow} from "workflow";
+export default workflow({name:"Native compiler",async run(){
+  const metadata:Stats={size:await Promise.resolve(value)};
+  return metadata.size;
+}});`;
+  const helper = path.join(project, "helper.ts");
+  await writeFile(helper, "export const value=1;");
+  await checkProgram(project, { source });
+  await assert.rejects(
+    () => checkProgram(project, { source }, {}, undefined, new Set([helper])),
+    /helper|Cannot find module/,
+  );
+  for (const [code, message] of [
+    ["export const value=await Promise.resolve(1);", /Top-level await/],
+    // Dynamic import is deliberate: validation must reject this module-loading boundary.
+    ['export async function value(){return await import("workflow");}', /static imports/],
+    ['import {readFileSync} from "node:fs"; export const value=readFileSync;', /Host module/],
+  ] as const) {
+    await writeFile(helper, code);
+    await assert.rejects(() => checkProgram(project, { source }), message);
+  }
+  await writeFile(helper, 'export const value="not a number";');
+  await assert.rejects(() => checkProgram(project, { source }), /not assignable/);
+});
+
 test("unused steps and groups must be attached to the exported flow, including aliases and compound bindings", async (t) => {
   const { project } = await fixture(t);
   const setup = `${header}
@@ -51,7 +85,7 @@ const commit=step("commit",action),push=step("push",action);`;
     "const [publish,ordinaryUnused]=[sequence(commit,push),123] as const;",
   ]) {
     const source = `${setup}\n${disconnected}\nexport default workflow({name:"Missing publication",flow:implement});`;
-    assert.throws(
+    await assert.rejects(
       () => checkProgram(project, { source }),
       /Workflow primitive "publish" is declared but unused\. Attach it to the exported workflow's flow/,
     );
@@ -59,13 +93,13 @@ const commit=step("commit",action),push=step("push",action);`;
     const preview = await validateComposition(project, { source: repaired }, {});
     assert.equal(preview.structure.children[0]?.id, "implement");
   }
-  assert.throws(
+  await assert.rejects(
     () =>
       checkProgram(project, {
         source: `${header}
-const action=block({run(){return "Done";}});
-const unused=step("unused",action);
-export default workflow({name:"Missing step",flow:step("used",action)});`,
+  const action=block({run(){return "Done";}});
+  const unused=step("unused",action);
+  export default workflow({name:"Missing step",flow:step("used",action)});`,
       }),
     /Workflow primitive "unused"/,
   );
@@ -206,34 +240,34 @@ const checked=step("check",consumer,{inputs:ctx=>({count:ctx.output(producer)?.c
 const literal=step("literal",consumer,{inputs:{count:1}});
 export default workflow({name:"Typed composition",flow:sequence(producer,checked,
   when("approved",ctx=>ctx.output(checked)?.approved===true,literal))});`;
-  checkProgram(project, { source });
-  assert.throws(
+  await checkProgram(project, { source });
+  await assert.rejects(
     () =>
       checkProgram(project, {
         source: source.replace("inputs:{count:1}", 'inputs:{count:"wrong"}'),
       }),
     /not assignable|No overload/,
   );
-  assert.throws(
+  await assert.rejects(
     () =>
       checkProgram(project, {
         source: source.replace("count:ctx.output(producer)?.count??0", 'count:"wrong"'),
       }),
     /not assignable|No overload/,
   );
-  assert.throws(
+  await assert.rejects(
     () =>
       checkProgram(project, {
         source: source.replace("ctx.output(checked)?.approved", "ctx.output(checked)?.missing"),
       }),
     /missing/,
   );
-  assert.throws(
+  await assert.rejects(
     () =>
       checkProgram(project, {
         source: `${header}
-const scalar=block({input:z.number(),run(ctx){return ctx.input+1;}});
-export default workflow({name:"Invalid scalar inputs",flow:step("scalar",scalar,{inputs:3})});`,
+  const scalar=block({input:z.number(),run(ctx){return ctx.input+1;}});
+  export default workflow({name:"Invalid scalar inputs",flow:step("scalar",scalar,{inputs:3})});`,
       }),
     /not assignable|No overload/,
   );

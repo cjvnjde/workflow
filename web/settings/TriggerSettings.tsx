@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
+import { useForm, useStore } from "@tanstack/react-form";
+import { Link } from "@tanstack/react-router";
 import type { z } from "zod";
 import {
   triggerConfigSchema,
@@ -24,8 +26,11 @@ const defaults = (): TriggerConfig => ({
   includeDrafts: false,
   result: "local",
 });
-const serialize = (form: TriggerConfig, labels: string, authors: string) =>
-  JSON.stringify({ form, labels, authors });
+interface TriggerForm {
+  config: TriggerConfig;
+  labels: string;
+  authors: string;
+}
 interface Props {
   ref?: Ref<{ discard(): void }>;
   onDirty?: (value: boolean) => void;
@@ -42,16 +47,53 @@ export default function TriggerSettings({ ref, onDirty, onBusy }: Props) {
   const [state, setState] = useState<TriggerState>({ triggers: [], jobs: [] });
   const [runs, setRuns] = useState<SavedWorkflow[]>([]);
   const [selected, setSelected] = useState<Trigger>();
-  const [form, setForm] = useState(defaults);
-  const [labels, setLabels] = useState("");
-  const [authors, setAuthors] = useState("");
-  const [number, setNumber] = useState<number>();
-  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState<TriggerForm>(() => ({
+    config: defaults(),
+    labels: "",
+    authors: "",
+  }));
+  const lifecycle = useRef<Lifecycle | null>(null);
+  const editor = useForm({
+    defaultValues: saved,
+    onSubmit: async ({ value }) => {
+      const active = lifecycle.current;
+      if (!active || active.controller.signal.aborted) return;
+      setError("");
+      setNotice("");
+      try {
+        await save(value);
+      } catch (failure) {
+        if (!active.controller.signal.aborted)
+          setError(failure instanceof Error ? failure.message : String(failure));
+        throw failure;
+      }
+    },
+  });
+  const testForm = useForm({
+    defaultValues: { number: undefined as number | undefined },
+    onSubmit: async ({ value }) => {
+      const active = lifecycle.current;
+      if (!active || active.controller.signal.aborted) return;
+      setError("");
+      setNotice("");
+      try {
+        await test(value.number);
+      } catch (failure) {
+        if (!active.controller.signal.aborted)
+          setError(failure instanceof Error ? failure.message : String(failure));
+        throw failure;
+      }
+    },
+  });
+  const { config: form, labels, authors } = useStore(editor.store, (value) => value.values);
+  const submitting = useStore(editor.store, (value) => value.isSubmitting);
+  const number = useStore(testForm.store, (value) => value.values.number);
+  const testing = useStore(testForm.store, (value) => value.isSubmitting);
+  const [actionBusy, setActionBusy] = useState(false);
+  const busy = actionBusy || submitting || testing;
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [saved, setSaved] = useState(() => serialize(defaults(), "", ""));
-  const dirty = serialize(form, labels, authors) !== saved;
-  const lifecycle = useRef<Lifecycle | null>(null);
+  const dirty = JSON.stringify({ config: form, labels, authors }) !== JSON.stringify(saved);
 
   useEffect(() => {
     onDirty?.(dirty);
@@ -73,21 +115,17 @@ export default function TriggerSettings({ ref, onDirty, onBusy }: Props) {
     const nextLabels = value.labels.join(", ");
     const nextAuthors = value.authors.join(", ");
     setSelected(trigger);
-    setForm(value);
-    setLabels(nextLabels);
-    setAuthors(nextAuthors);
-    setSaved(serialize(value, nextLabels, nextAuthors));
-    setNumber(undefined);
+    const next = { config: value, labels: nextLabels, authors: nextAuthors };
+    setSaved(next);
+    editor.reset(next);
+    testForm.reset();
     setError("");
     setNotice("");
   }
   const discard = useCallback(() => {
-    const value = JSON.parse(saved) as { form: TriggerConfig; labels: string; authors: string };
-    setForm(value.form);
-    setLabels(value.labels);
-    setAuthors(value.authors);
+    editor.reset(saved);
     setError("");
-  }, [saved]);
+  }, [editor, saved]);
   useImperativeHandle(ref, () => ({ discard }), [discard]);
 
   const load = useCallback(async (force = false) => {
@@ -117,7 +155,7 @@ export default function TriggerSettings({ ref, onDirty, onBusy }: Props) {
   const perform = useCallback(async (action: () => Promise<void>) => {
     const active = lifecycle.current;
     if (!active || active.controller.signal.aborted) return;
-    setBusy(true);
+    setActionBusy(true);
     setError("");
     setNotice("");
     try {
@@ -126,7 +164,7 @@ export default function TriggerSettings({ ref, onDirty, onBusy }: Props) {
       if (!active.controller.signal.aborted)
         setError(failure instanceof Error ? failure.message : String(failure));
     } finally {
-      if (!active.controller.signal.aborted) setBusy(false);
+      if (!active.controller.signal.aborted) setActionBusy(false);
     }
   }, []);
   useEffect(() => {
@@ -145,7 +183,7 @@ export default function TriggerSettings({ ref, onDirty, onBusy }: Props) {
     };
   }, [load, perform]);
 
-  async function save() {
+  async function save({ config: form, labels, authors }: TriggerForm) {
     const active = lifecycle.current;
     if (!active) return;
     const config = triggerConfigSchema.parse({
@@ -163,9 +201,14 @@ export default function TriggerSettings({ ref, onDirty, onBusy }: Props) {
     if (active.controller.signal.aborted) return;
     const value = triggerConfigSchema.strip().parse(trigger);
     setSelected(trigger);
-    setForm(value);
-    setSaved(serialize(value, labels, authors));
-    await load(true);
+    const next = { config: value, labels, authors };
+    setSaved(next);
+    editor.setFieldValue("config", value, { dontUpdateMeta: true });
+    try {
+      await load(true);
+    } finally {
+      if (!active.controller.signal.aborted) editor.reset(next);
+    }
     if (!active.controller.signal.aborted)
       setNotice(
         trigger.enabled
@@ -173,7 +216,7 @@ export default function TriggerSettings({ ref, onDirty, onBusy }: Props) {
           : "Trigger saved and disabled. Test it before enabling.",
       );
   }
-  async function test() {
+  async function test(number: number | undefined) {
     const active = lifecycle.current;
     if (!selected || !number || !active) return;
     const job = await client.testTrigger(selected.id, number);
@@ -266,7 +309,7 @@ export default function TriggerSettings({ ref, onDirty, onBusy }: Props) {
         className="settings-card"
         onSubmit={(event) => {
           event.preventDefault();
-          void perform(save);
+          void editor.handleSubmit().catch(() => {});
         }}
       >
         <h3>{selected ? "Edit trigger" : "New trigger"}</h3>
@@ -277,7 +320,7 @@ export default function TriggerSettings({ ref, onDirty, onBusy }: Props) {
                 <input
                   id={id}
                   value={form.name}
-                  onChange={(event) => setForm({ ...form, name: event.target.value })}
+                  onChange={(event) => editor.setFieldValue("config.name", event.target.value)}
                   required
                   placeholder="Review new pull requests"
                 />
@@ -288,7 +331,9 @@ export default function TriggerSettings({ ref, onDirty, onBusy }: Props) {
                 <input
                   id={id}
                   value={form.repository}
-                  onChange={(event) => setForm({ ...form, repository: event.target.value })}
+                  onChange={(event) =>
+                    editor.setFieldValue("config.repository", event.target.value)
+                  }
                   required
                   placeholder="owner/repository"
                 />
@@ -300,7 +345,10 @@ export default function TriggerSettings({ ref, onDirty, onBusy }: Props) {
                   id={id}
                   value={form.event}
                   onChange={(event) =>
-                    setForm({ ...form, event: event.target.value as TriggerConfig["event"] })
+                    editor.setFieldValue(
+                      "config.event",
+                      event.target.value as TriggerConfig["event"],
+                    )
                   }
                 >
                   <option value="pull_request.opened">New pull request</option>
@@ -316,7 +364,9 @@ export default function TriggerSettings({ ref, onDirty, onBusy }: Props) {
                 <select
                   id={id}
                   value={form.workflowRunId}
-                  onChange={(event) => setForm({ ...form, workflowRunId: event.target.value })}
+                  onChange={(event) =>
+                    editor.setFieldValue("config.workflowRunId", event.target.value)
+                  }
                   required
                 >
                   <option disabled value="">
@@ -343,7 +393,7 @@ export default function TriggerSettings({ ref, onDirty, onBusy }: Props) {
                 <input
                   id={id}
                   value={labels}
-                  onChange={(event) => setLabels(event.target.value)}
+                  onChange={(event) => editor.setFieldValue("labels", event.target.value)}
                   placeholder="Optional: workflow, bug"
                 />
               )}
@@ -356,7 +406,7 @@ export default function TriggerSettings({ ref, onDirty, onBusy }: Props) {
                 <input
                   id={id}
                   value={authors}
-                  onChange={(event) => setAuthors(event.target.value)}
+                  onChange={(event) => editor.setFieldValue("authors", event.target.value)}
                   placeholder="Optional: octocat"
                 />
               )}
@@ -367,7 +417,7 @@ export default function TriggerSettings({ ref, onDirty, onBusy }: Props) {
                   id={id}
                   value={form.pollSeconds}
                   onChange={(event) =>
-                    setForm({ ...form, pollSeconds: event.target.valueAsNumber })
+                    editor.setFieldValue("config.pollSeconds", event.target.valueAsNumber)
                   }
                   type="number"
                   min={30}
@@ -388,10 +438,10 @@ export default function TriggerSettings({ ref, onDirty, onBusy }: Props) {
                   step="any"
                   value={form.maxCostUsd ?? ""}
                   onChange={(event) =>
-                    setForm({
-                      ...form,
-                      maxCostUsd: event.target.value ? Number(event.target.value) : undefined,
-                    })
+                    editor.setFieldValue(
+                      "config.maxCostUsd",
+                      event.target.value ? Number(event.target.value) : undefined,
+                    )
                   }
                 />
               )}
@@ -402,7 +452,10 @@ export default function TriggerSettings({ ref, onDirty, onBusy }: Props) {
                   id={id}
                   value={form.result}
                   onChange={(event) =>
-                    setForm({ ...form, result: event.target.value as TriggerConfig["result"] })
+                    editor.setFieldValue(
+                      "config.result",
+                      event.target.value as TriggerConfig["result"],
+                    )
                   }
                 >
                   <option value="local">Workflow results only</option>
@@ -415,7 +468,9 @@ export default function TriggerSettings({ ref, onDirty, onBusy }: Props) {
             <label className="toggle-row">
               <input
                 checked={form.includeDrafts}
-                onChange={(event) => setForm({ ...form, includeDrafts: event.target.checked })}
+                onChange={(event) =>
+                  editor.setFieldValue("config.includeDrafts", event.target.checked)
+                }
                 type="checkbox"
               />
               Include draft pull requests
@@ -424,7 +479,7 @@ export default function TriggerSettings({ ref, onDirty, onBusy }: Props) {
           <label className="toggle-row">
             <input
               checked={form.enabled}
-              onChange={(event) => setForm({ ...form, enabled: event.target.checked })}
+              onChange={(event) => editor.setFieldValue("config.enabled", event.target.checked)}
               type="checkbox"
             />
             Enable automatic execution
@@ -459,14 +514,20 @@ export default function TriggerSettings({ ref, onDirty, onBusy }: Props) {
                 id={id}
                 value={number ?? ""}
                 onChange={(event) =>
-                  setNumber(event.target.value ? event.target.valueAsNumber : undefined)
+                  testForm.setFieldValue(
+                    "number",
+                    event.target.value ? event.target.valueAsNumber : undefined,
+                  )
                 }
                 type="number"
                 min={1}
               />
             )}
           </Field>
-          <button disabled={busy || dirty || !number} onClick={() => void perform(test)}>
+          <button
+            disabled={busy || dirty || !number}
+            onClick={() => void testForm.handleSubmit().catch(() => {})}
+          >
             Create test draft
           </button>
         </div>
@@ -497,7 +558,9 @@ export default function TriggerSettings({ ref, onDirty, onBusy }: Props) {
           {job.error && <p className="inline-error">{job.error}</p>}
           <div className="button-row">
             {job.status !== "queued" && job.status !== "failed" && (
-              <a href={`#run=${job.runId}`}>Open workflow</a>
+              <Link to="/" search={{ run: job.runId }}>
+                Open workflow
+              </Link>
             )}
             <a href={job.event.url} target="_blank" rel="noopener noreferrer">
               View GitHub item

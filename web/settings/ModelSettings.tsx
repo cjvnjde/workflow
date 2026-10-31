@@ -1,4 +1,5 @@
-import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
+import { useForm, useStore } from "@tanstack/react-form";
 import { z } from "zod";
 import {
   resolveAgentSettings,
@@ -44,15 +45,23 @@ function setupForm(setup: Setup): ModelForm {
 }
 
 export default function ModelSettings({ onSaved, onBusy, onDirty, ref }: ModelSettingsProps) {
-  const [form, setForm] = useState<ModelForm>({ selection: "", thinking: "medium" });
+  const [initialValues] = useState<ModelForm>({ selection: "", thinking: "medium" });
+  const form = useForm({
+    defaultValues: initialValues,
+    onSubmitMeta: { inherit: false },
+    onSubmit: async ({ value, meta }) => {
+      await perform((signal) => save(value, meta.inherit, signal));
+    },
+  });
   const [models, setModels] = useState<AvailableModel[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const controller = useRef<AbortController | null>(null);
-  const { setup, selection, thinking } = form;
-  const dirty = hasChanges(form);
+  const values = useStore(form.store, (state) => state.values);
+  const { setup, selection, thinking } = values;
+  const dirty = hasChanges(values);
   const model = models.find((item) => modelKey(item) === selection);
   useEffect(() => {
     onDirty?.(dirty);
@@ -68,14 +77,21 @@ export default function ModelSettings({ onSaved, onBusy, onDirty, ref }: ModelSe
     [onBusy, onDirty],
   );
 
+  const resetForm = useCallback(
+    (value: ModelForm) => form.reset(value, { keepDefaultValues: true }),
+    [form],
+  );
   function acceptSetup(value: Setup, preserveEdits = false) {
-    setForm((current) =>
-      preserveEdits && hasChanges(current) ? { ...current, setup: value } : setupForm(value),
-    );
+    const current = form.state.values;
+    if (preserveEdits && hasChanges(current)) {
+      form.setFieldValue("setup", value);
+    } else {
+      resetForm(setupForm(value));
+    }
   }
   function discard() {
     if (busy || !setup) return;
-    setForm(setupForm(setup));
+    resetForm(setupForm(setup));
     setError("");
     setNotice("");
   }
@@ -90,7 +106,7 @@ export default function ModelSettings({ onSaved, onBusy, onDirty, ref }: ModelSe
     ])
       .then(([value, catalog]) => {
         if (active.signal.aborted) return;
-        setForm(setupForm(value));
+        resetForm(setupForm(value));
         setModels(catalog.models);
         setWarnings(catalog.warnings);
       })
@@ -98,7 +114,7 @@ export default function ModelSettings({ onSaved, onBusy, onDirty, ref }: ModelSe
         if (!active.signal.aborted) setError(String(failure));
       });
     return () => active.abort();
-  }, []);
+  }, [resetForm]);
 
   async function perform(action: (signal: AbortSignal) => Promise<void>) {
     const active = controller.current;
@@ -115,13 +131,15 @@ export default function ModelSettings({ onSaved, onBusy, onDirty, ref }: ModelSe
       if (!active.signal.aborted) setBusy(false);
     }
   }
-  async function save(inherit: boolean, signal: AbortSignal) {
-    if (!setup || (!inherit && !model)) return;
+  async function save(values: ModelForm, inherit: boolean, signal: AbortSignal) {
+    const { setup, selection, thinking } = values;
+    const selected = models.find((item) => modelKey(item) === selection);
+    if (!setup || (!inherit && (!selected || !selected.thinkingLevels.includes(thinking)))) return;
     const updated = await request("/api/project/model", setupSchema, {
       method: "PUT",
       body: {
         configRevision: setup.configRevision,
-        agent: inherit ? null : { provider: model!.provider, model: model!.id, thinking },
+        agent: inherit ? null : { provider: selected!.provider, model: selected!.id, thinking },
       },
       signal,
     });
@@ -174,16 +192,16 @@ export default function ModelSettings({ onSaved, onBusy, onDirty, ref }: ModelSe
   }
   function choose(value: string) {
     const selected = models.find((item) => modelKey(item) === value);
-    setForm((current) => ({
-      ...current,
-      selection: value,
-      thinking:
-        selected && !selected.thinkingLevels.includes(current.thinking)
-          ? ((selected.thinkingLevels.includes("off")
-              ? "off"
-              : (selected.thinkingLevels[0] ?? "off")) as AgentSettings["thinking"])
-          : current.thinking,
-    }));
+    const thinking = form.state.values.thinking;
+    form.setFieldValue("selection", value);
+    if (selected && !selected.thinkingLevels.includes(thinking)) {
+      form.setFieldValue(
+        "thinking",
+        (selected.thinkingLevels.includes("off")
+          ? "off"
+          : (selected.thinkingLevels[0] ?? "off")) as AgentSettings["thinking"],
+      );
+    }
   }
   return (
     <section className="model-settings" aria-labelledby="setup-title">
@@ -259,7 +277,14 @@ export default function ModelSettings({ onSaved, onBusy, onDirty, ref }: ModelSe
             </p>
           ))}
         </section>
-        <section className="setup-card">
+        <form
+          className="setup-card"
+          onSubmit={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void form.handleSubmit();
+          }}
+        >
           <h2>Default for this project</h2>
           <label htmlFor="project-model">Model</label>
           <select
@@ -281,10 +306,9 @@ export default function ModelSettings({ onSaved, onBusy, onDirty, ref }: ModelSe
             id="project-thinking"
             value={thinking}
             disabled={busy || !model}
-            onChange={(event) => {
-              const value = event.target.value as AgentSettings["thinking"];
-              setForm((current) => ({ ...current, thinking: value }));
-            }}
+            onChange={(event) =>
+              form.setFieldValue("thinking", event.target.value as AgentSettings["thinking"])
+            }
           >
             {!model?.thinkingLevels.includes(thinking) && (
               <option value={thinking}>
@@ -307,24 +331,23 @@ export default function ModelSettings({ onSaved, onBusy, onDirty, ref }: ModelSe
             </p>
           )}
           <button
+            type="submit"
             className="primary"
             disabled={busy || !model || !model.thinkingLevels.includes(thinking)}
-            onClick={() => {
-              void perform((signal) => save(false, signal));
-            }}
           >
             Save project model
           </button>
           <button
+            type="button"
             disabled={busy || !setup}
             onClick={() => {
-              void perform((signal) => save(true, signal));
+              void form.handleSubmit({ inherit: true });
             }}
           >
             Use shared defaults
           </button>
           {dirty && (
-            <button disabled={busy} onClick={discard}>
+            <button type="button" disabled={busy} onClick={discard}>
               Discard model changes
             </button>
           )}
@@ -341,7 +364,7 @@ export default function ModelSettings({ onSaved, onBusy, onDirty, ref }: ModelSe
             These controls update this project's model and thinking overrides. Execution limits and
             existing run snapshots are preserved.
           </small>
-        </section>
+        </form>
       </div>
     </section>
   );

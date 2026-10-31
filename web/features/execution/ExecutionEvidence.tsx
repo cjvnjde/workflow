@@ -1,6 +1,16 @@
 import type { RunEvent, WorkflowRun } from "../../../src/contracts/index.js";
+import { createColumnHelper, tableFeatures, useTable } from "@tanstack/react-table";
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../components/ui/table.js";
 import { runReport } from "./run-report.js";
-import { executionEvidence } from "./execution-evidence.js";
+import { executionEvidence, type StepAttemptInterval } from "./execution-evidence.js";
 import { useReportEvidence } from "./use-report-evidence.js";
 import "./ExecutionEvidence.css";
 
@@ -168,28 +178,7 @@ export default function ExecutionEvidence({
           )}
         </details>
       ))}
-      <div style={{ overflowX: "auto" }}>
-        <table>
-          <thead>
-            <tr>
-              <th>Step</th>
-              <th>Visit</th>
-              <th>Duration</th>
-              <th>Result</th>
-            </tr>
-          </thead>
-          <tbody>
-            {evidence.intervals.map((attempt) => (
-              <tr key={`${attempt.nodeId}-${attempt.visit}`}>
-                <td>{attempt.label}</td>
-                <td>{attempt.visit}</td>
-                <td>{((attempt.end - attempt.start) / 1000).toFixed(1)}s</td>
-                <td>{attempt.outcome}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <StepAttemptsTable attempts={evidence.intervals} />
       <h3>Concurrent execution</h3>
       {!evidence.overlaps.length ? (
         <p>No overlapping step attempts recorded.</p>
@@ -306,5 +295,54 @@ export default function ExecutionEvidence({
         </ul>
       )}
     </details>
+  );
+}
+
+const attemptFeatures = tableFeatures({});
+const attemptColumn = createColumnHelper<typeof attemptFeatures, StepAttemptInterval>();
+const attemptColumns = attemptColumn.columns([
+  attemptColumn.accessor("label", { header: "Step" }),
+  attemptColumn.accessor("visit", { header: "Visit" }),
+  attemptColumn.accessor((attempt) => (attempt.end - attempt.start) / 1000, {
+    id: "duration",
+    header: "Duration",
+    cell: (cell) => `${cell.getValue().toFixed(1)}s`,
+  }),
+  attemptColumn.accessor("outcome", { header: "Result" }),
+]);
+
+function StepAttemptsTable({ attempts }: { attempts: StepAttemptInterval[] }) {
+  const table = useTable({
+    features: attemptFeatures,
+    columns: attemptColumns,
+    data: attempts,
+    getRowId: (attempt) => `${attempt.nodeId}-${attempt.visit}`,
+  });
+  return (
+    <Table>
+      <TableCaption className="sr-only">Step attempts</TableCaption>
+      <TableHeader>
+        {table.getHeaderGroups().map((group) => (
+          <TableRow key={group.id}>
+            {group.headers.map((header) => (
+              <TableHead key={header.id} scope="col">
+                {header.isPlaceholder ? null : <table.FlexRender header={header} />}
+              </TableHead>
+            ))}
+          </TableRow>
+        ))}
+      </TableHeader>
+      <TableBody>
+        {table.getRowModel().rows.map((row) => (
+          <TableRow key={row.id}>
+            {row.getAllCells().map((cell) => (
+              <TableCell key={cell.id}>
+                <table.FlexRender cell={cell} />
+              </TableCell>
+            ))}
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }

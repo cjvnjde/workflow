@@ -71,7 +71,7 @@ export class WorkflowClient {
   }
   /** A shareable browser URL for the same persisted task/run used by all clients. */
   sessionUrl(session?: SessionReference) {
-    return `${this.base}/${session ? `#${session.kind}=${encodeURIComponent(session.id)}` : ""}`;
+    return `${this.base}/${session ? `?${session.kind}=${encodeURIComponent(session.id)}` : ""}`;
   }
   async resolveSession(reference: string, signal?: AbortSignal): Promise<SessionReference> {
     const match = /^(?:(task|run):)?([\da-f-]+)$/i.exec(reference.trim());

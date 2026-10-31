@@ -10,6 +10,8 @@ playwright-report/
 .agents/
 .codex/
 .aws/
+.tanstack/
+web/routeTree.gen.ts
 *.lock
 package-lock.json
 src/legacy/

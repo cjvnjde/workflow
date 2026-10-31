@@ -8,8 +8,9 @@ export function parseSessionLocation(value: string): SessionLocation {
   if (source.startsWith("#") || /^https?:\/\//i.test(source)) {
     const url = new URL(source, "http://workflow.local");
     const hash = new URLSearchParams(url.hash.slice(1));
-    kind = hash.has("task") ? "task" : hash.has("run") ? "run" : undefined;
-    source = (kind ? hash.get(kind) : url.searchParams.get("session")) ?? "";
+    const selection = hash.has("task") || hash.has("run") ? hash : url.searchParams;
+    kind = selection.has("task") ? "task" : selection.has("run") ? "run" : undefined;
+    source = (kind ? selection.get(kind) : url.searchParams.get("session")) ?? "";
   }
   const prefix = /^(task|run):/.exec(source);
   if (prefix) {
@@ -24,9 +25,8 @@ export function parseSessionLocation(value: string): SessionLocation {
 
 export function sessionLink(base: string, session: SessionLocation): string {
   const url = new URL(base);
-  url.searchParams.delete("session");
-  url.hash = new URLSearchParams({
-    [session.kind ?? "run"]: session.id,
-  }).toString();
+  for (const key of ["session", "view", "task", "run"]) url.searchParams.delete(key);
+  url.searchParams.set(session.kind ?? "run", session.id);
+  url.hash = "";
   return url.href;
 }

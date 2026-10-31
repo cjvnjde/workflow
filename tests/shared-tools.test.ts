@@ -64,7 +64,7 @@ test("shared tools retain frozen imports, typed outputs, journaled writes and st
     activityCard({ ...read, message: "unstructured text is irrelevant" })!.body,
     /reviewed:source/,
   );
-  assert.throws(
+  await assert.rejects(
     () =>
       checkProgram(project, {
         source: source.replace('{path:"input.txt"}', "{path:42}"),

@@ -16,22 +16,18 @@ type Discovery = {
   error: string;
 };
 export interface McpSettingsProps {
-  modelValue: McpServer;
-  onUpdateModelValue: (server: McpServer) => void;
+  value: McpServer;
+  onChange: (server: McpServer) => void;
   onRemove: () => void;
 }
 
-export default function McpSettings({
-  modelValue: server,
-  onUpdateModelValue,
-  onRemove,
-}: McpSettingsProps) {
+export default function McpSettings({ value: server, onChange, onRemove }: McpSettingsProps) {
   const [discovery, setDiscovery] = useState<Discovery>();
   const controller = useRef<AbortController | null>(null);
-  const publishServer = useRef(onUpdateModelValue);
+  const publishServer = useRef(onChange);
   useEffect(() => {
-    publishServer.current = onUpdateModelValue;
-  }, [onUpdateModelValue]);
+    publishServer.current = onChange;
+  }, [onChange]);
   const argumentsRef = useAutosize(server.args.join("\n"));
   useEffect(
     () => () => {
@@ -60,7 +56,7 @@ export default function McpSettings({
   function update(patch: Partial<McpServer>) {
     const next = { ...server, ...patch };
     setDiscovery((value) => (value?.server === server ? { ...value, server: next } : value));
-    onUpdateModelValue(next);
+    onChange(next);
   }
   function cancel() {
     controller.current?.abort();

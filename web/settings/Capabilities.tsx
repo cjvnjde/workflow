@@ -14,8 +14,8 @@ import McpSettings from "./McpSettings.js";
 type CapabilitiesValue = OrchestrationSettings["capabilities"];
 type Skill = CapabilitiesValue["skills"][number];
 export interface CapabilitiesProps {
-  modelValue: CapabilitiesValue;
-  onUpdateModelValue: (value: CapabilitiesValue) => void;
+  value: CapabilitiesValue;
+  onChange: (value: CapabilitiesValue) => void;
   projectCapabilities?: z.infer<typeof projectCapabilitiesSchema>;
 }
 const inspectionSchema = z.object({
@@ -85,8 +85,8 @@ function SkillSettings({
 }
 
 export default function Capabilities({
-  modelValue: capabilities,
-  onUpdateModelValue,
+  value: capabilities,
+  onChange,
   projectCapabilities,
 }: CapabilitiesProps) {
   const [connectionStatus, setConnectionStatus] = useState<Record<string, string>>({});
@@ -116,7 +116,7 @@ export default function Capabilities({
       if (capabilities.skills.some((item) => item.id === id)) return;
       const item = projectCapabilities?.capabilities.skills.find((item) => item.id === id);
       if (item)
-        onUpdateModelValue({
+        onChange({
           ...capabilities,
           skills: [...capabilities.skills, structuredClone(item)],
         });
@@ -124,7 +124,7 @@ export default function Capabilities({
       if (capabilities.mcpServers.some((item) => item.id === id)) return;
       const item = projectCapabilities?.capabilities.mcpServers.find((item) => item.id === id);
       if (item)
-        onUpdateModelValue({
+        onChange({
           ...capabilities,
           mcpServers: [...capabilities.mcpServers, structuredClone(item)],
         });
@@ -163,7 +163,7 @@ export default function Capabilities({
     }
   }
   function addSkill() {
-    onUpdateModelValue({
+    onChange({
       ...capabilities,
       skills: [
         ...capabilities.skills,
@@ -178,7 +178,7 @@ export default function Capabilities({
     });
   }
   function addServer() {
-    onUpdateModelValue({
+    onChange({
       ...capabilities,
       mcpServers: [
         ...capabilities.mcpServers,
@@ -255,13 +255,13 @@ export default function Capabilities({
           key={skill.id}
           skill={skill}
           onChange={(value) =>
-            onUpdateModelValue({
+            onChange({
               ...capabilities,
               skills: capabilities.skills.map((item) => (item.id === skill.id ? value : item)),
             })
           }
           onRemove={() =>
-            onUpdateModelValue({
+            onChange({
               ...capabilities,
               skills: capabilities.skills.filter((item) => item.id !== skill.id),
             })
@@ -285,9 +285,9 @@ export default function Capabilities({
       {capabilities.mcpServers.map((server) => (
         <McpSettings
           key={server.id}
-          modelValue={server}
-          onUpdateModelValue={(value) =>
-            onUpdateModelValue({
+          value={server}
+          onChange={(value) =>
+            onChange({
               ...capabilities,
               mcpServers: capabilities.mcpServers.map((item) =>
                 item.id === server.id ? value : item,
@@ -295,7 +295,7 @@ export default function Capabilities({
             })
           }
           onRemove={() =>
-            onUpdateModelValue({
+            onChange({
               ...capabilities,
               mcpServers: capabilities.mcpServers.filter((item) => item.id !== server.id),
             })

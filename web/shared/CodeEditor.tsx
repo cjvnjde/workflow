@@ -13,14 +13,14 @@ import { request } from "./api.js";
 import "./CodeEditor.css";
 
 export interface CodeEditorProps {
-  modelValue: string;
+  value: string;
   label: string;
   id?: string;
   language?: "typescript" | "javascript" | "json" | "bash";
-  readonly?: boolean;
+  readOnly?: boolean;
   minLines?: number;
   maxLines?: number;
-  onUpdateModelValue?: (value: string) => void;
+  onChange?: (value: string) => void;
 }
 
 type EditorConfiguration = CodeEditorProps & {
@@ -35,16 +35,16 @@ function languageExtension(language: EditorConfiguration["language"]) {
       ? StreamLanguage.define(shell)
       : javascript({ typescript: language === "typescript" });
 }
-function accessExtension({ readonly, id, label }: EditorConfiguration) {
+function accessExtension({ readOnly, id, label }: EditorConfiguration) {
   return [
-    EditorState.readOnly.of(!!readonly),
-    EditorView.editable.of(!readonly),
+    EditorState.readOnly.of(!!readOnly),
+    EditorView.editable.of(!readOnly),
     EditorView.contentAttributes.of({
       id,
       role: "textbox",
       "aria-label": label,
       "aria-multiline": "true",
-      "aria-readonly": String(!!readonly),
+      "aria-readonly": String(!!readOnly),
       tabindex: "0",
       spellcheck: "false",
       autocapitalize: "off",
@@ -52,75 +52,84 @@ function accessExtension({ readonly, id, label }: EditorConfiguration) {
   ];
 }
 
-const theme = EditorView.theme(
-  {
-    "&": { color: "var(--ctp-text)", backgroundColor: "var(--ctp-mantle)", fontSize: "13px" },
-    "&.cm-focused": { outline: "none" },
-    ".cm-scroller": {
-      fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
-      lineHeight: "1.65",
-      overflow: "auto",
-      maxHeight: "var(--code-max-height)",
-    },
-    ".cm-content": {
-      padding: "12px 0",
-      minHeight: "var(--code-min-height)",
-      caretColor: "var(--ctp-rosewater)",
-    },
-    ".cm-line": { padding: "0 14px 0 8px" },
-    ".cm-gutters": {
-      backgroundColor: "var(--ctp-mantle)",
-      color: "var(--ctp-overlay0)",
-      border: "none",
-      borderRight: "1px solid var(--ctp-surface0)",
-    },
-    ".cm-activeLine, .cm-activeLineGutter": { backgroundColor: "#31324470" },
-    ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--ctp-rosewater)" },
-    "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": {
-      backgroundColor: "#585b7077",
-    },
-    ".cm-matchingBracket": { backgroundColor: "#cba6f733", outline: "1px solid var(--ctp-mauve)" },
-    ".cm-searchMatch": { backgroundColor: "#f9e2af33" },
-    ".cm-searchMatch.cm-searchMatch-selected": { backgroundColor: "#fab38755" },
-    ".cm-panels, .cm-tooltip": {
-      color: "var(--ctp-text)",
-      backgroundColor: "var(--ctp-base)",
-      borderColor: "var(--ctp-surface1)",
-    },
-    ".cm-search input": {
-      width: "auto",
-      maxWidth: "180px",
-      background: "var(--ctp-mantle)",
-      color: "var(--ctp-text)",
-      border: "1px solid var(--ctp-surface1)",
-    },
-    ".cm-button": {
-      color: "var(--ctp-text)",
-      backgroundImage: "none",
-      backgroundColor: "var(--ctp-surface0)",
-      border: "1px solid var(--ctp-surface1)",
-    },
-    ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
-      color: "var(--ctp-crust)",
-      backgroundColor: "var(--ctp-mauve)",
-    },
-    ".cm-foldPlaceholder": {
-      backgroundColor: "var(--ctp-surface0)",
-      color: "var(--ctp-lavender)",
-      border: "none",
-    },
+const theme = EditorView.theme({
+  "&": { color: "var(--foreground)", backgroundColor: "var(--card)", fontSize: "13px" },
+  "&.cm-focused": { outline: "none" },
+  ".cm-scroller": {
+    fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+    lineHeight: "1.65",
+    overflow: "auto",
+    maxHeight: "var(--code-max-height)",
   },
-  { dark: true },
-);
+  ".cm-content": {
+    padding: "12px 0",
+    minHeight: "var(--code-min-height)",
+    caretColor: "var(--foreground)",
+  },
+  ".cm-line": { padding: "0 14px 0 8px" },
+  ".cm-gutters": {
+    backgroundColor: "var(--card)",
+    color: "var(--muted-foreground)",
+    border: "none",
+    borderRight: "1px solid var(--border)",
+  },
+  ".cm-activeLine, .cm-activeLineGutter": {
+    backgroundColor: "color-mix(in oklch, var(--muted) 60%, transparent)",
+  },
+  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--foreground)" },
+  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": {
+    backgroundColor: "color-mix(in oklch, var(--primary) 20%, transparent)",
+  },
+  ".cm-matchingBracket": {
+    backgroundColor: "var(--accent)",
+    outline: "1px solid var(--ring)",
+  },
+  ".cm-searchMatch": {
+    backgroundColor: "color-mix(in oklch, var(--chart-4) 25%, transparent)",
+  },
+  ".cm-searchMatch.cm-searchMatch-selected": {
+    backgroundColor: "color-mix(in oklch, var(--chart-4) 45%, transparent)",
+  },
+  ".cm-panels, .cm-tooltip": {
+    color: "var(--popover-foreground)",
+    backgroundColor: "var(--popover)",
+    borderColor: "var(--border)",
+  },
+  ".cm-search input": {
+    width: "auto",
+    maxWidth: "180px",
+    background: "var(--background)",
+    color: "var(--foreground)",
+    border: "1px solid var(--input)",
+  },
+  ".cm-button": {
+    color: "var(--secondary-foreground)",
+    backgroundImage: "none",
+    backgroundColor: "var(--secondary)",
+    border: "1px solid var(--input)",
+  },
+  ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
+    color: "var(--primary-foreground)",
+    backgroundColor: "var(--primary)",
+  },
+  ".cm-foldPlaceholder": {
+    backgroundColor: "var(--muted)",
+    color: "var(--muted-foreground)",
+    border: "none",
+  },
+});
 const highlight = HighlightStyle.define([
-  { tag: tags.keyword, color: "#cba6f7" },
-  { tag: [tags.string, tags.regexp], color: "#a6e3a1" },
-  { tag: [tags.number, tags.bool, tags.null], color: "#fab387" },
-  { tag: tags.comment, color: "#7f849c", fontStyle: "italic" },
-  { tag: [tags.typeName, tags.className], color: "#f9e2af" },
-  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: "#89b4fa" },
-  { tag: [tags.propertyName, tags.attributeName], color: "#b4befe" },
-  { tag: [tags.operator, tags.punctuation], color: "#89dceb" },
+  { tag: tags.keyword, color: "var(--chart-1)" },
+  { tag: [tags.string, tags.regexp], color: "var(--chart-2)" },
+  { tag: [tags.number, tags.bool, tags.null], color: "var(--chart-5)" },
+  { tag: tags.comment, color: "var(--muted-foreground)", fontStyle: "italic" },
+  { tag: [tags.typeName, tags.className], color: "var(--chart-4)" },
+  {
+    tag: [tags.function(tags.variableName), tags.function(tags.propertyName)],
+    color: "var(--chart-3)",
+  },
+  { tag: [tags.propertyName, tags.attributeName], color: "var(--foreground)" },
+  { tag: [tags.operator, tags.punctuation], color: "var(--muted-foreground)" },
 ]);
 const languageNames = {
   typescript: "TypeScript",
@@ -130,14 +139,14 @@ const languageNames = {
 };
 
 export default function CodeEditor({
-  modelValue,
+  value,
   label,
   id,
   language = "typescript",
-  readonly,
+  readOnly,
   minLines = 6,
   maxLines = 26,
-  onUpdateModelValue,
+  onChange,
 }: CodeEditorProps) {
   const fallbackId = useId();
   const resolvedId = id ?? fallbackId;
@@ -157,17 +166,17 @@ export default function CodeEditor({
       previous &&
       (previous.id !== resolvedId ||
         previous.language !== language ||
-        previous.readonly !== readonly)
+        previous.readOnly !== readOnly)
     ) {
       revision.current++;
     }
     configuration.current = {
-      modelValue,
+      value,
       label,
       id: resolvedId,
       language,
-      readonly,
-      onUpdateModelValue,
+      readOnly,
+      onChange,
     };
   });
 
@@ -179,7 +188,7 @@ export default function CodeEditor({
       !editor ||
       !config ||
       !abort ||
-      config.readonly ||
+      config.readOnly ||
       busy.current ||
       config.language === "bash"
     )
@@ -205,7 +214,7 @@ export default function CodeEditor({
       if (
         abort.signal.aborted ||
         view.current !== editor ||
-        configuration.current?.readonly ||
+        configuration.current?.readOnly ||
         configuration.current?.language !== syntax ||
         configuration.current?.id !== sourceId ||
         sourceRevision !== revision.current ||
@@ -238,7 +247,7 @@ export default function CodeEditor({
     controller.current = abort;
     const editor = new EditorView({
       parent: host.current,
-      doc: config.modelValue,
+      doc: config.value,
       extensions: [
         basicSetup,
         theme,
@@ -258,7 +267,7 @@ export default function CodeEditor({
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             revision.current++;
-            configuration.current?.onUpdateModelValue?.(update.state.doc.toString());
+            configuration.current?.onChange?.(update.state.doc.toString());
           }
           if (update.selectionSet || update.docChanged) {
             const head = update.state.selection.main.head;
@@ -284,23 +293,18 @@ export default function CodeEditor({
     const editor = view.current;
     if (!editor) return;
     const previous = editor.state.doc.toString();
-    if (previous === modelValue) return;
+    if (previous === value) return;
     // A minimal replacement lets CodeMirror map the current selection and retain undo history.
     let from = 0;
-    while (
-      from < previous.length &&
-      from < modelValue.length &&
-      previous[from] === modelValue[from]
-    )
-      from++;
+    while (from < previous.length && from < value.length && previous[from] === value[from]) from++;
     let oldEnd = previous.length;
-    let newEnd = modelValue.length;
-    while (oldEnd > from && newEnd > from && previous[oldEnd - 1] === modelValue[newEnd - 1]) {
+    let newEnd = value.length;
+    while (oldEnd > from && newEnd > from && previous[oldEnd - 1] === value[newEnd - 1]) {
       oldEnd--;
       newEnd--;
     }
-    editor.dispatch({ changes: { from, to: oldEnd, insert: modelValue.slice(from, newEnd) } });
-  }, [modelValue]);
+    editor.dispatch({ changes: { from, to: oldEnd, insert: value.slice(from, newEnd) } });
+  }, [value]);
   useLayoutEffect(() => {
     const syntax = compartments.current?.syntax;
     if (syntax)
@@ -311,11 +315,11 @@ export default function CodeEditor({
     const config = configuration.current;
     if (access && config)
       view.current?.dispatch({ effects: access.reconfigure(accessExtension(config)) });
-  }, [readonly, resolvedId, label]);
+  }, [readOnly, resolvedId, label]);
 
   return (
     <div
-      className={`code-editor workflow-workspace${readonly ? " is-readonly" : ""}`}
+      className={`code-editor workflow-workspace${readOnly ? " is-readonly" : ""}`}
       style={
         {
           "--code-min-height": `${minLines * 1.65 + 1.85}em`,
@@ -327,9 +331,9 @@ export default function CodeEditor({
       <div className="code-editor-status">
         <span>
           {languageNames[language]}
-          {readonly && <span> · Read only</span>}
+          {readOnly && <span> · Read only</span>}
         </span>
-        {!readonly && language !== "bash" && (
+        {!readOnly && language !== "bash" && (
           <button
             type="button"
             className="code-format"

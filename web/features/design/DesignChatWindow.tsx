@@ -7,6 +7,7 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from "react";
+import { useForm, useStore } from "@tanstack/react-form";
 import {
   designScopes,
   designSessionSchema,
@@ -106,14 +107,18 @@ export default function DesignChatWindow({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const sessionRef = useRef(initial);
-  const draftRef = useRef(draft);
+  const composer = useForm({
+    defaultValues: { message: draft },
+    onSubmit: () => send(),
+  });
+  const message = useStore(composer.store, (state) => state.values.message);
   const busyRef = useRef(false);
   const input = useRef<HTMLTextAreaElement | null>(null);
   const conversation = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
   const origin = useRef<DragOrigin | undefined>(undefined);
   const resizing = useRef<ResizeOrigin | undefined>(undefined);
-  const autosizeRef = useAutosize(draft, 8);
+  const autosizeRef = useAutosize(message, 8);
   const inputRef = useCallback(
     (element: HTMLTextAreaElement | null) => {
       input.current = element;
@@ -135,8 +140,8 @@ export default function DesignChatWindow({
   }, []);
 
   useEffect(() => {
-    draftRef.current = draft;
-  }, [draft]);
+    if (composer.getFieldValue("message") !== draft) composer.setFieldValue("message", draft);
+  }, [composer, draft]);
 
   const accept = useCallback(
     (value: DesignSession, signal: AbortSignal) => {
@@ -189,7 +194,7 @@ export default function DesignChatWindow({
   }, [session.messages.length, working]);
 
   function changeDraft(value: string) {
-    draftRef.current = value;
+    composer.setFieldValue("message", value);
     onDraft(value);
   }
 
@@ -210,7 +215,7 @@ export default function DesignChatWindow({
   }
 
   async function send() {
-    const content = draftRef.current.trim();
+    const content = composer.getFieldValue("message").trim();
     const current = sessionRef.current;
     if (!content || current.status === "working" || busyRef.current) return;
     await perform(async (signal) => {
@@ -220,14 +225,14 @@ export default function DesignChatWindow({
         signal,
       });
       accept(updated, signal);
-      if (!signal.aborted && draftRef.current.trim() === content) changeDraft("");
+      if (!signal.aborted && composer.getFieldValue("message").trim() === content) changeDraft("");
     });
   }
 
   function keydown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
-      void send();
+      void composer.handleSubmit();
     }
   }
 
@@ -524,25 +529,33 @@ export default function DesignChatWindow({
         className="design-compose"
         onSubmit={(event) => {
           event.preventDefault();
-          void send();
+          void composer.handleSubmit();
         }}
       >
-        <textarea
-          ref={inputRef}
-          value={draft}
-          onChange={(event) => changeDraft(event.target.value)}
-          aria-label="Message AI designer"
-          placeholder={
-            session.messages.length ? "Refine the proposal, or ask a question…" : label.placeholder
-          }
-          disabled={busy || working}
-          rows={3}
-          maxLength={8000}
-          onKeyDown={keydown}
-        />
+        <composer.Field name="message">
+          {(field) => (
+            <textarea
+              ref={inputRef}
+              name={field.name}
+              value={field.state.value}
+              onChange={(event) => changeDraft(event.target.value)}
+              onBlur={field.handleBlur}
+              aria-label="Message AI designer"
+              placeholder={
+                session.messages.length
+                  ? "Refine the proposal, or ask a question…"
+                  : label.placeholder
+              }
+              disabled={busy || working}
+              rows={3}
+              maxLength={8000}
+              onKeyDown={keydown}
+            />
+          )}
+        </composer.Field>
         <div>
           <small>{contextLabel(pageContext)} context included · Enter to send</small>
-          {!working && draft && (
+          {!working && message && (
             <button type="button" disabled={busy} onClick={() => changeDraft("")}>
               Discard message
             </button>
@@ -556,7 +569,7 @@ export default function DesignChatWindow({
               type="submit"
               className="primary"
               aria-label="Send to AI designer"
-              disabled={busy || !draft.trim()}
+              disabled={busy || !message.trim()}
             >
               <Icon name="arrow" size={17} />
             </button>

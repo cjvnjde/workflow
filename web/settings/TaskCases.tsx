@@ -5,8 +5,8 @@ import { useAutosize } from "../shared/autosize.js";
 
 type TaskCase = OrchestrationSettings["cases"][number];
 export interface TaskCasesProps {
-  modelValue: OrchestrationSettings;
-  onUpdateModelValue: (value: OrchestrationSettings) => void;
+  value: OrchestrationSettings;
+  onChange: (value: OrchestrationSettings) => void;
 }
 
 function CaseCard({
@@ -72,10 +72,10 @@ function CaseCard({
   );
 }
 
-export default function TaskCases({ modelValue: settings, onUpdateModelValue }: TaskCasesProps) {
+export default function TaskCases({ value: settings, onChange }: TaskCasesProps) {
   const instructionsRef = useAutosize(settings.instructions);
   function add() {
-    onUpdateModelValue({
+    onChange({
       ...settings,
       cases: [
         ...settings.cases,
@@ -113,9 +113,7 @@ export default function TaskCases({ modelValue: settings, onUpdateModelValue }: 
               ref={instructionsRef}
               rows={3}
               placeholder="Project priorities, planning preferences, and constraints…"
-              onChange={(event) =>
-                onUpdateModelValue({ ...settings, instructions: event.target.value })
-              }
+              onChange={(event) => onChange({ ...settings, instructions: event.target.value })}
             />
           )}
         </Field>
@@ -123,9 +121,7 @@ export default function TaskCases({ modelValue: settings, onUpdateModelValue }: 
           <input
             checked={settings.suggestBlocks}
             type="checkbox"
-            onChange={(event) =>
-              onUpdateModelValue({ ...settings, suggestBlocks: event.target.checked })
-            }
+            onChange={(event) => onChange({ ...settings, suggestBlocks: event.target.checked })}
           />
           Let the orchestrator suggest useful new blocks
         </label>
@@ -135,13 +131,13 @@ export default function TaskCases({ modelValue: settings, onUpdateModelValue }: 
           key={item.id}
           item={item}
           onUpdate={(updated) =>
-            onUpdateModelValue({
+            onChange({
               ...settings,
               cases: settings.cases.map((entry) => (entry.id === updated.id ? updated : entry)),
             })
           }
           onRemove={() =>
-            onUpdateModelValue({
+            onChange({
               ...settings,
               cases: settings.cases.filter((entry) => entry.id !== item.id),
             })

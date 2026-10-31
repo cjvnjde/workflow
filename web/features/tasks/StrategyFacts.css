@@ -3,7 +3,7 @@
 }
 .strategy-facts p {
   line-height: 1.6;
-  color: var(--ctp-subtext0);
+  color: var(--muted-foreground);
 }
 .strategy-facts h3 {
   margin-top: 0;
@@ -21,7 +21,7 @@
   gap: 14px;
 }
 .strategy-facts .strategy-fact-grid dt {
-  color: var(--ctp-subtext0);
+  color: var(--muted-foreground);
   font-size: 11px;
   margin-bottom: 5px;
 }
@@ -33,7 +33,7 @@
 .strategy-facts .strategy-roles article {
   padding: 12px;
   margin-top: 10px;
-  background: var(--ctp-mantle);
+  background: var(--card);
   border-radius: 8px;
   overflow-wrap: anywhere;
 }

@@ -21,7 +21,7 @@
 .memory-settings .memory-list-heading p,
 .memory-settings .memory-editor-heading small,
 .memory-settings .memory-id {
-  color: var(--ctp-subtext0);
+  color: var(--muted-foreground);
 }
 .memory-settings .memory-list-heading {
   margin: 24px 0 10px;
@@ -31,7 +31,7 @@
 }
 .memory-settings .memory-list-heading h3 small {
   margin-left: 8px;
-  color: var(--ctp-overlay1);
+  color: var(--muted-foreground);
   font-weight: 400;
 }
 .memory-settings .memory-list-heading p {
@@ -64,24 +64,24 @@
   overflow-wrap: anywhere;
 }
 .memory-settings .memory-entry[aria-pressed="true"] {
-  border-color: var(--ctp-blue);
-  background: var(--ctp-surface0);
+  border-color: var(--info);
+  background: var(--muted);
 }
 .memory-settings .memory-entry > span:not(.memory-kind),
 .memory-settings .memory-entry small {
-  color: var(--ctp-subtext0);
+  color: var(--muted-foreground);
   line-height: 1.5;
 }
 .memory-settings .memory-kind {
-  color: var(--ctp-mauve);
+  color: var(--primary);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 .memory-settings .memory-empty {
-  color: var(--ctp-subtext0);
+  color: var(--muted-foreground);
   padding: 20px;
-  border: 1px dashed var(--ctp-surface1);
+  border: 1px dashed var(--border);
   border-radius: 12px;
   margin: 0;
 }
@@ -109,7 +109,7 @@
 .memory-settings .memory-conflict {
   margin-top: 18px;
   padding: 14px;
-  border: 1px solid var(--ctp-yellow);
+  border: 1px solid var(--warning);
   border-radius: 8px;
 }
 .memory-settings .memory-latest {
@@ -120,7 +120,7 @@
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  background: var(--ctp-mantle);
+  background: var(--card);
   padding: 12px;
 }
 .memory-settings .memory-id {
@@ -137,7 +137,7 @@
   min-width: 0;
 }
 .memory-settings .memory-facts dt {
-  color: var(--ctp-subtext0);
+  color: var(--muted-foreground);
   font-size: 11px;
   margin-bottom: 5px;
 }
@@ -157,7 +157,7 @@
 }
 .memory-settings .memory-sources small {
   display: block;
-  color: var(--ctp-subtext0);
+  color: var(--muted-foreground);
   overflow-wrap: anywhere;
   margin-top: 5px;
 }

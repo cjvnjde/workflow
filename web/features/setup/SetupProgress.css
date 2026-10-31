@@ -1,7 +1,7 @@
 .setup-progress {
-  border: 1px solid var(--ui-edge);
-  border-radius: var(--ui-card-radius);
-  background: var(--ui-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--card);
   padding: 20px;
   margin: 24px 0;
   min-width: 0;
@@ -13,7 +13,7 @@
 }
 .setup-progress .setup-progress-heading > svg {
   flex-shrink: 0;
-  color: var(--accent);
+  color: var(--primary);
 }
 .setup-progress .setup-progress-heading > div {
   flex: 1;
@@ -35,7 +35,7 @@
   display: flex;
   align-items: baseline;
   gap: 8px;
-  color: var(--ctp-green);
+  color: var(--success);
   font-size: 11px;
   line-height: 1.7;
   margin: 12px 0;
@@ -45,11 +45,11 @@
 }
 .setup-progress .setup-readiness {
   font-size: 12px;
-  color: var(--ctp-yellow);
+  color: var(--warning);
   margin: 12px 0;
 }
 .setup-progress .setup-job-details {
-  border-top: 1px solid var(--ui-edge);
+  border-top: 1px solid var(--border);
   padding-top: 14px;
   margin-top: 16px;
 }
@@ -65,12 +65,12 @@
   gap: 6px 12px;
   margin-top: 16px;
   font-size: 11px;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 .setup-progress .setup-job-identity code {
   user-select: all;
   overflow-wrap: anywhere;
-  color: var(--ctp-text);
+  color: var(--foreground);
   margin-left: 5px;
 }
 .setup-progress .setup-job-identity button {
@@ -100,7 +100,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--ui-edge);
+  border: 1px solid var(--border);
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -108,18 +108,18 @@
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: var(--muted);
+  background: var(--muted-foreground);
 }
 .setup-progress .setup-stage-list .completed .setup-stage-icon {
-  color: var(--ctp-green);
-  background: color-mix(in srgb, var(--ctp-green) 8%, transparent);
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 8%, transparent);
 }
 .setup-progress .setup-stage-list .running .setup-stage-icon {
-  color: var(--accent);
+  color: var(--primary);
 }
 .setup-progress .setup-stage-list .failed .setup-stage-icon,
 .setup-progress .setup-stage-list .interrupted .setup-stage-icon {
-  color: var(--ctp-yellow);
+  color: var(--warning);
 }
 .setup-progress .setup-stage-list strong {
   display: inline;
@@ -130,7 +130,7 @@
   display: inline;
   margin-left: 10px;
   font-size: 10px;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 .setup-progress .setup-stage-list p {
   margin: 3px 0 0;
@@ -138,11 +138,11 @@
 }
 .setup-progress .setup-activity {
   font-size: 12px;
-  border-left: 2px solid var(--accent);
+  border-left: 2px solid var(--primary);
   padding-left: 12px;
 }
 .setup-progress .setup-job-error {
-  color: var(--ctp-peach);
+  color: var(--warning);
   font-size: 12px;
   overflow-wrap: anywhere;
 }
@@ -161,14 +161,14 @@
 }
 .setup-progress .setup-job-actions > span {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--muted-foreground);
   flex: 1;
   min-width: 180px;
 }
 .setup-progress .setup-start-form {
   margin-top: 18px;
   padding-top: 16px;
-  border-top: 1px solid var(--ui-edge);
+  border-top: 1px solid var(--border);
 }
 .setup-progress .setup-start-form label {
   display: block;
@@ -176,7 +176,7 @@
   margin-bottom: 8px;
 }
 .setup-progress .setup-start-form label span {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 11px;
 }
 .setup-progress .setup-start-form p {
@@ -199,7 +199,7 @@
 }
 .setup-progress .setup-resume-limit label span,
 .setup-progress .setup-resume-limit small {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 11px;
 }
 .setup-progress .setup-resume-limit small {

@@ -1,4 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useForm, useStore } from "@tanstack/react-form";
 import type { z } from "zod";
 import {
   authOptionsSchema,
@@ -22,10 +23,26 @@ export default function ProviderLogin({
 }: ProviderLoginProps) {
   const [options, setOptions] = useState<z.infer<typeof authOptionsSchema>>([]);
   const [session, setSession] = useState<AuthSession | null>(null);
-  const [provider, setProvider] = useState("");
-  const [response, setResponse] = useState({ promptId: "", value: "" });
+  const providerForm = useForm({
+    defaultValues: { provider: "" },
+    onSubmit: async ({ value }) => {
+      if (value.provider) await start(value.provider, "api_key");
+    },
+  });
+  const provider = useStore(providerForm.store, (state) => state.values.provider);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const prompt = session?.prompt;
+  const responseForm = useForm({
+    formId: `provider-auth-${session?.id ?? "none"}-${prompt?.id ?? "none"}`,
+    defaultValues: { answer: "" },
+    onSubmit: async ({ value, formApi }) => {
+      if (!value.answer || busy) return;
+      formApi.reset();
+      await respond(value.answer);
+    },
+  });
+  const answer = useStore(responseForm.store, (state) => state.values.answer);
   const sequence = useRef(0);
   const controller = useRef<AbortController | null>(null);
   const connected = useEffectEvent(onConnected);
@@ -88,7 +105,7 @@ export default function ProviderLogin({
     }
   }
   function start(id: string, method: "oauth" | "api_key") {
-    void perform((signal) =>
+    return perform((signal) =>
       request("/api/auth/session", authSessionSchema, {
         method: "POST",
         body: { provider: id, method },
@@ -97,15 +114,12 @@ export default function ProviderLogin({
     );
   }
   const pending = session?.status === "pending";
-  const prompt = session?.prompt;
   const promptOptions = prompt?.options;
-  const answer = response.promptId === prompt?.id ? response.value : "";
-  function respond() {
+  async function respond(answer: string) {
     if (!session || !prompt) return;
     const current = session;
     const question = prompt;
-    setResponse({ promptId: "", value: "" });
-    void perform((signal) =>
+    await perform((signal) =>
       request(`/api/auth/session/${current.id}/respond`, authSessionSchema, {
         method: "POST",
         body: { promptId: question.id, value: answer },
@@ -116,7 +130,7 @@ export default function ProviderLogin({
   function cancel() {
     if (!session) return;
     const current = session;
-    setResponse({ promptId: "", value: "" });
+    responseForm.reset();
     void perform((signal) =>
       request(`/api/auth/session/${current.id}/cancel`, authSessionSchema, {
         method: "POST",
@@ -148,7 +162,7 @@ export default function ProviderLogin({
                 pending ||
                 !options.some((item) => item.id === "openai" && item.methods.includes("oauth"))
               }
-              onClick={() => start("openai", "oauth")}
+              onClick={() => void start("openai", "oauth")}
             >
               Continue with ChatGPT
             </button>
@@ -162,7 +176,7 @@ export default function ProviderLogin({
           id="api-key-provider"
           value={provider}
           disabled={busy || pending}
-          onChange={(event) => setProvider(event.target.value)}
+          onChange={(event) => providerForm.setFieldValue("provider", event.target.value)}
         >
           <option value="">Choose a provider</option>
           {options
@@ -173,7 +187,10 @@ export default function ProviderLogin({
               </option>
             ))}
         </select>
-        <button disabled={busy || pending || !provider} onClick={() => start(provider, "api_key")}>
+        <button
+          disabled={busy || pending || !provider}
+          onClick={() => void providerForm.handleSubmit()}
+        >
           Connect with API key
         </button>
       </details>
@@ -222,7 +239,8 @@ export default function ProviderLogin({
               key={prompt.id}
               onSubmit={(event) => {
                 event.preventDefault();
-                respond();
+                event.stopPropagation();
+                void responseForm.handleSubmit();
               }}
             >
               <label htmlFor="auth-answer">{prompt.message}</label>
@@ -230,9 +248,7 @@ export default function ProviderLogin({
                 <select
                   id="auth-answer"
                   value={answer}
-                  onChange={(event) =>
-                    setResponse({ promptId: prompt.id, value: event.target.value })
-                  }
+                  onChange={(event) => responseForm.setFieldValue("answer", event.target.value)}
                   disabled={busy}
                   required
                 >
@@ -247,9 +263,7 @@ export default function ProviderLogin({
                 <input
                   id="auth-answer"
                   value={answer}
-                  onChange={(event) =>
-                    setResponse({ promptId: prompt.id, value: event.target.value })
-                  }
+                  onChange={(event) => responseForm.setFieldValue("answer", event.target.value)}
                   type={prompt.type === "text" ? "text" : "password"}
                   disabled={busy}
                   placeholder={prompt.placeholder}

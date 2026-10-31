@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useForm, useStore } from "@tanstack/react-form";
 import Icon from "../../shared/Icon.js";
 
 export default function SessionSwitcher({
@@ -9,13 +10,16 @@ export default function SessionSwitcher({
   const dialog = useRef<HTMLDialogElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const lookup = useRef<AbortController | undefined>(undefined);
-  const [value, setValue] = useState("");
+  const form = useForm({
+    defaultValues: { reference: "" },
+    onSubmit: ({ value }) => open(value.reference),
+  });
+  const value = useStore(form.store, (state) => state.values.reference);
+  const busy = useStore(form.store, (state) => state.isSubmitting);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
   const cancelLookup = useCallback(() => {
     lookup.current?.abort();
     lookup.current = undefined;
-    setBusy(false);
   }, []);
   useEffect(
     () => () => {
@@ -32,24 +36,22 @@ export default function SessionSwitcher({
     dialog.current?.showModal();
     input.current?.focus();
   }
-  async function open() {
+  async function open(value: string) {
     if (lookup.current || !value.trim()) return;
     const controller = new AbortController();
     lookup.current = controller;
-    setBusy(true);
     setError("");
     try {
       await onOpen(value, controller.signal);
       controller.signal.throwIfAborted();
       dialog.current?.close();
-      setValue("");
+      form.reset();
     } catch (failure) {
       if (!controller.signal.aborted)
         setError(failure instanceof Error ? failure.message : String(failure));
     } finally {
       if (lookup.current === controller) {
         lookup.current = undefined;
-        setBusy(false);
       }
     }
   }
@@ -74,7 +76,7 @@ export default function SessionSwitcher({
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            void open();
+            void form.handleSubmit();
           }}
         >
           <div className="session-dialog-heading">
@@ -96,16 +98,22 @@ export default function SessionSwitcher({
             results stay in sync.
           </p>
           <label htmlFor="session-reference">Session ID or Workflow link</label>
-          <input
-            id="session-reference"
-            ref={input}
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-            placeholder="Paste a task ID, run ID, or link"
-            autoComplete="off"
-            spellCheck={false}
-            disabled={busy}
-          />
+          <form.Field name="reference">
+            {(field) => (
+              <input
+                id="session-reference"
+                name={field.name}
+                ref={input}
+                value={field.state.value}
+                onChange={(event) => field.handleChange(event.target.value)}
+                onBlur={field.handleBlur}
+                placeholder="Paste a task ID, run ID, or link"
+                autoComplete="off"
+                spellCheck={false}
+                disabled={busy}
+              />
+            )}
+          </form.Field>
           <p className="session-dialog-hint">
             This opens a session in the current project. Opening a paused session leaves it paused
             until you choose Resume.

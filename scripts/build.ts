@@ -29,7 +29,7 @@ const publicNames = [
   "terminal",
 ] as const;
 const nativeTsc = fileURLToPath(
-  new URL("./bin/tsc", import.meta.resolve("@typescript/native/package.json")),
+  new URL("./bin/tsc", import.meta.resolve("typescript/package.json")),
 );
 const declarationArgs = [
   "--ignoreConfig",

@@ -1,3795 +1,3564 @@
-@scope (.workflow-workspace) to (.shadcn-theme) {
-  /* Catppuccin Mocha — https://catppuccin.com/palette/ */
-  /* Workspace controls keep their established palette beside neutral composers. */
-  :scope {
-    --ctp-rosewater: #f5e0dc;
-    --ctp-flamingo: #f2cdcd;
-    --ctp-pink: #f5c2e7;
-    --ctp-mauve: #cba6f7;
-    --ctp-red: #f38ba8;
-    --ctp-maroon: #eba0ac;
-    --ctp-peach: #fab387;
-    --ctp-yellow: #f9e2af;
-    --ctp-green: #a6e3a1;
-    --ctp-teal: #94e2d5;
-    --ctp-sky: #89dceb;
-    --ctp-sapphire: #74c7ec;
-    --ctp-blue: #89b4fa;
-    --ctp-lavender: #b4befe;
-    --ctp-text: #cdd6f4;
-    --ctp-subtext1: #bac2de;
-    --ctp-subtext0: #a6adc8;
-    --ctp-overlay2: #9399b2;
-    --ctp-overlay1: #7f849c;
-    --ctp-overlay0: #6c7086;
-    --ctp-surface2: #585b70;
-    --ctp-surface1: #45475a;
-    --ctp-surface0: #313244;
-    --ctp-base: #1e1e2e;
-    --ctp-mantle: #181825;
-    --ctp-crust: #11111b;
-    --accent: var(--ctp-mauve);
-    --muted: var(--ctp-subtext0);
-    --border: var(--ctp-surface1);
-    --surface: var(--ctp-mantle);
-    --panel: var(--ctp-surface0);
-  }
-  :scope {
-    color-scheme: dark;
-    font-family:
-      Inter,
-      ui-sans-serif,
-      -apple-system,
-      BlinkMacSystemFont,
-      "Segoe UI",
-      sans-serif;
-    color: var(--ctp-text);
-    background: var(--ctp-base);
-    font-synthesis: none;
-  }
-  :scope * {
-    box-sizing: border-box;
-  }
-  :scope {
-    margin: 0;
-  }
-  :scope button,
-  :scope input,
-  :scope textarea,
-  :scope select {
-    font: inherit;
-  }
-  :scope button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    color: var(--ctp-text);
-    background: var(--ctp-surface0);
-    border: 1px solid var(--ctp-surface1);
-    padding: 9px 13px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 12px;
-    line-height: 1.4;
-    transition:
-      background 120ms,
-      border-color 120ms;
-  }
-  :scope button:hover:not(:disabled) {
-    background: var(--ctp-surface0);
-    border-color: var(--ctp-surface2);
-  }
-  :scope button:disabled {
-    opacity: 0.42;
-    cursor: not-allowed;
-  }
-  :scope button.primary {
-    color: var(--ctp-base);
-    background: var(--ctp-mauve);
-    border-color: var(--ctp-mauve);
-    font-weight: 650;
-  }
-  :scope button.primary:hover:not(:disabled) {
-    background: var(--ctp-mauve);
-    border-color: var(--ctp-mauve);
-  }
-  :scope button.quiet,
-  :scope button.icon-button {
-    background: transparent;
-    border-color: transparent;
-  }
-  :scope button.quiet:hover:not(:disabled),
-  :scope button.icon-button:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--ctp-text) 4.3%, transparent);
-    border-color: transparent;
-  }
-  :scope button.icon-button {
-    padding: 6px;
-    flex-shrink: 0;
-  }
-  :scope button.danger-quiet,
-  :scope button.danger {
-    color: var(--ctp-red);
-    background: var(--ctp-surface0);
-    border-color: var(--ctp-surface1);
-  }
-  :scope input,
-  :scope textarea,
-  :scope select {
-    min-width: 0;
-    width: 100%;
-    border: 1px solid var(--ctp-surface1);
-    background: var(--ctp-base);
-    border-radius: 8px;
-    color: var(--ctp-text);
-    padding: 10px 12px;
-    font-size: 13px;
-  }
-  :scope textarea {
-    resize: none;
-    line-height: 1.6;
-    overflow-y: hidden;
-  }
-  :scope input::placeholder,
-  :scope textarea::placeholder {
-    color: var(--ctp-overlay1);
-  }
-  :scope input:focus,
-  :scope textarea:focus,
-  :scope select:focus,
-  :scope button:focus-visible,
-  :scope a:focus-visible {
-    outline: 2px solid var(--ctp-mauve);
-    outline-offset: 3px;
-  }
-  :scope input[type="checkbox"] {
-    accent-color: var(--ctp-mauve);
-    width: auto;
-  }
-  :scope input[hidden] {
-    display: none;
-  }
-  :scope fieldset {
-    border: 0;
-    min-width: 0;
-    padding: 0;
-    margin: 0;
-  }
-  :scope h1,
-  :scope h2,
-  :scope h3,
-  :scope p {
-    margin-top: 0;
-  }
-  :scope h1 {
-    font-size: 25px;
-    font-weight: 550;
-    letter-spacing: -0.7px;
-    line-height: 1.3;
-  }
-  :scope h2 {
-    font-size: 17px;
-    font-weight: 550;
-    letter-spacing: -0.25px;
-  }
-  :scope h3 {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--ctp-subtext1);
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    margin: 24px 0 12px;
-  }
-  :scope p {
-    font-size: 13px;
-    line-height: 1.7;
-    color: var(--ctp-subtext1);
-  }
-  :scope small {
-    color: var(--muted);
-    font-size: 11px;
-    line-height: 1.6;
-  }
-  :scope a {
-    color: var(--ctp-mauve);
-    text-decoration: none;
-  }
-  :scope pre,
-  :scope code {
-    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-    font-size: 11px;
-  }
-  :scope pre {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    line-height: 1.75;
-    margin: 0;
-  }
-  :scope svg {
-    flex-shrink: 0;
-  }
-  :scope summary {
-    cursor: pointer;
-    font-size: 12px;
-    color: var(--ctp-subtext1);
-    line-height: 1.6;
-  }
-  :scope details[open] > summary {
-    margin-bottom: 15px;
-  }
-  :scope .checkbox {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 12px;
-    color: var(--ctp-subtext1);
-    line-height: 1.6;
-  }
-  :scope .checkbox input {
-    margin: 0;
-  }
-  :scope .muted {
-    color: var(--muted);
-  }
-  :scope .eyebrow {
-    display: block;
-    font-size: 10px;
-    font-weight: 550;
-    letter-spacing: 1.7px;
-    color: var(--ctp-subtext1);
-    margin-bottom: 10px;
-    text-transform: uppercase;
-  }
-  :scope .app-shell {
-    display: grid;
-    grid-template-columns: 250px minmax(0, 1fr);
-    min-height: 100dvh;
-  }
-  :scope .task-sidebar {
-    display: flex;
-    flex-direction: column;
-    height: 100dvh;
-    position: sticky;
-    top: 0;
-    background: var(--ctp-mantle);
-    padding: 24px 14px 14px;
-    border-right: 1px solid var(--ctp-surface0);
-  }
-  :scope .brand {
-    justify-content: flex-start;
-    background: transparent;
-    border: 0;
-    padding: 0 10px;
-    gap: 12px;
-    margin-bottom: 27px;
-  }
-  :scope .brand:hover:not(:disabled) {
-    background: transparent;
-  }
-  :scope .brand-mark {
-    width: 36px;
-    height: 38px;
-    display: grid;
-    place-items: center;
-    color: var(--ctp-mauve);
-    border: 1px solid var(--ctp-surface1);
-    border-radius: 11px;
-    background: var(--ctp-surface0);
-  }
-  :scope .brand strong {
-    font-size: 19px;
-    font-weight: 550;
-    text-align: left;
-    letter-spacing: -0.5px;
-  }
-  :scope .brand strong span {
-    display: block;
-    font-size: 10px;
-    letter-spacing: 0.3px;
-    color: var(--ctp-subtext0);
-    font-weight: 400;
-    margin-top: 3px;
-  }
-  :scope .new-task-button {
-    background: var(--ctp-surface0);
-    border-color: var(--ctp-surface1);
-    color: var(--ctp-mauve);
-    justify-content: flex-start;
-    padding: 11px 12px;
-    font-size: 13px;
-    margin-bottom: 18px;
-  }
-  :scope .new-task-button > span {
-    margin-left: auto;
-    opacity: 0.5;
-  }
-  :scope .sidebar-search {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--ctp-overlay1);
-    padding: 0 8px;
-    margin-bottom: 24px;
-  }
-  :scope .sidebar-search input {
-    border: 0;
-    background: none;
-    padding: 5px 0;
-    font-size: 12px;
-  }
-  :scope .task-history {
-    flex: 1;
-    overflow-y: auto;
-    scrollbar-width: thin;
-    min-height: 0;
-  }
-  :scope .history-heading {
-    display: flex;
-    justify-content: space-between;
-    padding: 0 10px 9px;
-    font-size: 10px;
-    color: var(--ctp-subtext0);
-    text-transform: uppercase;
-    letter-spacing: 1.3px;
-  }
-  :scope .history-heading span {
-    color: var(--ctp-surface2);
-  }
-  :scope .task-history section {
-    margin-bottom: 25px;
-  }
-  :scope .task-item {
-    display: flex;
-    width: 100%;
-    gap: 10px;
-    padding: 11px 10px;
-    text-align: left;
-    justify-content: flex-start;
-    border: 1px solid transparent;
-    background: transparent;
-    margin: 2px 0;
-    border-radius: 8px;
-  }
-  :scope .task-item > span:last-child {
-    min-width: 0;
-    flex: 1;
-  }
-  :scope .task-item strong {
-    font-size: 12px;
-    font-weight: 450;
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  :scope .task-item small {
-    display: block;
-    margin-top: 3px;
-    font-size: 10px;
-    color: var(--ctp-subtext0);
-  }
-  :scope .task-item.selected {
-    background: var(--ctp-surface0);
-    border-color: var(--ctp-surface1);
-  }
-  :scope .sidebar-empty {
-    margin: 0 10px;
-    font-size: 11px;
-    color: var(--ctp-overlay1);
-  }
-  :scope .status-dot,
-  :scope .connection-dot,
-  :scope .live-dot {
-    display: inline-block;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--ctp-overlay1);
-    flex-shrink: 0;
-  }
-  :scope .status-dot.running,
-  :scope .status-dot.planning,
-  :scope .live-dot {
-    background: var(--ctp-mauve);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ctp-mauve) 7.1%, transparent);
-    animation: breathe 2s ease-in-out infinite;
-  }
-  :scope .status-dot.completed,
-  :scope .connection-dot.online {
-    background: var(--ctp-mauve);
-  }
-  :scope .status-dot.draft,
-  :scope .status-dot.needs_input,
-  :scope .status-dot.paused,
-  :scope .status-dot.pausing {
-    background: var(--ctp-mauve);
-  }
-  :scope .status-dot.failed,
-  :scope .status-dot.interrupted {
-    background: var(--ctp-red);
-  }
-  :scope .sidebar-bottom {
-    border-top: 1px solid var(--ctp-surface0);
-    padding-top: 15px;
-  }
-  :scope .workspace-label {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    padding: 0 9px 15px;
-    color: var(--ctp-subtext0);
-  }
-  :scope .workspace-label > span:not(.connection-dot) {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-size: 12px;
-    white-space: nowrap;
-  }
-  :scope .workspace-label small {
-    display: block;
-    font-size: 10px;
-    color: var(--ctp-overlay1);
-  }
-  :scope .settings-button {
-    width: 100%;
-    justify-content: flex-start;
-    background: transparent;
-    border-color: transparent;
-    font-size: 12px;
-    color: var(--ctp-subtext1);
-  }
-  :scope .settings-button.selected {
-    background: var(--ctp-surface0);
-  }
-  :scope .main-shell {
-    min-width: 0;
-  }
-  :scope .workspace-topbar {
-    height: 65px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 35px;
-    border-bottom: 1px solid var(--ctp-surface0);
-    gap: 14px;
-  }
-  :scope .workspace-breadcrumb {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    color: var(--ctp-overlay1);
-    min-width: 0;
-    font-size: 11px;
-  }
-  :scope .workspace-breadcrumb > span {
-    max-width: 180px;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-  :scope .workspace-breadcrumb strong {
-    font-weight: 450;
-    color: var(--ctp-text);
-  }
-  :scope .topbar-right {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
-  :scope .demo-badge {
-    font-size: 9px;
-    color: var(--ctp-mauve);
-    letter-spacing: 1.2px;
-    padding: 4px 7px;
-    border: 1px solid var(--ctp-surface1);
-    border-radius: 5px;
-  }
-  :scope .connection-text {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    font-size: 10px;
-    color: var(--ctp-subtext0);
-  }
-  :scope .mobile-menu {
-    display: none !important;
-  }
-  :scope .home-main {
-    min-height: calc(100dvh - 65px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 45px 32px 110px;
-  }
-  :scope .task-home {
-    width: min(100%, 740px);
-    text-align: center;
-  }
-  :scope .home-symbol {
-    display: grid;
-    place-items: center;
-    width: 66px;
-    height: 66px;
-    border-radius: 20px;
-    border: 1px solid var(--ctp-surface2);
-    background: radial-gradient(ellipse at top, var(--ctp-surface1), var(--ctp-surface0));
-    color: var(--ctp-mauve);
-    margin: 0 auto 28px;
-    box-shadow:
-      0 6px 40px color-mix(in srgb, var(--ctp-mauve) 4.3%, transparent),
-      inset 0 1px color-mix(in srgb, var(--ctp-mauve) 12.5%, transparent);
-    transform: rotate(-4deg);
-  }
-  :scope .home-symbol svg {
-    transform: rotate(4deg);
-  }
-  :scope .home-eyebrow {
-    font-size: 9px;
-    letter-spacing: 2.3px;
-    color: var(--ctp-subtext0);
-    margin-bottom: 16px;
-  }
-  :scope .task-home h1 {
-    font-size: clamp(28px, 3.2vw, 40px);
-    font-weight: 470;
-    letter-spacing: -1.4px;
-    margin-bottom: 12px;
-  }
-  :scope .task-home > p {
-    color: var(--ctp-subtext0);
-    font-size: 14px;
-    margin-bottom: 32px;
-  }
-  :scope .task-home > .demo-note {
-    margin: 28px 0 0;
-    font-size: 10px;
-    color: var(--ctp-overlay1);
-  }
-  :scope .attachment-tray {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    padding: 16px 16px 0;
-  }
-  :scope .attachment-chip {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    max-width: 215px;
-    border: 1px solid var(--ctp-surface1);
-    background: var(--ctp-base);
-    padding: 6px 7px;
-    border-radius: 9px;
-  }
-  :scope .attachment-chip > img {
-    height: 36px;
-    width: 36px;
-    object-fit: cover;
-    border-radius: 5px;
-  }
-  :scope .attachment-chip > span {
-    font-size: 11px;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  :scope .attachment-chip small {
-    display: block;
-    font-size: 9px;
-  }
-  :scope .task-main {
-    padding: 30px 35px 65px;
-  }
-  :scope .task-content {
-    max-width: 1200px;
-    margin: auto;
-  }
-  :scope .task-request {
-    padding: 0 0 24px;
-    margin-bottom: 25px;
-    border-bottom: 1px solid var(--ctp-surface0);
-  }
-  :scope .request-heading {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 15px;
-  }
-  :scope .request-heading .eyebrow {
-    margin: 0;
-  }
-  :scope .request-heading button {
-    color: var(--ctp-subtext0);
-    font-size: 10px;
-  }
-  :scope .task-request > p {
-    color: var(--ctp-text);
-    font-size: 15px;
-    line-height: 1.7;
-    white-space: pre-wrap;
-    margin: 12px 0 0;
-  }
-  :scope .request-attachments {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 15px;
-  }
-  :scope .request-attachments a {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 11px;
-    max-width: 240px;
-    background: var(--ctp-surface0);
-    border: 1px solid var(--ctp-surface1);
-    padding: 6px 9px;
-    border-radius: 8px;
-  }
-  :scope .request-attachments span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  :scope .request-attachments img {
-    width: 42px;
-    height: 36px;
-    object-fit: cover;
-    border-radius: 4px;
-  }
-  :scope .task-request details {
-    margin-top: 15px;
-  }
-  :scope .plan-rationale {
-    display: flex;
-    gap: 12px;
-    color: var(--ctp-subtext1);
-    margin: 22px 0 30px;
-  }
-  :scope .plan-rationale > svg {
-    margin-top: 2px;
-  }
-  :scope .plan-rationale span {
-    font-size: 11px;
-    font-weight: 600;
-  }
-  :scope .plan-rationale p {
-    color: var(--ctp-subtext0);
-    font-size: 12px;
-    margin: 6px 0 0;
-  }
-  :scope .workflow-heading {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 18px;
-    margin-bottom: 16px;
-  }
-  :scope .workflow-heading h1 {
-    margin-bottom: 0;
-    font-size: 23px;
-  }
-  :scope .status-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    white-space: nowrap;
-    padding: 6px 9px;
-    font-size: 10px;
-    border-radius: 6px;
-    border: 1px solid var(--ctp-surface1);
-    background: var(--ctp-surface0);
-    color: var(--ctp-subtext1);
-  }
-  :scope .status-pill.draft {
-    border-color: var(--ctp-surface1);
-    color: var(--ctp-mauve);
-    background: var(--ctp-surface0);
-  }
-  :scope .status-pill.completed {
-    color: var(--ctp-mauve);
-    border-color: var(--ctp-surface1);
-  }
-  :scope .status-pill.failed,
-  :scope .status-pill.interrupted {
-    color: var(--ctp-red);
-    border-color: var(--ctp-surface2);
-  }
-  :scope .workflow-actions {
-    display: flex;
-    gap: 9px;
-    align-items: center;
-    flex-wrap: wrap;
-    margin-bottom: 22px;
-  }
-  :scope .workflow-counts {
-    color: var(--ctp-subtext0);
-    font-size: 10px;
-    margin-left: auto;
-  }
-  :scope .working-card {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    background: linear-gradient(110deg, var(--ctp-surface0), var(--ctp-surface0));
-    border: 1px solid var(--ctp-surface2);
-    padding: 20px;
-    border-radius: 12px;
-    margin: 24px 0;
-  }
-  :scope .working-orb {
-    width: 48px;
-    height: 48px;
-    border-radius: 15px;
-    background: color-mix(in srgb, var(--ctp-mauve) 8.6%, transparent);
-    border: 1px solid color-mix(in srgb, var(--ctp-mauve) 25.1%, transparent);
-    color: var(--ctp-mauve);
-    display: grid;
-    place-items: center;
-    flex-shrink: 0;
-    position: relative;
-  }
-  :scope .working-orb:before {
-    content: "";
-    position: absolute;
-    inset: -5px;
-    border: 1px solid var(--ctp-mauve);
-    border-radius: 19px;
-    opacity: 0.2;
-    animation: breathe 2s ease-in-out infinite;
-  }
-  :scope .working-card > div:nth-child(2) {
-    flex: 1;
-    min-width: 0;
-  }
-  :scope .working-card .eyebrow {
-    color: var(--ctp-mauve);
-    font-size: 9px;
-    margin-bottom: 6px;
-  }
-  :scope .working-card strong {
-    font-size: 15px;
-    font-weight: 550;
-    display: block;
-  }
-  :scope .working-card div > span:last-child {
-    display: block;
-    font-size: 11px;
-    color: var(--ctp-subtext0);
-    margin-top: 5px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  :scope .working-card time {
-    font-family: monospace;
-    font-size: 12px;
-    color: var(--ctp-mauve);
-    align-self: flex-start;
-  }
-  :scope .completion-card {
-    display: flex;
-    gap: 13px;
-    padding: 18px;
-    background: var(--ctp-surface0);
-    border: 1px solid var(--ctp-surface1);
-    border-radius: 10px;
-    margin-bottom: 22px;
-  }
-  :scope .completed-icon {
-    color: var(--ctp-mauve);
-    margin-top: 2px;
-  }
-  :scope .completion-card strong {
-    font-size: 13px;
-    color: var(--ctp-mauve);
-  }
-  :scope .completion-card p {
-    color: var(--ctp-subtext0);
-    font-size: 12px;
-    margin: 6px 0 0;
-    white-space: pre-wrap;
-  }
-  :scope .step-progress {
-    display: flex;
-    overflow-x: auto;
-    gap: 8px;
-    margin: 24px 0 18px;
-    padding-bottom: 5px;
-    scrollbar-width: thin;
-  }
-  :scope .progress-step {
-    flex: 1 0 170px;
-    justify-content: flex-start;
-    align-items: flex-start;
-    padding: 12px 10px;
-    gap: 9px;
-    text-align: left;
-    background: var(--ctp-base);
-    border-color: var(--ctp-surface0);
-    border-radius: 8px;
-  }
-  :scope .progress-step > span:last-child {
-    font-size: 11px;
-    color: var(--ctp-subtext1);
-    min-width: 0;
-  }
-  :scope .progress-step small {
-    display: block;
-    font-size: 9px;
-    color: var(--ctp-overlay1);
-    max-width: 190px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    margin-top: 4px;
-  }
-  :scope .step-number {
-    display: grid;
-    place-items: center;
-    border: 1px solid var(--ctp-surface1);
-    width: 21px;
-    height: 21px;
-    border-radius: 50%;
-    color: var(--ctp-subtext0);
-    font-size: 10px;
-    flex-shrink: 0;
-  }
-  :scope .progress-step.pass .step-number {
-    color: var(--ctp-mauve);
-    background: var(--ctp-surface1);
-    border-color: var(--ctp-surface2);
-  }
-  :scope .progress-step.running,
-  :scope .progress-step.selected {
-    border-color: var(--ctp-subtext0);
-    background: var(--ctp-surface0);
-  }
-  :scope .progress-step.retry {
-    border-color: var(--ctp-surface2);
-  }
-  :scope .details-panel {
-    border: 1px solid var(--ctp-surface1);
-    border-radius: 12px;
-    overflow: hidden;
-    background: var(--ctp-base);
-  }
-  :scope .tabs {
-    display: flex;
-    align-items: center;
-    padding: 0 18px;
-    gap: 22px;
-    border-bottom: 1px solid var(--ctp-surface1);
-    background: var(--ctp-base);
-    overflow-x: auto;
-  }
-  :scope .tabs button {
-    flex-shrink: 0;
-    background: transparent;
-    border: 0;
-    border-bottom: 2px solid transparent;
-    border-radius: 0;
-    padding: 15px 2px;
-    color: var(--ctp-subtext0);
-    font-size: 11px;
-  }
-  :scope .tabs button.active {
-    color: var(--ctp-mauve);
-    border-bottom-color: var(--ctp-mauve);
-  }
-  :scope .tabs > span {
-    font-size: 9px;
-    color: var(--ctp-subtext0);
-    margin-left: auto;
-    white-space: nowrap;
-  }
-  :scope .workflow-canvas {
-    display: grid;
+:where(.workflow-workspace) .app-shell {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  min-height: 100dvh;
+}
+:where(.workflow-workspace) .task-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  position: sticky;
+  top: 0;
+  background: var(--sidebar);
+  color: var(--sidebar-foreground);
+  padding: 24px 14px 14px;
+  border-right: 1px solid var(--sidebar-border);
+}
+:where(.workflow-workspace) .brand {
+  justify-content: flex-start;
+  background: transparent;
+  border: 0;
+  padding: 0 10px;
+  gap: 12px;
+  margin-bottom: 27px;
+}
+:where(.workflow-workspace) .brand:hover:not(:disabled) {
+  background: transparent;
+}
+:where(.workflow-workspace) .brand-mark {
+  width: 36px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  color: var(--primary);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--muted);
+}
+:where(.workflow-workspace) .brand strong {
+  font-size: 19px;
+  font-weight: 550;
+  text-align: left;
+  letter-spacing: -0.5px;
+}
+:where(.workflow-workspace) .brand strong span {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.3px;
+  color: var(--muted-foreground);
+  font-weight: 400;
+  margin-top: 3px;
+}
+:where(.workflow-workspace) .new-task-button {
+  background: var(--muted);
+  border-color: var(--border);
+  color: var(--primary);
+  justify-content: flex-start;
+  padding: 11px 12px;
+  font-size: 13px;
+  margin-bottom: 18px;
+}
+:where(.workflow-workspace) .new-task-button > span {
+  margin-left: auto;
+  opacity: 0.5;
+}
+:where(.workflow-workspace) .sidebar-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-foreground);
+  padding: 0 8px;
+  margin-bottom: 24px;
+}
+:where(.workflow-workspace) .sidebar-search input {
+  border: 0;
+  background: none;
+  padding: 5px 0;
+  font-size: 12px;
+}
+:where(.workflow-workspace) .task-history {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  min-height: 0;
+}
+:where(.workflow-workspace) .history-heading {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 10px 9px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: 1.3px;
+}
+:where(.workflow-workspace) .history-heading span {
+  color: var(--border);
+}
+:where(.workflow-workspace) .task-history section {
+  margin-bottom: 25px;
+}
+:where(.workflow-workspace) .task-item {
+  display: flex;
+  width: 100%;
+  gap: 10px;
+  padding: 11px 10px;
+  text-align: left;
+  justify-content: flex-start;
+  border: 1px solid transparent;
+  background: transparent;
+  margin: 2px 0;
+  border-radius: 8px;
+}
+:where(.workflow-workspace) .task-item > span:last-child {
+  min-width: 0;
+  flex: 1;
+}
+:where(.workflow-workspace) .task-item strong {
+  font-size: 12px;
+  font-weight: 450;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:where(.workflow-workspace) .task-item small {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .task-item.selected {
+  background: var(--muted);
+  border-color: var(--border);
+}
+:where(.workflow-workspace) .sidebar-empty {
+  margin: 0 10px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .status-dot,
+:where(.workflow-workspace) .connection-dot,
+:where(.workflow-workspace) .live-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted-foreground);
+  flex-shrink: 0;
+}
+:where(.workflow-workspace) .status-dot.running,
+:where(.workflow-workspace) .status-dot.planning,
+:where(.workflow-workspace) .live-dot {
+  background: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 7.1%, transparent);
+  animation: breathe 2s ease-in-out infinite;
+}
+:where(.workflow-workspace) .status-dot.completed,
+:where(.workflow-workspace) .connection-dot.online {
+  background: var(--primary);
+}
+:where(.workflow-workspace) .status-dot.draft,
+:where(.workflow-workspace) .status-dot.needs_input,
+:where(.workflow-workspace) .status-dot.paused,
+:where(.workflow-workspace) .status-dot.pausing {
+  background: var(--primary);
+}
+:where(.workflow-workspace) .status-dot.failed,
+:where(.workflow-workspace) .status-dot.interrupted {
+  background: var(--destructive);
+}
+:where(.workflow-workspace) .sidebar-bottom {
+  border-top: 1px solid var(--border);
+  padding-top: 15px;
+}
+:where(.workflow-workspace) .workspace-label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 0 9px 15px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .workspace-label > span:not(.connection-dot) {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  white-space: nowrap;
+}
+:where(.workflow-workspace) .workspace-label small {
+  display: block;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .settings-button {
+  width: 100%;
+  justify-content: flex-start;
+  background: transparent;
+  border-color: transparent;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .settings-button.selected {
+  background: var(--muted);
+}
+:where(.workflow-workspace) .main-shell {
+  min-width: 0;
+}
+:where(.workflow-workspace) .workspace-topbar {
+  height: 65px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 35px;
+  border-bottom: 1px solid var(--border);
+  gap: 14px;
+}
+:where(.workflow-workspace) .workspace-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--muted-foreground);
+  min-width: 0;
+  font-size: 11px;
+}
+:where(.workflow-workspace) .workspace-breadcrumb > span {
+  max-width: 180px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+:where(.workflow-workspace) .workspace-breadcrumb strong {
+  font-weight: 450;
+  color: var(--foreground);
+}
+:where(.workflow-workspace) .topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+:where(.workflow-workspace) .demo-badge {
+  font-size: 9px;
+  color: var(--primary);
+  letter-spacing: 1.2px;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+:where(.workflow-workspace) .connection-text {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .mobile-menu {
+  display: none;
+}
+:where(.workflow-workspace) .home-main {
+  min-height: calc(100dvh - 65px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 45px 32px 110px;
+}
+:where(.workflow-workspace) .task-home {
+  width: min(100%, 740px);
+  text-align: center;
+}
+:where(.workflow-workspace) .home-symbol {
+  display: grid;
+  place-items: center;
+  width: 66px;
+  height: 66px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: radial-gradient(ellipse at top, var(--border), var(--muted));
+  color: var(--primary);
+  margin: 0 auto 28px;
+  box-shadow:
+    0 6px 40px color-mix(in srgb, var(--primary) 4.3%, transparent),
+    inset 0 1px color-mix(in srgb, var(--primary) 12.5%, transparent);
+  transform: rotate(-4deg);
+}
+:where(.workflow-workspace) .home-symbol svg {
+  transform: rotate(4deg);
+}
+:where(.workflow-workspace) .home-eyebrow {
+  font-size: 9px;
+  letter-spacing: 2.3px;
+  color: var(--muted-foreground);
+  margin-bottom: 16px;
+}
+:where(.workflow-workspace) .task-home h1 {
+  font-size: clamp(28px, 3.2vw, 40px);
+  font-weight: 470;
+  letter-spacing: -1.4px;
+  margin-bottom: 12px;
+}
+:where(.workflow-workspace) .task-home > p {
+  color: var(--muted-foreground);
+  font-size: 14px;
+  margin-bottom: 32px;
+}
+:where(.workflow-workspace) .task-home > .demo-note {
+  margin: 28px 0 0;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .attachment-tray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 16px 16px 0;
+}
+:where(.workflow-workspace) .attachment-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 215px;
+  border: 1px solid var(--border);
+  background: var(--background);
+  padding: 6px 7px;
+  border-radius: 9px;
+}
+:where(.workflow-workspace) .attachment-chip > img {
+  height: 36px;
+  width: 36px;
+  object-fit: cover;
+  border-radius: 5px;
+}
+:where(.workflow-workspace) .attachment-chip > span {
+  font-size: 11px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:where(.workflow-workspace) .attachment-chip small {
+  display: block;
+  font-size: 9px;
+}
+:where(.workflow-workspace) .task-main {
+  padding: 30px 35px 65px;
+}
+:where(.workflow-workspace) .task-content {
+  max-width: 1200px;
+  margin: auto;
+}
+:where(.workflow-workspace) .task-request {
+  padding: 0 0 24px;
+  margin-bottom: 25px;
+  border-bottom: 1px solid var(--border);
+}
+:where(.workflow-workspace) .request-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+}
+:where(.workflow-workspace) .request-heading .eyebrow {
+  margin: 0;
+}
+:where(.workflow-workspace) .request-heading button {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+:where(.workflow-workspace) .task-request > p {
+  color: var(--foreground);
+  font-size: 15px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  margin: 12px 0 0;
+}
+:where(.workflow-workspace) .request-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 15px;
+}
+:where(.workflow-workspace) .request-attachments a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  max-width: 240px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  padding: 6px 9px;
+  border-radius: 8px;
+}
+:where(.workflow-workspace) .request-attachments span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:where(.workflow-workspace) .request-attachments img {
+  width: 42px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+:where(.workflow-workspace) .task-request details {
+  margin-top: 15px;
+}
+:where(.workflow-workspace) .plan-rationale {
+  display: flex;
+  gap: 12px;
+  color: var(--muted-foreground);
+  margin: 22px 0 30px;
+}
+:where(.workflow-workspace) .plan-rationale > svg {
+  margin-top: 2px;
+}
+:where(.workflow-workspace) .plan-rationale span {
+  font-size: 11px;
+  font-weight: 600;
+}
+:where(.workflow-workspace) .plan-rationale p {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  margin: 6px 0 0;
+}
+:where(.workflow-workspace) .workflow-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 16px;
+}
+:where(.workflow-workspace) .workflow-heading h1 {
+  margin-bottom: 0;
+  font-size: 23px;
+}
+:where(.workflow-workspace) .status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  padding: 6px 9px;
+  font-size: 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .status-pill.draft {
+  border-color: var(--border);
+  color: var(--primary);
+  background: var(--muted);
+}
+:where(.workflow-workspace) .status-pill.completed {
+  color: var(--primary);
+  border-color: var(--border);
+}
+:where(.workflow-workspace) .status-pill.failed,
+:where(.workflow-workspace) .status-pill.interrupted {
+  color: var(--destructive);
+  border-color: var(--border);
+}
+:where(.workflow-workspace) .workflow-actions {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+}
+:where(.workflow-workspace) .workflow-counts {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  margin-left: auto;
+}
+:where(.workflow-workspace) .working-card {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  background: linear-gradient(110deg, var(--muted), var(--muted));
+  border: 1px solid var(--border);
+  padding: 20px;
+  border-radius: 12px;
+  margin: 24px 0;
+}
+:where(.workflow-workspace) .working-orb {
+  width: 48px;
+  height: 48px;
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--primary) 8.6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 25.1%, transparent);
+  color: var(--primary);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  position: relative;
+}
+:where(.workflow-workspace) .working-orb:before {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border: 1px solid var(--primary);
+  border-radius: 19px;
+  opacity: 0.2;
+  animation: breathe 2s ease-in-out infinite;
+}
+:where(.workflow-workspace) .working-card > div:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+:where(.workflow-workspace) .working-card .eyebrow {
+  color: var(--primary);
+  font-size: 9px;
+  margin-bottom: 6px;
+}
+:where(.workflow-workspace) .working-card strong {
+  font-size: 15px;
+  font-weight: 550;
+  display: block;
+}
+:where(.workflow-workspace) .working-card div > span:last-child {
+  display: block;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  margin-top: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:where(.workflow-workspace) .working-card time {
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--primary);
+  align-self: flex-start;
+}
+:where(.workflow-workspace) .completion-card {
+  display: flex;
+  gap: 13px;
+  padding: 18px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 22px;
+}
+:where(.workflow-workspace) .completed-icon {
+  color: var(--primary);
+  margin-top: 2px;
+}
+:where(.workflow-workspace) .completion-card strong {
+  font-size: 13px;
+  color: var(--primary);
+}
+:where(.workflow-workspace) .completion-card p {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+}
+:where(.workflow-workspace) .step-progress {
+  display: flex;
+  overflow-x: auto;
+  gap: 8px;
+  margin: 24px 0 18px;
+  padding-bottom: 5px;
+  scrollbar-width: thin;
+}
+:where(.workflow-workspace) .progress-step {
+  flex: 1 0 170px;
+  justify-content: flex-start;
+  align-items: flex-start;
+  padding: 12px 10px;
+  gap: 9px;
+  text-align: left;
+  background: var(--background);
+  border-color: var(--border);
+  border-radius: 8px;
+}
+:where(.workflow-workspace) .progress-step > span:last-child {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  min-width: 0;
+}
+:where(.workflow-workspace) .progress-step small {
+  display: block;
+  font-size: 9px;
+  color: var(--muted-foreground);
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 4px;
+}
+:where(.workflow-workspace) .step-number {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+:where(.workflow-workspace) .progress-step.pass .step-number {
+  color: var(--primary);
+  background: var(--border);
+  border-color: var(--border);
+}
+:where(.workflow-workspace) .progress-step.running,
+:where(.workflow-workspace) .progress-step.selected {
+  border-color: var(--muted-foreground);
+  background: var(--muted);
+}
+:where(.workflow-workspace) .progress-step.retry {
+  border-color: var(--border);
+}
+:where(.workflow-workspace) .details-panel {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--background);
+}
+:where(.workflow-workspace) .tabs {
+  display: flex;
+  align-items: center;
+  padding: 0 18px;
+  gap: 22px;
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+  overflow-x: auto;
+}
+:where(.workflow-workspace) .tabs button {
+  flex-shrink: 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 15px 2px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+:where(.workflow-workspace) .tabs button.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+:where(.workflow-workspace) .tabs > span {
+  font-size: 9px;
+  color: var(--muted-foreground);
+  margin-left: auto;
+  white-space: nowrap;
+}
+:where(.workflow-workspace) .workflow-canvas {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+:where(.workflow-workspace) .workflow-canvas.inspecting {
+  grid-template-columns: minmax(0, 1fr) 280px;
+}
+:where(.workflow-workspace) .graph-panel {
+  height: 470px;
+  position: relative;
+  min-width: 0;
+  background: var(--background);
+}
+:where(.workflow-workspace) .graph-panel > .react-flow {
+  height: calc(100% - 32px);
+  --xy-node-background-color: var(--muted);
+  --xy-node-color: var(--foreground);
+  --xy-handle-background-color: var(--muted-foreground);
+  --xy-connectionline-stroke: var(--muted-foreground);
+  --xy-background-color: var(--background);
+  --xy-edge-stroke: var(--muted-foreground);
+  --xy-edge-stroke-selected: var(--primary);
+  --xy-edge-label-background-color: var(--card);
+  --xy-edge-label-color: var(--foreground);
+  --xy-node-border: 1px solid var(--border);
+  --xy-handle-border-color: var(--background);
+  --xy-selection-background-color: color-mix(in oklch, var(--primary) 10%, transparent);
+  --xy-selection-border: 1px dotted var(--ring);
+  --xy-controls-button-background-color: var(--secondary);
+  --xy-controls-button-background-color-hover: var(--accent);
+  --xy-controls-button-color: var(--secondary-foreground);
+  --xy-controls-button-color-hover: var(--accent-foreground);
+  --xy-controls-button-border-color: var(--border);
+  --xy-attribution-background-color: color-mix(in oklch, var(--background) 75%, transparent);
+}
+:where(.workflow-workspace) .graph-legend {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 18px;
+  position: absolute;
+  bottom: 14px;
+  left: 60px;
+  right: 20px;
+  pointer-events: none;
+  font-size: 9px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .graph-legend span:first-of-type {
+  color: var(--success);
+}
+:where(.workflow-workspace) .graph-legend span:nth-of-type(2) {
+  color: var(--warning);
+}
+:where(.workflow-workspace) .react-flow__node.workflow-node {
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--muted);
+  color: var(--foreground);
+  box-shadow: 0 5px 15px color-mix(in srgb, var(--shadow-color) 18.8%, transparent);
+  text-align: left;
+}
+:where(.workflow-workspace) .react-flow__node.workflow-node.selected {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12.2%, transparent);
+}
+:where(.workflow-workspace) .graph-label {
+  padding: 13px 16px;
+}
+:where(.workflow-workspace) .graph-label small {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  letter-spacing: 0.1px;
+}
+:where(.workflow-workspace) .graph-label strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 1.5;
+  margin: 5px 0;
+}
+:where(.workflow-workspace) .graph-label > span {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+:where(.workflow-workspace) .graph-label b {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--background) 31.4%, transparent);
+  color: var(--muted-foreground);
+  font-size: 9px;
+  font-weight: 450;
+}
+:where(.workflow-workspace) .workflow-node.active {
+  border-color: var(--primary);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--primary) 13.3%, transparent),
+    0 0 20px color-mix(in srgb, var(--primary) 12.5%, transparent);
+}
+:where(.workflow-workspace) .workflow-node.active b {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--muted-foreground) 31.4%, transparent);
+}
+:where(.workflow-workspace) .workflow-node.pass {
+  border-color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .workflow-node.pass b {
+  color: var(--primary);
+}
+:where(.workflow-workspace) .workflow-node.retry {
+  border-color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .react-flow__node.terminal {
+  border-radius: 24px;
+  border-color: var(--muted-foreground);
+  background: var(--muted);
+  color: var(--primary);
+  padding: 10px;
+  font-size: 11px;
+}
+:where(.workflow-workspace) .react-flow__node.terminal.failed {
+  border-color: var(--border);
+  background: var(--muted);
+  color: var(--primary);
+}
+:where(.workflow-workspace) .react-flow__handle {
+  background: var(--muted-foreground);
+  border-color: var(--background);
+}
+:where(.workflow-workspace) .react-flow__controls {
+  box-shadow: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+:where(.workflow-workspace) .react-flow__controls-button {
+  width: 25px;
+  height: 25px;
+  min-height: 0;
+  padding: 5px;
+  border-radius: 0;
+}
+:where(.workflow-workspace) .react-flow__attribution {
+  font-size: 8px;
+}
+:where(.workflow-workspace) .react-flow__attribution a {
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .step-inspector {
+  padding: 19px;
+  border-left: 1px solid var(--border);
+  overflow: auto;
+  max-height: 470px;
+  background: var(--muted);
+}
+:where(.workflow-workspace) .step-inspector h2 {
+  font-size: 15px;
+}
+:where(.workflow-workspace) .step-inspector p {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .step-inspector .eyebrow {
+  margin: 0;
+}
+:where(.workflow-workspace) .step-inspector details {
+  margin-top: 18px;
+}
+:where(.workflow-workspace) .step-inspector pre {
+  padding: 10px;
+  background: var(--background);
+}
+:where(.workflow-workspace) .detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+  margin: 10px 0;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .detail-row strong {
+  color: var(--muted-foreground);
+  font-weight: 400;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+:where(.workflow-workspace) .handoff-label {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  margin: 7px 0;
+  border-radius: 6px;
+  font-size: 10px;
+  color: var(--foreground);
+}
+:where(.workflow-workspace) .handoff-label small {
+  display: block;
+  font-size: 9px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .step-inspector > button {
+  margin-top: 10px;
+}
+:where(.workflow-workspace) .activity,
+:where(.workflow-workspace) .artifact-list {
+  padding: 22px;
+  max-height: 650px;
+  overflow: auto;
+}
+:where(.workflow-workspace) .activity-heading {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin-bottom: 24px;
+}
+:where(.workflow-workspace) .activity-heading small {
+  margin-left: auto;
+}
+:where(.workflow-workspace) .event {
+  display: flex;
+  gap: 13px;
+  position: relative;
+  padding-bottom: 24px;
+}
+:where(.workflow-workspace) .event:before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 28px;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+}
+:where(.workflow-workspace) .event-mark {
+  width: 25px;
+  height: 25px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  color: var(--primary);
+  background: var(--muted);
+}
+:where(.workflow-workspace) .event-body {
+  flex: 1;
+  min-width: 0;
+  padding-top: 3px;
+}
+:where(.workflow-workspace) .event-meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 10px;
+  margin-bottom: 8px;
+}
+:where(.workflow-workspace) .event-meta b {
+  color: var(--primary);
+  font-weight: 500;
+  text-transform: capitalize;
+}
+:where(.workflow-workspace) .event-meta span,
+:where(.workflow-workspace) .event-meta time {
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .event-meta time {
+  margin-left: auto;
+}
+:where(.workflow-workspace) .event pre {
+  color: var(--primary);
+  max-height: 320px;
+  overflow: auto;
+}
+:where(.workflow-workspace) .event.check .event-mark {
+  border-color: var(--border);
+  color: var(--primary);
+}
+:where(.workflow-workspace) .activity {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: min(780px, 80dvh);
+  overflow: hidden;
+}
+:where(.workflow-workspace) .activity-toolbar {
+  flex-shrink: 0;
+  padding: 20px 22px 14px;
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
+}
+:where(.workflow-workspace) .activity-heading {
+  margin-bottom: 15px;
+  flex-wrap: wrap;
+}
+:where(.workflow-workspace) .activity-heading h2 {
+  font-size: 14px;
+  margin: 0;
+}
+:where(.workflow-workspace) .activity-heading p {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  margin: 4px 0 0;
+}
+:where(.workflow-workspace) .activity-heading .live-dot {
+  margin: 0 3px 0 4px;
+}
+:where(.workflow-workspace) .activity-retention {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .activity-search-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+:where(.workflow-workspace) .activity-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+  min-width: 0;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--muted-foreground);
+  background: var(--card);
+}
+:where(.workflow-workspace) .activity-search:focus-within {
+  border-color: var(--primary);
+}
+:where(.workflow-workspace) .activity-search input {
+  padding: 10px 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 12px;
+}
+:where(.workflow-workspace) .activity-search-row select {
+  width: min(35%, 240px);
+  font-size: 12px;
+  padding: 10px;
+  background: var(--card);
+}
+:where(.workflow-workspace) .activity-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding-top: 12px;
+}
+:where(.workflow-workspace) .activity-filters button {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted-foreground);
+  padding: 5px 9px;
+  font-size: 11px;
+  gap: 7px;
+  border-radius: 7px;
+}
+:where(.workflow-workspace) .activity-filters button span {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+:where(.workflow-workspace) .activity-filters button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--primary) 11%, var(--background));
+  border-color: color-mix(in srgb, var(--primary) 24%, var(--background));
+  color: var(--primary);
+}
+:where(.workflow-workspace) .activity-feed {
+  min-height: 120px;
+  overflow: auto;
+  padding: 22px;
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+}
+:where(.workflow-workspace) .activity-feed .event:last-child {
+  padding-bottom: 0;
+}
+:where(.workflow-workspace) .activity-feed .event:last-child::before {
+  display: none;
+}
+:where(.workflow-workspace) .activity-feed .event-meta {
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+  gap: 8px;
+}
+:where(.workflow-workspace) .activity-feed .event-meta b {
+  color: var(--foreground);
+  font-size: 12px;
+}
+:where(.workflow-workspace) .activity-feed .event-meta time {
+  font-size: 10px;
+}
+:where(.workflow-workspace) .event-state {
+  font-size: 9px;
+  line-height: 1.4;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--muted);
+}
+:where(.workflow-workspace) .event-state.success,
+:where(.workflow-workspace) .event.success .event-mark {
+  color: var(--success);
+}
+:where(.workflow-workspace) .event-state.error,
+:where(.workflow-workspace) .event.error .event-mark {
+  color: var(--destructive);
+}
+:where(.workflow-workspace) .event-state.warning,
+:where(.workflow-workspace) .event.warning .event-mark {
+  color: var(--warning);
+}
+:where(.workflow-workspace) .event-state.working {
+  color: var(--primary);
+}
+:where(.workflow-workspace) .event-step {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  padding: 0;
+  margin-bottom: 7px;
+  background: transparent;
+  border: 0;
+  text-align: left;
+}
+:where(.workflow-workspace) .event-preview {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+:where(.workflow-workspace) .event-details {
+  margin-top: 7px;
+}
+:where(.workflow-workspace) .event-details > summary {
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .event-details[open] > summary {
+  margin-bottom: 8px;
+}
+:where(.workflow-workspace) .event-details pre {
+  padding: 12px;
+  color: var(--muted-foreground);
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+:where(.workflow-workspace) .activity-feed .event-body > .markdown-body {
+  max-height: 380px;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+:where(.workflow-workspace) .planning-logs > .activity {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+:where(.workflow-workspace) .live-output {
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 20px;
+}
+:where(.workflow-workspace) .live-output .eyebrow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--primary);
+  font-size: 9px;
+}
+:where(.workflow-workspace) .live-output pre {
+  color: var(--primary);
+  max-height: 240px;
+  overflow: auto;
+}
+:where(.workflow-workspace) .artifact-list details {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 15px;
+  margin-top: 9px;
+  background: var(--muted);
+}
+:where(.workflow-workspace) .artifact-list summary svg {
+  vertical-align: middle;
+  margin-right: 9px;
+}
+:where(.workflow-workspace) .artifact-list pre {
+  background: var(--background);
+  padding: 15px;
+  margin-top: 10px;
+  max-height: 400px;
+  overflow: auto;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .panel-empty,
+:where(.workflow-workspace) .settings-empty {
+  padding: 45px 25px;
+  text-align: center;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .panel-empty p,
+:where(.workflow-workspace) .settings-empty p {
+  color: var(--muted-foreground);
+  max-width: 580px;
+  margin: 15px auto 0;
+}
+:where(.workflow-workspace) .run-metrics {
+  margin-top: 18px;
+  padding: 13px 0;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .run-metrics > summary {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+:where(.workflow-workspace) .run-metrics summary svg {
+  vertical-align: middle;
+  margin-right: 6px;
+}
+:where(.workflow-workspace) .metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 15px;
+  margin: 18px 0;
+}
+:where(.workflow-workspace) .metrics-grid strong {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  margin-top: 4px;
+  font-weight: 450;
+}
+:where(.workflow-workspace) .run-metrics p {
+  font-size: 11px;
+}
+:where(.workflow-workspace) .planning-panel {
+  max-width: 760px;
+  margin: 40px auto;
+}
+:where(.workflow-workspace) .planning-title {
+  text-align: center;
+}
+:where(.workflow-workspace) .planning-title .working-orb,
+:where(.workflow-workspace) .planning-symbol {
+  margin: 0 auto 24px;
+  width: 58px;
+  height: 58px;
+}
+:where(.workflow-workspace) .planning-symbol {
+  display: grid;
+  place-items: center;
+  color: var(--primary);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--muted);
+}
+:where(.workflow-workspace) .planning-title h1 {
+  font-size: 27px;
+  margin-bottom: 10px;
+}
+:where(.workflow-workspace) .planning-title p {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .planning-stages {
+  display: grid;
+  gap: 0;
+  margin: 32px auto;
+  max-width: 400px;
+}
+:where(.workflow-workspace) .planning-stages > div {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  font-size: 12px;
+  padding: 13px 0;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .planning-stages > div > span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  font-size: 10px;
+}
+:where(.workflow-workspace) .planning-stages > .done {
+  color: var(--primary);
+}
+:where(.workflow-workspace) .planning-stages > .done > span {
+  background: var(--border);
+  border-color: var(--border);
+}
+:where(.workflow-workspace) .planning-stages > .current {
+  color: var(--foreground);
+}
+:where(.workflow-workspace) .planning-stages > .current > span {
+  border-color: var(--primary);
+}
+:where(.workflow-workspace) .planning-live {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  border-radius: 10px;
+  padding: 15px;
+  font-size: 11px;
+  color: var(--primary);
+  overflow-wrap: anywhere;
+}
+:where(.workflow-workspace) .planning-logs {
+  margin: 18px 0;
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+:where(.workflow-workspace) .planning-logs > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+:where(.workflow-workspace) .planning-logs > div {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+:where(.workflow-workspace) .planning-logs pre {
+  max-height: 240px;
+  overflow: auto;
+  color: var(--muted-foreground);
+  margin-top: 7px;
+}
+:where(.workflow-workspace) .planning-actions {
+  display: flex;
+  justify-content: center;
+  margin: 20px 0;
+}
+:where(.workflow-workspace) .clarification-card {
+  border: 1px solid var(--border);
+  background: var(--muted);
+  border-radius: 14px;
+  padding: 24px;
+  margin: 25px 0;
+}
+:where(.workflow-workspace) .clarification-card > label {
+  display: block;
+  font-size: 15px;
+  line-height: 1.6;
+  margin-bottom: 16px;
+  color: var(--foreground);
+}
+:where(.workflow-workspace) .answer-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 15px;
+}
+:where(.workflow-workspace) .answer-options .selected {
+  background: var(--border);
+  border-color: var(--primary);
+}
+:where(.workflow-workspace) .clarification-card > button {
+  margin-top: 15px;
+}
+:where(.workflow-workspace) .suggested-blocks {
+  padding: 20px;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  border-radius: 10px;
+  margin-bottom: 24px;
+}
+:where(.workflow-workspace) .suggested-blocks pre {
+  max-height: 250px;
+  overflow: auto;
+}
+:where(.workflow-workspace) .settings-main {
+  padding: 32px 35px 70px;
+}
+:where(.workflow-workspace) .settings-page {
+  max-width: 1100px;
+  margin: auto;
+}
+:where(.workflow-workspace) .page-heading h1 {
+  font-size: 29px;
+  margin-bottom: 10px;
+}
+:where(.workflow-workspace) .page-heading > p {
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .settings-tabs {
+  display: flex;
+  gap: 22px;
+  margin: 28px 0 30px;
+  padding-bottom: 0;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+:where(.workflow-workspace) .settings-tabs button {
+  padding: 11px 0 14px;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+:where(.workflow-workspace) .settings-tabs button[aria-current] {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+:where(.workflow-workspace) .settings-section-title {
+  display: flex;
+  gap: 15px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin: 22px 0;
+}
+:where(.workflow-workspace) .settings-section-title h2 {
+  margin: 0 0 7px;
+}
+:where(.workflow-workspace) .settings-section-title p {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin: 0;
+  max-width: 650px;
+}
+:where(.workflow-workspace) .settings-section-title > button {
+  flex-shrink: 0;
+}
+:where(.workflow-workspace) .settings-card {
+  padding: 24px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin: 18px 0;
+}
+:where(.workflow-workspace) .card-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+:where(.workflow-workspace) .card-title > strong {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 550;
+}
+:where(.workflow-workspace) .card-title .checkbox {
+  margin-left: auto;
+}
+:where(.workflow-workspace) .field {
+  min-width: 0;
+  margin-bottom: 19px;
+}
+:where(.workflow-workspace) .field > label {
+  display: block;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  margin: 0 0 8px;
+}
+:where(.workflow-workspace) .field > small {
+  display: block;
+  margin-top: 7px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+:where(.workflow-workspace) .field-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+}
+:where(.workflow-workspace) .button-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 15px;
+}
+:where(.workflow-workspace) .settings-section-title .button-row {
+  margin-top: 0;
+  flex-shrink: 0;
+}
+:where(.workflow-workspace) .settings-save {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+  position: sticky;
+  bottom: 0;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--muted) 96.1%, transparent);
+  padding: 16px 20px;
+  margin: 28px -5px -30px;
+  border-radius: 12px;
+  backdrop-filter: blur(12px);
+  z-index: 5;
+}
+:where(.workflow-workspace) .settings-save > span {
+  flex: 1;
+  font-size: 11px;
+  color: var(--primary);
+}
+:where(.workflow-workspace) .unsaved-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 24px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--warning) 6%, var(--card));
+  font-size: 12px;
+}
+:where(.workflow-workspace) .unsaved-bar > span {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--warning);
+}
+:where(.workflow-workspace) .function-description {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 20px;
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--info);
+}
+:where(.workflow-workspace) .function-description p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.7;
+}
+:where(.workflow-workspace) .function-description svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+:where(.workflow-workspace) .inline-add {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0;
+}
+:where(.workflow-workspace) .inline-add input {
+  max-width: 260px;
+}
+:where(.workflow-workspace) .block-settings-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 22px;
+}
+:where(.workflow-workspace) .block-catalog {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 18px;
+}
+:where(.workflow-workspace) .block-catalog button {
+  justify-content: flex-start;
+  text-align: left;
+  padding: 13px 10px;
+  background: transparent;
+  border-color: transparent;
+}
+:where(.workflow-workspace) .block-catalog button.selected {
+  background: var(--border);
+  border-color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .block-catalog strong {
+  font-size: 11px;
+  font-weight: 450;
+}
+:where(.workflow-workspace) .block-catalog small {
+  display: block;
+  font-size: 9px;
+  color: var(--muted-foreground);
+  margin-top: 4px;
+}
+:where(.workflow-workspace) .block-settings-layout .settings-card {
+  min-width: 0;
+}
+:where(.workflow-workspace) .mcp-tools {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+:where(.workflow-workspace) .mcp-tools > div {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+:where(.workflow-workspace) .mcp-tools > div:last-child {
+  border: 0;
+}
+:where(.workflow-workspace) .mcp-tools small {
+  display: block;
+  margin: 7px 0 10px;
+}
+:where(.workflow-workspace) .setup-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 22px;
+  margin-top: 25px;
+  align-items: start;
+}
+:where(.workflow-workspace) .setup-card {
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--muted);
+  min-width: 0;
+}
+:where(.workflow-workspace) .model-settings > h1 {
+  font-size: 20px;
+}
+:where(.workflow-workspace) .model-settings > .eyebrow {
+  display: none;
+}
+:where(.workflow-workspace) .model-settings > p {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .setup-card label {
+  display: block;
+  margin: 18px 0 8px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .setup-card > button {
+  margin-top: 14px;
+  margin-right: 8px;
+}
+:where(.workflow-workspace) .setup-card > small {
+  display: block;
+  margin-top: 15px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .chatgpt-login {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--border);
+}
+:where(.workflow-workspace) .chatgpt-login h3 {
+  margin: 0 0 8px;
+  color: var(--foreground);
+  font-size: 14px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+:where(.workflow-workspace) .chatgpt-login p {
+  font-size: 11px;
+  color: var(--primary);
+}
+:where(.workflow-workspace) .chatgpt-login button {
+  width: 100%;
+}
+:where(.workflow-workspace) .api-key-setup {
+  margin: 18px 0;
+}
+:where(.workflow-workspace) .api-key-setup button {
+  margin-top: 10px;
+}
+:where(.workflow-workspace) .auth-session {
+  border: 1px solid var(--muted-foreground);
+  background: var(--muted);
+  padding: 16px;
+  border-radius: 9px;
+  margin: 18px 0;
+}
+:where(.workflow-workspace) .auth-session p,
+:where(.workflow-workspace) .auth-session a {
+  font-size: 12px;
+}
+:where(.workflow-workspace) .auth-session button {
+  margin-top: 10px;
+}
+:where(.workflow-workspace) .provider-list {
+  padding: 0;
+  margin: 22px 0 14px;
+  list-style: none;
+}
+:where(.workflow-workspace) .provider-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  padding: 13px 0;
+  border-top: 1px solid var(--border);
+}
+:where(.workflow-workspace) .provider-list strong {
+  font-size: 12px;
+}
+:where(.workflow-workspace) .provider-list span {
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .provider-list button {
+  font-size: 10px;
+  padding: 5px 8px;
+  margin-left: auto;
+}
+:where(.workflow-workspace) .model-caption {
+  margin: 12px 0;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+:where(.workflow-workspace) .shared-defaults {
+  margin-top: 22px;
+}
+:where(.workflow-workspace) .setup-notice {
+  border: 1px solid var(--muted-foreground);
+  border-radius: 8px;
+  background: var(--border);
+  padding: 13px 16px;
+  color: var(--primary);
+  font-size: 12px;
+  margin: 18px 0;
+}
+:where(.workflow-workspace) .inline-error,
+:where(.workflow-workspace) .error-banner,
+:where(.workflow-workspace) .validation-error {
+  background: var(--muted);
+  color: var(--destructive);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 13px 16px;
+  font-size: 12px;
+  line-height: 1.65;
+  margin: 15px 0;
+  overflow-wrap: anywhere;
+}
+:where(.workflow-workspace) .error-banner {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin: 18px 30px 0;
+}
+:where(.workflow-workspace) .error-banner span {
+  flex: 1;
+}
+:where(.workflow-workspace) .error-banner button {
+  border-color: var(--muted-foreground);
+  background: var(--muted);
+  color: var(--destructive);
+}
+:where(.workflow-workspace) .warning {
+  color: var(--primary);
+}
+:where(.workflow-workspace) .draft-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 15px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 15px 0;
+  font-size: 11px;
+  color: var(--primary);
+}
+:where(.workflow-workspace) .draft-notice button {
+  flex-shrink: 0;
+  font-size: 10px;
+}
+:where(.workflow-workspace) .plan-editor {
+  padding: 24px;
+}
+:where(.workflow-workspace) .plan-editor > p {
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .plan-editor .json-editor {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  margin-bottom: 12px;
+}
+:where(.workflow-workspace) .coordinator-progress {
+  padding: 14px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 16px 0;
+  max-height: 250px;
+  overflow: auto;
+}
+:where(.workflow-workspace) .coordinator-progress pre {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .library-editor label {
+  display: block;
+  margin: 18px 0 8px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .library-editor button {
+  margin: 12px 8px 0 0;
+}
+:where(.workflow-workspace) .library-editor small {
+  display: block;
+}
+:where(.workflow-workspace) .library-editor textarea {
+  font-family: monospace;
+  font-size: 12px;
+}
+:where(.workflow-workspace) .library-preview {
+  padding: 20px;
+  border: 1px solid var(--muted-foreground);
+  border-radius: 9px;
+  margin: 25px 0;
+}
+:where(.workflow-workspace) .library-preview article {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+}
+:where(.workflow-workspace) .library-preview pre {
+  max-height: 350px;
+  overflow: auto;
+}
+:where(.workflow-workspace) .spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid color-mix(in srgb, var(--primary) 22%, transparent);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 1.1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes breathe {
+  50% {
+    opacity: 0.45;
+  }
+}
+:where(.workflow-workspace) .editor-heading,
+:where(.workflow-workspace) .step-heading,
+:where(.workflow-workspace) .editor-help,
+:where(.workflow-workspace) .handoff-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+:where(.workflow-workspace) .editor-heading {
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+:where(.workflow-workspace) .editor-heading h2 {
+  margin-bottom: 5px;
+}
+:where(.workflow-workspace) .editor-heading p {
+  margin: 0;
+}
+:where(.workflow-workspace) .editor-switch {
+  display: flex;
+  gap: 4px;
+  border: 1px solid var(--border);
+  padding: 4px;
+  border-radius: 9px;
+}
+:where(.workflow-workspace) .editor-switch button {
+  border-color: transparent;
+  background: transparent;
+  font-size: 12px;
+}
+:where(.workflow-workspace) .editor-switch button[aria-pressed="true"] {
+  background: var(--border);
+  color: var(--info);
+}
+:where(.workflow-workspace) .editor-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+:where(.workflow-workspace) .editor-fields label {
+  font-size: 12px;
+  color: var(--info);
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+:where(.workflow-workspace) .editor-fields input,
+:where(.workflow-workspace) .editor-fields select,
+:where(.workflow-workspace) .editor-fields textarea {
+  display: block;
+  margin-top: 7px;
+  min-width: 0;
+}
+:where(.workflow-workspace) .editor-fields textarea {
+  font-family: inherit;
+  font-size: 13px;
+  margin-bottom: 0;
+}
+:where(.workflow-workspace) .editor-field {
+  margin-bottom: 16px;
+}
+:where(.workflow-workspace) .editor-field > label {
+  margin-bottom: 7px;
+}
+:where(.workflow-workspace) .field-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+:where(.workflow-workspace) .step-editor-layout {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(0, 2fr);
+  gap: 20px;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+  margin-top: 4px;
+}
+:where(.workflow-workspace) .step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+:where(.workflow-workspace) .step-list button {
+  display: flex;
+  text-align: left;
+  gap: 10px;
+  border-color: transparent;
+  background: transparent;
+  padding: 12px;
+}
+:where(.workflow-workspace) .step-list button > span {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  padding-top: 2px;
+}
+:where(.workflow-workspace) .step-list button strong,
+:where(.workflow-workspace) .step-list button small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+:where(.workflow-workspace) .step-list button strong {
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+:where(.workflow-workspace) .step-list button[aria-current="step"] {
+  background: var(--muted);
+  border-color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .step-heading {
+  margin-bottom: 18px;
+}
+:where(.workflow-workspace) .step-heading h3 {
+  margin: 0;
+}
+:where(.workflow-workspace) .step-heading code {
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .route-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+:where(.workflow-workspace) .handoff-fields {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+:where(.workflow-workspace) .handoff-actions .checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+:where(.workflow-workspace) .handoff-actions input {
+  width: auto;
+  margin: 0;
+}
+:where(.workflow-workspace) .handoff-actions button {
+  font-size: 11px;
+}
+:where(.workflow-workspace) .editor-help {
+  margin: 24px 0 16px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.6;
+}
+:where(.workflow-workspace) .editor-help button {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+:where(.workflow-workspace) .editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+  margin-top: 18px;
+}
+:where(.workflow-workspace) .editor-actions small {
+  flex-basis: 100%;
+}
+:where(.workflow-workspace) .validation-error {
+  padding: 12px 15px;
+  background: var(--muted);
+  color: var(--destructive);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  margin-bottom: 18px;
+  overflow-wrap: anywhere;
+}
+:where(.workflow-workspace) .refinement-editor {
+  margin-top: 24px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+:where(.workflow-workspace) .refinement-editor summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--primary);
+}
+/* Editor controls share the workspace palette. */
+:where(.workflow-workspace) .editor-fields label {
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .editor-fields input,
+:where(.workflow-workspace) .editor-fields select,
+:where(.workflow-workspace) .editor-fields textarea {
+  background: var(--background);
+  border-color: var(--border);
+}
+:where(.workflow-workspace) .editor-switch {
+  border-color: var(--border);
+}
+:where(.workflow-workspace) .editor-switch button[aria-pressed="true"] {
+  background: var(--border);
+  color: var(--primary);
+}
+:where(.workflow-workspace) .step-list button[aria-current="step"] {
+  background: var(--border);
+  border-color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .step-list button strong {
+  color: var(--foreground);
+}
+:where(.workflow-workspace) .step-list button small {
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .step-list button > span {
+  color: var(--primary);
+}
+:where(.workflow-workspace) .editor-help {
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .handoff-fields {
+  border-color: var(--border);
+}
+:where(.workflow-workspace) .handoff-actions .checkbox {
+  color: var(--primary);
+}
+:where(.workflow-workspace) .editor-actions {
+  border-color: var(--border);
+}
+:where(.workflow-workspace) .step-heading code {
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .step-editor-layout {
+  border-color: var(--border);
+}
+@media (max-width: 1200px) {
+  :where(.workflow-workspace) .app-shell {
+    grid-template-columns: 225px minmax(0, 1fr);
+  }
+  :where(.workflow-workspace) .task-main,
+  :where(.workflow-workspace) .settings-main {
+    padding-left: 25px;
+    padding-right: 25px;
+  }
+  :where(.workflow-workspace) .setup-grid {
+    grid-template-columns: 1fr;
+  }
+  :where(.workflow-workspace) .workflow-canvas.inspecting {
     grid-template-columns: minmax(0, 1fr);
   }
-  :scope .workflow-canvas.inspecting {
-    grid-template-columns: minmax(0, 1fr) 280px;
-  }
-  :scope .graph-panel {
-    height: 470px;
-    position: relative;
-    min-width: 0;
-    background: var(--ctp-base);
-  }
-  :scope .graph-panel > .react-flow {
-    height: calc(100% - 32px);
-    --xy-node-background-color: var(--ctp-surface0);
-    --xy-node-color: var(--ctp-text);
-    --xy-handle-background-color: var(--ctp-subtext1);
-    --xy-connectionline-stroke: var(--ctp-overlay0);
-  }
-  :scope .graph-legend {
-    display: flex;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 18px;
-    position: absolute;
-    bottom: 14px;
-    left: 60px;
-    right: 20px;
-    pointer-events: none;
-    font-size: 9px;
-    color: var(--ctp-subtext0);
-  }
-  :scope .graph-legend span:first-of-type {
-    color: var(--ctp-green);
-  }
-  :scope .graph-legend span:nth-of-type(2) {
-    color: var(--ctp-yellow);
-  }
-  :scope .react-flow__node.workflow-node {
-    padding: 0;
-    border: 1px solid var(--ctp-surface1);
-    border-radius: 11px;
-    background: var(--ctp-surface0);
-    color: var(--ctp-text);
-    box-shadow: 0 5px 15px color-mix(in srgb, var(--ctp-crust) 18.8%, transparent);
-    text-align: left;
-  }
-  :scope .react-flow__node.workflow-node.selected {
-    border-color: var(--ctp-mauve);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ctp-mauve) 12.2%, transparent);
-  }
-  :scope .graph-label {
-    padding: 13px 16px;
-  }
-  :scope .graph-label small {
-    display: block;
-    color: var(--ctp-subtext0);
-    font-size: 10px;
-    letter-spacing: 0.1px;
-  }
-  :scope .graph-label strong {
-    display: block;
-    font-size: 13px;
-    font-weight: 550;
-    line-height: 1.5;
-    margin: 5px 0;
-  }
-  :scope .graph-label > span {
-    display: block;
-    color: var(--ctp-subtext0);
-    font-size: 10px;
-  }
-  :scope .graph-label b {
-    display: inline-block;
-    margin-top: 10px;
-    padding: 3px 6px;
-    border-radius: 4px;
-    background: color-mix(in srgb, var(--ctp-base) 31.4%, transparent);
-    color: var(--ctp-subtext0);
-    font-size: 9px;
-    font-weight: 450;
-  }
-  :scope .workflow-node.active {
-    border-color: var(--ctp-mauve);
-    box-shadow:
-      0 0 0 3px color-mix(in srgb, var(--ctp-mauve) 13.3%, transparent),
-      0 0 20px color-mix(in srgb, var(--ctp-mauve) 12.5%, transparent);
-  }
-  :scope .workflow-node.active b {
-    color: var(--ctp-mauve);
-    background: color-mix(in srgb, var(--ctp-overlay1) 31.4%, transparent);
-  }
-  :scope .workflow-node.pass {
-    border-color: var(--ctp-overlay1);
-  }
-  :scope .workflow-node.pass b {
-    color: var(--ctp-mauve);
-  }
-  :scope .workflow-node.retry {
-    border-color: var(--ctp-overlay1);
-  }
-  :scope .react-flow__node.terminal {
-    border-radius: 24px;
-    border-color: var(--ctp-overlay1);
-    background: var(--ctp-surface0);
-    color: var(--ctp-mauve);
-    padding: 10px;
-    font-size: 11px;
-  }
-  :scope .react-flow__node.terminal.failed {
-    border-color: var(--ctp-surface2);
-    background: var(--ctp-surface0);
-    color: var(--ctp-mauve);
-  }
-  :scope .react-flow__handle {
-    background: var(--ctp-subtext1);
-    border-color: var(--ctp-base);
-  }
-  :scope .react-flow__controls {
-    box-shadow: none;
-    border: 1px solid var(--ctp-surface1);
-    border-radius: 6px;
-    overflow: hidden;
-  }
-  :scope .react-flow__controls-button {
-    background: var(--ctp-surface0) !important;
-    fill: var(--ctp-text) !important;
-    border-bottom: 1px solid var(--ctp-surface1) !important;
-    width: 25px;
-    height: 25px;
-    padding: 5px;
-    border-radius: 0;
-  }
-  :scope .react-flow__attribution {
-    background: color-mix(in srgb, var(--ctp-base) 75.3%, transparent) !important;
-    font-size: 8px;
-  }
-  :scope .react-flow__attribution a {
-    color: var(--ctp-subtext0);
-  }
-  :scope .step-inspector {
-    padding: 19px;
-    border-left: 1px solid var(--ctp-surface1);
-    overflow: auto;
-    max-height: 470px;
-    background: var(--ctp-surface0);
-  }
-  :scope .step-inspector h2 {
-    font-size: 15px;
-  }
-  :scope .step-inspector p {
-    font-size: 12px;
-    color: var(--ctp-subtext0);
-  }
-  :scope .step-inspector .eyebrow {
-    margin: 0;
-  }
-  :scope .step-inspector details {
-    margin-top: 18px;
-  }
-  :scope .step-inspector pre {
-    padding: 10px;
-    background: var(--ctp-base);
-  }
-  :scope .detail-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 15px;
-    margin: 10px 0;
-    font-size: 10px;
-    color: var(--ctp-subtext0);
-  }
-  :scope .detail-row strong {
-    color: var(--ctp-subtext1);
-    font-weight: 400;
-    text-align: right;
-    overflow-wrap: anywhere;
-  }
-  :scope .handoff-label {
-    padding: 8px 10px;
-    border: 1px solid var(--ctp-surface1);
-    margin: 7px 0;
-    border-radius: 6px;
-    font-size: 10px;
-    color: var(--ctp-text);
-  }
-  :scope .handoff-label small {
-    display: block;
-    font-size: 9px;
-    color: var(--ctp-subtext0);
-  }
-  :scope .step-inspector > button {
-    margin-top: 10px;
-  }
-  :scope .activity,
-  :scope .artifact-list {
-    padding: 22px;
-    max-height: 650px;
-    overflow: auto;
-  }
-  :scope .activity-heading {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    font-size: 12px;
-    color: var(--ctp-subtext1);
-    margin-bottom: 24px;
-  }
-  :scope .activity-heading small {
-    margin-left: auto;
-  }
-  :scope .event {
-    display: flex;
-    gap: 13px;
-    position: relative;
-    padding-bottom: 24px;
-  }
-  :scope .event:before {
-    content: "";
-    position: absolute;
-    left: 12px;
-    top: 28px;
-    bottom: 0;
-    width: 1px;
-    background: var(--ctp-surface1);
-  }
-  :scope .event-mark {
-    width: 25px;
-    height: 25px;
-    flex-shrink: 0;
-    border: 1px solid var(--ctp-surface1);
-    border-radius: 7px;
-    display: grid;
-    place-items: center;
-    color: var(--ctp-mauve);
-    background: var(--ctp-surface0);
-  }
-  :scope .event-body {
-    flex: 1;
-    min-width: 0;
-    padding-top: 3px;
-  }
-  :scope .event-meta {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    font-size: 10px;
-    margin-bottom: 8px;
-  }
-  :scope .event-meta b {
-    color: var(--ctp-mauve);
-    font-weight: 500;
-    text-transform: capitalize;
-  }
-  :scope .event-meta span,
-  :scope .event-meta time {
-    color: var(--ctp-overlay1);
-  }
-  :scope .event-meta time {
-    margin-left: auto;
-  }
-  :scope .event pre {
-    color: var(--ctp-mauve);
-    max-height: 320px;
-    overflow: auto;
-  }
-  :scope .event.check .event-mark {
-    border-color: var(--ctp-surface2);
-    color: var(--ctp-mauve);
-  }
-  :scope .activity {
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    max-height: min(780px, 80dvh);
-    overflow: hidden;
-  }
-  :scope .activity-toolbar {
-    flex-shrink: 0;
-    padding: 20px 22px 14px;
-    background: var(--ctp-base);
-    border-bottom: 1px solid var(--ctp-surface0);
-  }
-  :scope .activity-heading {
-    margin-bottom: 15px;
-    flex-wrap: wrap;
-  }
-  :scope .activity-heading h2 {
-    font-size: 14px;
-    margin: 0;
-  }
-  :scope .activity-heading p {
-    font-size: 11px;
-    color: var(--ctp-subtext0);
-    margin: 4px 0 0;
-  }
-  :scope .activity-heading .live-dot {
-    margin: 0 3px 0 4px;
-  }
-  :scope .activity-retention {
-    margin-left: auto;
-    font-size: 10px;
-    color: var(--ctp-overlay1);
-  }
-  :scope .activity-search-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  :scope .activity-search {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    flex: 1;
-    min-width: 0;
-    padding: 0 11px;
-    border: 1px solid var(--ctp-surface1);
-    border-radius: 9px;
-    color: var(--ctp-overlay1);
-    background: var(--ctp-mantle);
-  }
-  :scope .activity-search:focus-within {
-    border-color: var(--ctp-mauve);
-  }
-  :scope .activity-search input {
-    padding: 10px 0;
-    border: none;
-    background: transparent;
-    outline: none;
-    font-size: 12px;
-  }
-  :scope .activity-search-row select {
-    width: min(35%, 240px);
-    font-size: 12px;
-    padding: 10px;
-    background: var(--ctp-mantle);
-  }
-  :scope .activity-filters {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-    padding-top: 12px;
-  }
-  :scope .activity-filters button {
-    border-color: transparent;
-    background: transparent;
-    color: var(--ctp-subtext0);
-    padding: 5px 9px;
-    font-size: 11px;
-    gap: 7px;
-    border-radius: 7px;
-  }
-  :scope .activity-filters button span {
-    color: var(--ctp-overlay1);
-    font-size: 10px;
-  }
-  :scope .activity-filters button[aria-pressed="true"] {
-    background: color-mix(in srgb, var(--ctp-mauve) 11%, var(--ctp-base));
-    border-color: color-mix(in srgb, var(--ctp-mauve) 24%, var(--ctp-base));
-    color: var(--ctp-mauve);
-  }
-  :scope .activity-feed {
-    min-height: 120px;
-    overflow: auto;
-    padding: 22px;
-    scrollbar-width: thin;
-    overscroll-behavior: contain;
-  }
-  :scope .activity-feed .event:last-child {
-    padding-bottom: 0;
-  }
-  :scope .activity-feed .event:last-child::before {
-    display: none;
-  }
-  :scope .activity-feed .event-meta {
-    flex-wrap: wrap;
-    margin-bottom: 6px;
-    gap: 8px;
-  }
-  :scope .activity-feed .event-meta b {
-    color: var(--ctp-text);
-    font-size: 12px;
-  }
-  :scope .activity-feed .event-meta time {
-    font-size: 10px;
-  }
-  :scope .event-state {
-    font-size: 9px;
-    line-height: 1.4;
-    padding: 2px 6px;
-    border-radius: 5px;
-    background: var(--ctp-surface0);
-  }
-  :scope .event-state.success,
-  :scope .event.success .event-mark {
-    color: var(--ctp-green);
-  }
-  :scope .event-state.error,
-  :scope .event.error .event-mark {
-    color: var(--ctp-red);
-  }
-  :scope .event-state.warning,
-  :scope .event.warning .event-mark {
-    color: var(--ctp-yellow);
-  }
-  :scope .event-state.working {
-    color: var(--ctp-mauve);
-  }
-  :scope .event-step {
-    color: var(--ctp-subtext0);
-    font-size: 10px;
-    padding: 0;
-    margin-bottom: 7px;
-    background: transparent;
-    border: 0;
-    text-align: left;
-  }
-  :scope .event-preview {
-    margin: 0;
-    color: var(--ctp-subtext1);
-    font-size: 12px;
-    line-height: 1.7;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  :scope .event-details {
-    margin-top: 7px;
-  }
-  :scope .event-details > summary {
-    font-size: 10px;
-    color: var(--ctp-overlay2);
-  }
-  :scope .event-details[open] > summary {
-    margin-bottom: 8px;
-  }
-  :scope .event-details pre {
-    padding: 12px;
-    color: var(--ctp-subtext1);
-    background: var(--ctp-crust);
-    border: 1px solid var(--ctp-surface0);
-    border-radius: 8px;
-  }
-  :scope .activity-feed .event-body > .markdown-body {
-    max-height: 380px;
-    overflow: auto;
-    scrollbar-width: thin;
-  }
-  :scope .planning-logs > .activity {
-    margin-top: 14px;
-    border: 1px solid var(--ctp-surface0);
-    border-radius: 12px;
-  }
-  :scope .live-output {
-    background: var(--ctp-surface0);
-    border: 1px solid var(--ctp-surface2);
-    border-radius: 8px;
-    padding: 15px;
-    margin-bottom: 20px;
-  }
-  :scope .live-output .eyebrow {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    color: var(--ctp-mauve);
-    font-size: 9px;
-  }
-  :scope .live-output pre {
-    color: var(--ctp-mauve);
-    max-height: 240px;
-    overflow: auto;
-  }
-  :scope .artifact-list details {
-    border: 1px solid var(--ctp-surface1);
-    border-radius: 8px;
-    padding: 12px 15px;
-    margin-top: 9px;
-    background: var(--ctp-surface0);
-  }
-  :scope .artifact-list summary svg {
-    vertical-align: middle;
-    margin-right: 9px;
-  }
-  :scope .artifact-list pre {
-    background: var(--ctp-base);
-    padding: 15px;
-    margin-top: 10px;
-    max-height: 400px;
-    overflow: auto;
-    color: var(--ctp-subtext1);
-  }
-  :scope .panel-empty,
-  :scope .settings-empty {
-    padding: 45px 25px;
-    text-align: center;
-    color: var(--ctp-subtext0);
-  }
-  :scope .panel-empty p,
-  :scope .settings-empty p {
-    color: var(--ctp-subtext0);
-    max-width: 580px;
-    margin: 15px auto 0;
-  }
-  :scope .run-metrics {
-    margin-top: 18px;
-    padding: 13px 0;
-    color: var(--ctp-subtext0);
-  }
-  :scope .run-metrics > summary {
-    color: var(--ctp-subtext0);
-    font-size: 10px;
-  }
-  :scope .run-metrics summary svg {
-    vertical-align: middle;
-    margin-right: 6px;
-  }
-  :scope .metrics-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 15px;
-    margin: 18px 0;
-  }
-  :scope .metrics-grid strong {
-    display: block;
-    color: var(--ctp-subtext1);
-    font-size: 12px;
-    margin-top: 4px;
-    font-weight: 450;
-  }
-  :scope .run-metrics p {
-    font-size: 11px;
-  }
-  :scope .planning-panel {
-    max-width: 760px;
-    margin: 40px auto;
-  }
-  :scope .planning-title {
-    text-align: center;
-  }
-  :scope .planning-title .working-orb,
-  :scope .planning-symbol {
-    margin: 0 auto 24px;
-    width: 58px;
-    height: 58px;
-  }
-  :scope .planning-symbol {
-    display: grid;
-    place-items: center;
-    color: var(--ctp-mauve);
-    border: 1px solid var(--ctp-surface2);
-    border-radius: 16px;
-    background: var(--ctp-surface0);
-  }
-  :scope .planning-title h1 {
-    font-size: 27px;
-    margin-bottom: 10px;
-  }
-  :scope .planning-title p {
-    font-size: 12px;
-    color: var(--ctp-subtext0);
-  }
-  :scope .planning-stages {
-    display: grid;
-    gap: 0;
-    margin: 32px auto;
-    max-width: 400px;
-  }
-  :scope .planning-stages > div {
-    display: flex;
-    align-items: center;
-    gap: 13px;
-    font-size: 12px;
-    padding: 13px 0;
-    color: var(--ctp-overlay1);
-  }
-  :scope .planning-stages > div > span {
-    display: grid;
-    place-items: center;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    border: 1px solid var(--ctp-surface1);
-    font-size: 10px;
-  }
-  :scope .planning-stages > .done {
-    color: var(--ctp-mauve);
-  }
-  :scope .planning-stages > .done > span {
-    background: var(--ctp-surface1);
-    border-color: var(--ctp-surface2);
-  }
-  :scope .planning-stages > .current {
-    color: var(--ctp-text);
-  }
-  :scope .planning-stages > .current > span {
-    border-color: var(--ctp-mauve);
-  }
-  :scope .planning-live {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    border: 1px solid var(--ctp-surface1);
-    background: var(--ctp-surface0);
-    border-radius: 10px;
-    padding: 15px;
-    font-size: 11px;
-    color: var(--ctp-mauve);
-    overflow-wrap: anywhere;
-  }
-  :scope .planning-logs {
-    margin: 18px 0;
-    padding: 15px;
-    border: 1px solid var(--ctp-surface1);
-    border-radius: 9px;
-  }
-  :scope .planning-logs > summary {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  :scope .planning-logs > div {
-    padding: 12px 0;
-    border-bottom: 1px solid var(--ctp-surface1);
-  }
-  :scope .planning-logs pre {
-    max-height: 240px;
-    overflow: auto;
-    color: var(--ctp-subtext1);
-    margin-top: 7px;
-  }
-  :scope .planning-actions {
-    display: flex;
-    justify-content: center;
-    margin: 20px 0;
-  }
-  :scope .clarification-card {
-    border: 1px solid var(--ctp-surface2);
-    background: var(--ctp-surface0);
-    border-radius: 14px;
-    padding: 24px;
-    margin: 25px 0;
-  }
-  :scope .clarification-card > label {
-    display: block;
-    font-size: 15px;
-    line-height: 1.6;
-    margin-bottom: 16px;
-    color: var(--ctp-text);
-  }
-  :scope .answer-options {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 15px;
-  }
-  :scope .answer-options .selected {
-    background: var(--ctp-surface2);
-    border-color: var(--ctp-mauve);
-  }
-  :scope .clarification-card > button {
-    margin-top: 15px;
-  }
-  :scope .suggested-blocks {
-    padding: 20px;
-    border: 1px solid var(--ctp-surface2);
-    background: var(--ctp-surface0);
-    border-radius: 10px;
-    margin-bottom: 24px;
-  }
-  :scope .suggested-blocks pre {
-    max-height: 250px;
-    overflow: auto;
-  }
-  :scope .settings-main {
-    padding: 32px 35px 70px;
-  }
-  :scope .settings-page {
-    max-width: 1100px;
-    margin: auto;
-  }
-  :scope .page-heading h1 {
-    font-size: 29px;
-    margin-bottom: 10px;
-  }
-  :scope .page-heading > p {
-    color: var(--ctp-subtext0);
-  }
-  :scope .settings-tabs {
-    display: flex;
-    gap: 22px;
-    margin: 28px 0 30px;
-    padding-bottom: 0;
-    border-bottom: 1px solid var(--ctp-surface1);
-    overflow-x: auto;
-  }
-  :scope .settings-tabs button {
-    padding: 11px 0 14px;
-    white-space: nowrap;
-    background: transparent;
-    border: 0;
-    border-bottom: 2px solid transparent;
-    border-radius: 0;
-    color: var(--ctp-subtext0);
-    font-size: 12px;
-  }
-  :scope .settings-tabs button[aria-current] {
-    color: var(--ctp-mauve);
-    border-color: var(--ctp-mauve);
-  }
-  :scope .settings-section-title {
-    display: flex;
-    gap: 15px;
-    align-items: flex-start;
-    justify-content: space-between;
-    margin: 22px 0;
-  }
-  :scope .settings-section-title h2 {
-    margin: 0 0 7px;
-  }
-  :scope .settings-section-title p {
-    font-size: 12px;
-    color: var(--ctp-subtext0);
-    margin: 0;
-    max-width: 650px;
-  }
-  :scope .settings-section-title > button {
-    flex-shrink: 0;
-  }
-  :scope .settings-card {
-    padding: 24px;
-    background: var(--ctp-base);
-    border: 1px solid var(--ctp-surface1);
-    border-radius: 12px;
-    margin: 18px 0;
-  }
-  :scope .card-title {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 20px;
-  }
-  :scope .card-title > strong {
-    flex: 1;
-    font-size: 13px;
-    font-weight: 550;
-  }
-  :scope .card-title .checkbox {
-    margin-left: auto;
-  }
-  :scope .field {
-    min-width: 0;
-    margin-bottom: 19px;
-  }
-  :scope .field > label {
-    display: block;
-    font-size: 11px;
-    color: var(--ctp-subtext1);
-    margin: 0 0 8px;
-  }
-  :scope .field > small {
-    display: block;
-    margin-top: 7px;
-    color: var(--ctp-subtext0);
-    font-size: 10px;
-  }
-  :scope .field-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 18px;
-  }
-  :scope .button-row {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 15px;
-  }
-  :scope .settings-section-title .button-row {
-    margin-top: 0;
-    flex-shrink: 0;
-  }
-  :scope .settings-save {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 9px;
-    position: sticky;
-    bottom: 0;
-    border-top: 1px solid var(--ctp-surface2);
-    background: color-mix(in srgb, var(--ctp-surface0) 96.1%, transparent);
-    padding: 16px 20px;
-    margin: 28px -5px -30px;
-    border-radius: 12px;
-    backdrop-filter: blur(12px);
-    z-index: 5;
-  }
-  :scope .settings-save > span {
-    flex: 1;
-    font-size: 11px;
-    color: var(--ctp-mauve);
-  }
-  :scope .unsaved-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    margin: 0 0 24px;
-    padding: 10px 14px;
-    border: 1px solid color-mix(in srgb, var(--ctp-yellow) 35%, var(--ctp-surface1));
-    border-radius: 10px;
-    background: color-mix(in srgb, var(--ctp-yellow) 6%, var(--ctp-mantle));
-    font-size: 12px;
-  }
-  :scope .unsaved-bar > span {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    color: var(--ctp-yellow);
-  }
-  :scope .function-description {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 12px;
-    margin-bottom: 20px;
-    border-radius: 8px;
-    background: var(--ctp-base);
-    color: var(--ctp-blue);
-  }
-  :scope .function-description p {
-    margin: 0;
-    color: var(--ctp-subtext0);
-    font-size: 12px;
-    line-height: 1.7;
-  }
-  :scope .function-description svg {
-    flex-shrink: 0;
-    margin-top: 3px;
-  }
-  :scope .inline-add {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin: 18px 0;
-  }
-  :scope .inline-add input {
-    max-width: 260px;
-  }
-  :scope .block-settings-layout {
-    display: grid;
-    grid-template-columns: 220px minmax(0, 1fr);
-    gap: 22px;
-  }
-  :scope .block-catalog {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding-top: 18px;
-  }
-  :scope .block-catalog button {
-    justify-content: flex-start;
-    text-align: left;
-    padding: 13px 10px;
-    background: transparent;
-    border-color: transparent;
-  }
-  :scope .block-catalog button.selected {
-    background: var(--ctp-surface1);
-    border-color: var(--ctp-overlay1);
-  }
-  :scope .block-catalog strong {
-    font-size: 11px;
-    font-weight: 450;
-  }
-  :scope .block-catalog small {
-    display: block;
-    font-size: 9px;
-    color: var(--ctp-subtext0);
-    margin-top: 4px;
-  }
-  :scope .block-settings-layout .settings-card {
-    min-width: 0;
-  }
-  :scope .mcp-tools {
-    border: 1px solid var(--ctp-surface1);
-    border-radius: 8px;
-    overflow: hidden;
-  }
-  :scope .mcp-tools > div {
-    padding: 16px;
-    border-bottom: 1px solid var(--ctp-surface1);
-  }
-  :scope .mcp-tools > div:last-child {
-    border: 0;
-  }
-  :scope .mcp-tools small {
-    display: block;
-    margin: 7px 0 10px;
-  }
-  :scope .setup-grid {
-    display: grid;
-    grid-template-columns: 1.15fr 1fr;
-    gap: 22px;
-    margin-top: 25px;
-    align-items: start;
-  }
-  :scope .setup-card {
-    padding: 24px;
-    border: 1px solid var(--ctp-surface1);
-    border-radius: 12px;
-    background: var(--ctp-surface0);
-    min-width: 0;
-  }
-  :scope .model-settings > h1 {
-    font-size: 20px;
-  }
-  :scope .model-settings > .eyebrow {
-    display: none;
-  }
-  :scope .model-settings > p {
-    font-size: 12px;
-    color: var(--ctp-subtext0);
-  }
-  :scope .setup-card label {
-    display: block;
-    margin: 18px 0 8px;
-    font-size: 11px;
-    color: var(--ctp-subtext1);
-  }
-  :scope .setup-card > button {
-    margin-top: 14px;
-    margin-right: 8px;
-  }
-  :scope .setup-card > small {
-    display: block;
-    margin-top: 15px;
-    color: var(--ctp-subtext0);
-  }
-  :scope .chatgpt-login {
-    padding: 18px;
-    border: 1px solid var(--ctp-surface2);
-    border-radius: 9px;
-    background: var(--ctp-surface1);
-  }
-  :scope .chatgpt-login h3 {
-    margin: 0 0 8px;
-    color: var(--ctp-text);
-    font-size: 14px;
-    letter-spacing: 0;
-    text-transform: none;
-  }
-  :scope .chatgpt-login p {
-    font-size: 11px;
-    color: var(--ctp-mauve);
-  }
-  :scope .chatgpt-login button {
-    width: 100%;
-  }
-  :scope .api-key-setup {
-    margin: 18px 0;
-  }
-  :scope .api-key-setup button {
-    margin-top: 10px;
-  }
-  :scope .auth-session {
-    border: 1px solid var(--ctp-overlay1);
-    background: var(--ctp-surface0);
-    padding: 16px;
-    border-radius: 9px;
-    margin: 18px 0;
-  }
-  :scope .auth-session p,
-  :scope .auth-session a {
-    font-size: 12px;
-  }
-  :scope .auth-session button {
-    margin-top: 10px;
-  }
-  :scope .provider-list {
-    padding: 0;
-    margin: 22px 0 14px;
-    list-style: none;
-  }
-  :scope .provider-list li {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 7px;
-    padding: 13px 0;
-    border-top: 1px solid var(--ctp-surface1);
-  }
-  :scope .provider-list strong {
-    font-size: 12px;
-  }
-  :scope .provider-list span {
-    font-size: 10px;
-    color: var(--ctp-subtext0);
-  }
-  :scope .provider-list button {
-    font-size: 10px;
-    padding: 5px 8px;
-    margin-left: auto;
-  }
-  :scope .model-caption {
-    margin: 12px 0;
-    color: var(--ctp-subtext0);
-    font-size: 11px;
-  }
-  :scope .shared-defaults {
-    margin-top: 22px;
-  }
-  :scope .setup-notice {
-    border: 1px solid var(--ctp-overlay1);
-    border-radius: 8px;
-    background: var(--ctp-surface1);
-    padding: 13px 16px;
-    color: var(--ctp-mauve);
-    font-size: 12px;
-    margin: 18px 0;
-  }
-  :scope .inline-error,
-  :scope .error-banner,
-  :scope .validation-error {
-    background: var(--ctp-surface0);
-    color: var(--ctp-red);
-    border: 1px solid var(--ctp-surface2);
-    border-radius: 8px;
-    padding: 13px 16px;
-    font-size: 12px;
-    line-height: 1.65;
-    margin: 15px 0;
-    overflow-wrap: anywhere;
-  }
-  :scope .error-banner {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    margin: 18px 30px 0;
-  }
-  :scope .error-banner span {
-    flex: 1;
-  }
-  :scope .error-banner button {
-    border-color: var(--ctp-overlay1);
-    background: var(--ctp-surface0);
-    color: var(--ctp-red);
-  }
-  :scope .warning {
-    color: var(--ctp-mauve);
-  }
-  :scope .draft-notice {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 13px 15px;
-    background: var(--ctp-surface0);
-    border: 1px solid var(--ctp-surface2);
-    border-radius: 8px;
-    margin: 15px 0;
-    font-size: 11px;
-    color: var(--ctp-mauve);
-  }
-  :scope .draft-notice button {
-    flex-shrink: 0;
-    font-size: 10px;
-  }
-  :scope .plan-editor {
-    padding: 24px;
-  }
-  :scope .plan-editor > p {
-    color: var(--ctp-subtext0);
-  }
-  :scope .plan-editor .json-editor {
-    font-family: ui-monospace, monospace;
-    font-size: 11px;
-    margin-bottom: 12px;
-  }
-  :scope .coordinator-progress {
-    padding: 14px;
-    background: var(--ctp-surface0);
-    border: 1px solid var(--ctp-surface2);
-    border-radius: 8px;
-    margin: 16px 0;
-    max-height: 250px;
-    overflow: auto;
-  }
-  :scope .coordinator-progress pre {
-    font-size: 11px;
-    color: var(--ctp-subtext1);
-  }
-  :scope .library-editor label {
-    display: block;
-    margin: 18px 0 8px;
-    font-size: 11px;
-    color: var(--ctp-subtext1);
-  }
-  :scope .library-editor button {
-    margin: 12px 8px 0 0;
-  }
-  :scope .library-editor small {
-    display: block;
-  }
-  :scope .library-editor textarea {
-    font-family: monospace;
-    font-size: 12px;
-  }
-  :scope .library-preview {
-    padding: 20px;
-    border: 1px solid var(--ctp-overlay1);
-    border-radius: 9px;
-    margin: 25px 0;
-  }
-  :scope .library-preview article {
-    border-bottom: 1px solid var(--ctp-surface1);
-    padding-bottom: 16px;
-    margin-bottom: 16px;
-  }
-  :scope .library-preview pre {
-    max-height: 350px;
-    overflow: auto;
-  }
-  :scope .spinner {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    border: 1.5px solid color-mix(in srgb, var(--ctp-mauve) 22%, transparent);
-    border-top-color: var(--ctp-mauve);
-    border-radius: 50%;
-    animation: spin 1.1s linear infinite;
-  }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-  @keyframes breathe {
-    50% {
-      opacity: 0.45;
-    }
-  }
-  :scope .editor-heading,
-  :scope .step-heading,
-  :scope .editor-help,
-  :scope .handoff-actions {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+  :where(.workflow-workspace) .step-inspector {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    max-height: none;
+  }
+  :where(.workflow-workspace) .block-settings-layout {
+    grid-template-columns: 175px minmax(0, 1fr);
     gap: 14px;
   }
-  :scope .editor-heading {
-    flex-wrap: wrap;
-    margin-bottom: 20px;
-  }
-  :scope .editor-heading h2 {
-    margin-bottom: 5px;
-  }
-  :scope .editor-heading p {
-    margin: 0;
-  }
-  :scope .editor-switch {
-    display: flex;
-    gap: 4px;
-    border: 1px solid var(--border);
-    padding: 4px;
-    border-radius: 9px;
-  }
-  :scope .editor-switch button {
-    border-color: transparent;
-    background: transparent;
-    font-size: 12px;
-  }
-  :scope .editor-switch button[aria-pressed="true"] {
-    background: var(--ctp-surface1);
-    color: var(--ctp-blue);
-  }
-  :scope .editor-fields {
-    border: 0;
-    padding: 0;
-    margin: 0;
-    min-width: 0;
-  }
-  :scope .editor-fields label {
-    font-size: 12px;
-    color: var(--ctp-blue);
-    margin-top: 0;
-    margin-bottom: 16px;
-  }
-  :scope .editor-fields input,
-  :scope .editor-fields select,
-  :scope .editor-fields textarea {
-    display: block;
-    margin-top: 7px;
-    min-width: 0;
-  }
-  :scope .editor-fields textarea {
-    font-family: inherit;
-    font-size: 13px;
-    margin-bottom: 0;
-  }
-  :scope .editor-field {
-    margin-bottom: 16px;
-  }
-  :scope .editor-field > label {
-    margin-bottom: 7px;
-  }
-  :scope .field-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 16px;
-  }
-  :scope .step-editor-layout {
-    display: grid;
-    grid-template-columns: minmax(150px, 0.8fr) minmax(0, 2fr);
-    gap: 20px;
-    border-top: 1px solid var(--border);
-    padding-top: 20px;
-    margin-top: 4px;
-  }
-  :scope .step-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  :scope .step-list button {
-    display: flex;
-    text-align: left;
-    gap: 10px;
-    border-color: transparent;
-    background: transparent;
-    padding: 12px;
-  }
-  :scope .step-list button > span {
-    color: var(--muted);
-    font-size: 11px;
-    padding-top: 2px;
-  }
-  :scope .step-list button strong,
-  :scope .step-list button small {
-    display: block;
-    overflow-wrap: anywhere;
-  }
-  :scope .step-list button strong {
-    font-size: 12px;
-    margin-bottom: 4px;
-  }
-  :scope .step-list button[aria-current="step"] {
-    background: var(--ctp-surface0);
-    border-color: var(--ctp-overlay1);
-  }
-  :scope .step-heading {
-    margin-bottom: 18px;
-  }
-  :scope .step-heading h3 {
-    margin: 0;
-  }
-  :scope .step-heading code {
-    color: var(--muted);
-  }
-  :scope .route-fields {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-  }
-  :scope .handoff-fields {
-    padding: 14px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    margin-bottom: 12px;
-  }
-  :scope .handoff-actions .checkbox {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 0;
-  }
-  :scope .handoff-actions input {
-    width: auto;
-    margin: 0;
-  }
-  :scope .handoff-actions button {
-    font-size: 11px;
-  }
-  :scope .editor-help {
-    margin: 24px 0 16px;
-    color: var(--muted);
-    font-size: 12px;
-    line-height: 1.6;
-  }
-  :scope .editor-help button {
-    flex-shrink: 0;
-    font-size: 12px;
-  }
-  :scope .editor-actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 10px;
-    border-top: 1px solid var(--border);
-    padding-top: 18px;
-    margin-top: 18px;
-  }
-  :scope .editor-actions small {
-    flex-basis: 100%;
-  }
-  :scope .validation-error {
-    padding: 12px 15px;
-    background: var(--ctp-surface0);
-    color: var(--ctp-red);
-    border: 1px solid var(--ctp-surface2);
-    border-radius: 8px;
-    font-size: 12px;
-    margin-bottom: 18px;
-    overflow-wrap: anywhere;
-  }
-  :scope .refinement-editor {
-    margin-top: 24px;
-    border-top: 1px solid var(--border);
-    padding-top: 16px;
-  }
-  :scope .refinement-editor summary {
-    cursor: pointer;
-    font-size: 13px;
-    color: var(--accent);
-  }
-  /* Editor controls share the workspace palette. */
-  :scope .editor-fields label {
-    color: var(--ctp-subtext1);
-  }
-  :scope .editor-fields input,
-  :scope .editor-fields select,
-  :scope .editor-fields textarea {
-    background: var(--ctp-base);
-    border-color: var(--ctp-surface1);
-  }
-  :scope .editor-switch {
-    border-color: var(--ctp-surface1);
-  }
-  :scope .editor-switch button[aria-pressed="true"] {
-    background: var(--ctp-surface1);
-    color: var(--ctp-mauve);
-  }
-  :scope .step-list button[aria-current="step"] {
-    background: var(--ctp-surface1);
-    border-color: var(--ctp-overlay1);
-  }
-  :scope .step-list button strong {
-    color: var(--ctp-text);
-  }
-  :scope .step-list button small {
-    color: var(--ctp-subtext0);
-  }
-  :scope .step-list button > span {
-    color: var(--ctp-mauve);
-  }
-  :scope .editor-help {
-    color: var(--ctp-subtext0);
-  }
-  :scope .handoff-fields {
-    border-color: var(--ctp-surface1);
-  }
-  :scope .handoff-actions .checkbox {
-    color: var(--ctp-mauve);
-  }
-  :scope .editor-actions {
-    border-color: var(--ctp-surface1);
-  }
-  :scope .step-heading code {
-    color: var(--ctp-subtext0);
-  }
-  :scope .step-editor-layout {
-    border-color: var(--ctp-surface1);
-  }
-  @media (max-width: 1200px) {
-    :scope .app-shell {
-      grid-template-columns: 225px minmax(0, 1fr);
-    }
-    :scope .task-main,
-    :scope .settings-main {
-      padding-left: 25px;
-      padding-right: 25px;
-    }
-    :scope .setup-grid {
-      grid-template-columns: 1fr;
-    }
-    :scope .workflow-canvas.inspecting {
-      grid-template-columns: minmax(0, 1fr);
-    }
-    :scope .step-inspector {
-      border-left: 0;
-      border-top: 1px solid var(--ctp-surface1);
-      max-height: none;
-    }
-    :scope .block-settings-layout {
-      grid-template-columns: 175px minmax(0, 1fr);
-      gap: 14px;
-    }
-    :scope .step-editor-layout {
-      grid-template-columns: 1fr;
-    }
-    :scope .step-list {
-      flex-direction: row;
-      overflow-x: auto;
-      padding-bottom: 8px;
-    }
-    :scope .step-list button {
-      flex: 0 0 160px;
-    }
-    :scope .route-fields {
-      grid-template-columns: 1fr;
-      gap: 0;
-    }
-  }
-  @media (max-width: 780px) {
-    :scope .app-shell {
-      display: block;
-    }
-    :scope .task-sidebar {
-      position: fixed;
-      z-index: 40;
-      top: 0;
-      bottom: 0;
-      left: 0;
-      width: 270px;
-      transform: translateX(-100%);
-      visibility: hidden;
-      pointer-events: none;
-      transition: transform 150ms ease;
-    }
-    :scope .sidebar-open .task-sidebar {
-      transform: translateX(0);
-      visibility: visible;
-      pointer-events: auto;
-    }
-    :scope .sidebar-backdrop {
-      display: block;
-      position: fixed;
-      inset: 0;
-      z-index: 39;
-      border: none;
-      border-radius: 0;
-      background: color-mix(in srgb, var(--ctp-crust) 60%, transparent);
-    }
-    :scope .mobile-menu {
-      display: inline-flex !important;
-    }
-    :scope .workspace-topbar {
-      height: 58px;
-      padding: 0 14px;
-      gap: 10px;
-    }
-    :scope .workspace-breadcrumb {
-      flex: 1;
-      gap: 8px;
-    }
-    :scope .workspace-breadcrumb > span {
-      max-width: 95px;
-    }
-    :scope .connection-text {
-      font-size: 0;
-      gap: 0;
-    }
-    :scope .topbar-right {
-      gap: 10px;
-    }
-    :scope .home-main {
-      min-height: calc(100dvh - 58px);
-      padding: 42px 20px 65px;
-    }
-    :scope .home-symbol {
-      width: 54px;
-      height: 54px;
-      border-radius: 17px;
-      margin-bottom: 24px;
-    }
-    :scope .task-home h1 {
-      font-size: 30px;
-    }
-    :scope .task-home > p {
-      font-size: 12px;
-      margin-bottom: 27px;
-    }
-    :scope .task-main,
-    :scope .settings-main {
-      padding: 22px 17px 45px;
-    }
-    :scope .task-request > p {
-      font-size: 14px;
-    }
-    :scope .workflow-heading {
-      align-items: flex-start;
-      flex-wrap: wrap;
-      gap: 12px;
-    }
-    :scope .workflow-heading h1 {
-      font-size: 21px;
-    }
-    :scope .workflow-counts {
-      margin-left: 0;
-      flex-basis: 100%;
-      padding-top: 6px;
-    }
-    :scope .working-card {
-      padding: 15px 12px;
-      gap: 12px;
-    }
-    :scope .working-card strong {
-      font-size: 13px;
-    }
-    :scope .working-card .working-orb {
-      width: 38px;
-      height: 38px;
-      border-radius: 12px;
-    }
-    :scope .graph-panel {
-      height: 390px;
-    }
-    :scope .graph-legend {
-      gap: 10px;
-      left: 45px;
-      right: 10px;
-      font-size: 8px;
-    }
-    :scope .tabs {
-      padding: 0 11px;
-      gap: 16px;
-    }
-    :scope .tabs button {
-      font-size: 10px;
-      gap: 5px;
-    }
-    :scope .tabs > span {
-      display: none;
-    }
-    :scope .step-progress {
-      margin-top: 20px;
-    }
-    :scope .progress-step {
-      flex-basis: 160px;
-    }
-    :scope .activity,
-    :scope .artifact-list,
-    :scope .plan-editor {
-      padding: 17px;
-    }
-    :scope .activity {
-      padding: 0;
-    }
-    :scope .activity-toolbar {
-      padding: 16px 14px 12px;
-    }
-    :scope .activity-feed {
-      padding: 16px 14px;
-    }
-    :scope .activity-search-row {
-      flex-direction: column;
-      align-items: stretch;
-    }
-    :scope .activity-search-row select {
-      width: 100%;
-    }
-    :scope .activity-retention {
-      display: none;
-    }
-    :scope .event-meta {
-      flex-wrap: wrap;
-      gap: 5px 9px;
-    }
-    :scope .event-meta time {
-      margin-left: 0;
-    }
-    :scope .activity-heading {
-      flex-wrap: wrap;
-    }
-    :scope .activity-heading small {
-      margin: 0;
-    }
-    :scope .field-grid {
-      grid-template-columns: 1fr;
-      gap: 0;
-    }
-    :scope .settings-section-title {
-      flex-direction: column;
-      gap: 12px;
-    }
-    :scope .settings-tabs {
-      gap: 20px;
-      margin-top: 22px;
-    }
-    :scope .settings-tabs button {
-      font-size: 11px;
-    }
-    :scope .settings-card,
-    :scope .setup-card {
-      padding: 19px;
-    }
-    :scope .settings-save {
-      padding: 12px 10px;
-      flex-wrap: wrap;
-    }
-    :scope .settings-save > span {
-      flex-basis: 100%;
-    }
-    :scope .settings-save button {
-      flex: 1;
-      font-size: 11px;
-    }
-    :scope .block-settings-layout {
-      grid-template-columns: 1fr;
-    }
-    :scope .block-catalog {
-      flex-direction: row;
-      overflow-x: auto;
-    }
-    :scope .block-catalog button {
-      flex: 0 0 170px;
-    }
-    :scope .block-settings-layout .settings-card {
-      margin-top: 0;
-    }
-    :scope .card-title {
-      flex-wrap: wrap;
-    }
-    :scope .metrics-grid {
-      grid-template-columns: 1fr;
-    }
-    :scope .editor-help {
-      align-items: flex-start;
-      flex-direction: column;
-    }
-    :scope .editor-heading {
-      gap: 12px;
-    }
-    :scope .draft-notice {
-      flex-wrap: wrap;
-    }
-    :scope .error-banner {
-      margin: 15px;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    :scope *,
-    :scope *:before {
-      animation-duration: 0.001ms !important;
-      animation-iteration-count: 1 !important;
-      transition-duration: 0.001ms !important;
-    }
-  }
-
-  /* Semantic roles stay consistent across the composer, settings and graph. */
-  :scope ::selection {
-    background: color-mix(in srgb, var(--ctp-overlay2) 30%, transparent);
-  }
-  :scope a {
-    color: var(--ctp-blue);
-  }
-  :scope .task-sidebar {
-    background: var(--ctp-mantle);
-    border-color: var(--ctp-surface0);
-  }
-  :scope .workspace-topbar {
-    border-color: var(--ctp-surface0);
-  }
-  :scope button.primary {
-    color: var(--ctp-base);
-    background: var(--ctp-mauve);
-    border-color: var(--ctp-mauve);
-  }
-  :scope button.primary:hover:not(:disabled) {
-    background: var(--ctp-lavender);
-    border-color: var(--ctp-lavender);
-  }
-  :scope .settings-card,
-  :scope .setup-card {
-    background: var(--ctp-mantle);
-    border-color: var(--ctp-surface1);
-  }
-  :scope .new-task-button,
-  :scope .task-item.selected,
-  :scope .settings-button.selected {
-    background: color-mix(in srgb, var(--ctp-mauve) 12%, var(--ctp-mantle));
-    border-color: color-mix(in srgb, var(--ctp-mauve) 30%, var(--ctp-mantle));
-  }
-  :scope .home-symbol,
-  :scope .brand-mark,
-  :scope .working-orb {
-    color: var(--ctp-mauve);
-    background: color-mix(in srgb, var(--ctp-mauve) 10%, var(--ctp-mantle));
-    border-color: color-mix(in srgb, var(--ctp-mauve) 25%, var(--ctp-mantle));
-  }
-  :scope .chatgpt-login,
-  :scope .chatgpt-connected {
-    background: var(--ctp-base);
-    border: 1px solid var(--ctp-surface1);
-    border-radius: 10px;
-    padding: 18px;
-  }
-  :scope .chatgpt-connected {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    margin-bottom: 18px;
-  }
-  :scope .chatgpt-connected > svg {
-    color: var(--ctp-green);
-    flex-shrink: 0;
-  }
-  :scope .chatgpt-connected strong {
-    display: block;
-  }
-  :scope .chatgpt-connected small {
-    margin: 4px 0 0;
-  }
-  :scope .connection-dot.online,
-  :scope .status-dot.completed {
-    background: var(--ctp-green);
-  }
-  :scope .status-dot.running,
-  :scope .status-dot.planning,
-  :scope .live-dot {
-    background: var(--ctp-mauve);
-  }
-  :scope .status-dot.draft,
-  :scope .status-dot.paused,
-  :scope .status-dot.needs_input {
-    background: var(--ctp-yellow);
-  }
-  :scope .status-dot.failed,
-  :scope .status-dot.interrupted {
-    background: var(--ctp-red);
-  }
-  :scope .setup-notice,
-  :scope .completion-card {
-    background: color-mix(in srgb, var(--ctp-green) 9%, var(--ctp-base));
-    border-color: color-mix(in srgb, var(--ctp-green) 35%, var(--ctp-base));
-    color: var(--ctp-text);
-  }
-  :scope .completed-icon,
-  :scope .progress-step.pass .step-number {
-    color: var(--ctp-green);
-    background: color-mix(in srgb, var(--ctp-green) 15%, var(--ctp-base));
-  }
-  :scope .working-card,
-  :scope .progress-step.running {
-    background: color-mix(in srgb, var(--ctp-mauve) 8%, var(--ctp-base));
-    border-color: color-mix(in srgb, var(--ctp-mauve) 40%, var(--ctp-base));
-  }
-  :scope .workflow-node.pass {
-    border-color: var(--ctp-green);
-  }
-  :scope .workflow-node.pass b {
-    color: var(--ctp-green);
-  }
-  :scope .workflow-node.active {
-    border-color: var(--ctp-mauve);
-  }
-  :scope .workflow-node.retry {
-    border-color: var(--ctp-yellow);
-  }
-  :scope .workflow-node.active b {
-    color: var(--ctp-mauve);
-  }
-  :scope .react-flow__node.terminal.complete {
-    border-color: var(--ctp-green);
-    color: var(--ctp-green);
-    background: var(--ctp-mantle);
-  }
-  :scope .react-flow__node.terminal.failed {
-    border-color: var(--ctp-red);
-    color: var(--ctp-red);
-    background: var(--ctp-mantle);
-  }
-  :scope .error-banner,
-  :scope .inline-error,
-  :scope .validation-error {
-    background: color-mix(in srgb, var(--ctp-red) 9%, var(--ctp-base));
-    border-color: color-mix(in srgb, var(--ctp-red) 45%, var(--ctp-base));
-    color: var(--ctp-red);
-  }
-  :scope button.danger,
-  :scope button.danger-quiet {
-    color: var(--ctp-red);
-    background: color-mix(in srgb, var(--ctp-red) 8%, var(--ctp-base));
-    border-color: color-mix(in srgb, var(--ctp-red) 30%, var(--ctp-base));
-  }
-
-  :scope .has-design-chats .settings-save {
-    bottom: 68px;
-  }
-  :scope .has-design-chats .settings-main {
-    padding-bottom: 110px;
-  }
-  :scope .design-dock {
-    position: fixed;
-    z-index: 35;
-    right: 24px;
-    bottom: 18px;
-    max-width: calc(100vw - 32px);
-  }
-  :scope .design-launchers {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    max-width: min(700px, calc(100vw - 32px));
+  :where(.workflow-workspace) .step-editor-layout {
+    grid-template-columns: 1fr;
+  }
+  :where(.workflow-workspace) .step-list {
+    flex-direction: row;
     overflow-x: auto;
-    padding: 5px 0;
+    padding-bottom: 8px;
   }
-  :scope .design-launchers button {
-    flex-shrink: 0;
-    background: var(--ctp-mantle);
-    border-color: var(--ctp-surface1);
-    color: var(--ctp-subtext1);
-    box-shadow: 0 4px 16px #11111b60;
+  :where(.workflow-workspace) .step-list button {
+    flex: 0 0 160px;
   }
-  :scope .design-launchers button.active {
-    color: var(--ctp-mauve);
-    border-color: var(--ctp-mauve);
+  :where(.workflow-workspace) .route-fields {
+    grid-template-columns: 1fr;
+    gap: 0;
   }
-  :scope .design-chat {
-    position: absolute;
-    right: 0;
-    bottom: 55px;
-    display: flex;
-    flex-direction: column;
-    width: 440px;
-    max-width: calc(100vw - 32px);
-    height: min(690px, calc(100dvh - 116px));
-    background: var(--ctp-mantle);
-    border: 1px solid var(--ctp-surface1);
-    border-radius: 16px;
-    box-shadow: 0 16px 70px #11111b99;
-    overflow: hidden;
-  }
-  :scope .design-chat-heading {
-    display: flex;
-    align-items: center;
-    gap: 11px;
-    padding: 15px 16px;
-    background: var(--ctp-base);
-    border-bottom: 1px solid var(--ctp-surface0);
-  }
-  :scope .design-chat-heading > div {
-    flex: 1;
-  }
-  :scope .design-chat-heading strong {
-    display: block;
-    font-size: 13px;
-  }
-  :scope .design-chat-heading small {
-    display: block;
-    color: var(--ctp-subtext0);
-    font-size: 11px;
-    margin-top: 3px;
-  }
-  :scope .design-avatar {
-    display: grid;
-    place-items: center;
-    width: 34px;
-    height: 34px;
-    border-radius: 10px;
-    color: var(--ctp-mauve);
-    background: color-mix(in srgb, var(--ctp-mauve) 12%, var(--ctp-base));
-  }
-  :scope .design-conversation {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    padding: 20px 16px;
-  }
-  :scope .design-intro {
-    padding: 6px 6px 20px;
-    color: var(--ctp-subtext0);
-  }
-  :scope .design-intro > svg {
-    color: var(--ctp-mauve);
-  }
-  :scope .design-intro h3 {
-    font-size: 14px;
-    color: var(--ctp-text);
-    margin: 10px 0;
-  }
-  :scope .design-intro p {
-    font-size: 12px;
-    line-height: 1.6;
-    margin: 8px 0;
-  }
-  :scope .design-intro small {
-    font-size: 10px;
-    color: var(--ctp-overlay1);
-  }
-  :scope .design-message {
-    margin: 12px 0;
-    padding: 12px 14px;
-    border-radius: 12px;
-    background: var(--ctp-base);
-    max-width: 95%;
-    font-size: 12px;
-  }
-  :scope .design-message.user {
-    margin-left: auto;
-    background: color-mix(in srgb, var(--ctp-mauve) 13%, var(--ctp-base));
-    border: 1px solid color-mix(in srgb, var(--ctp-mauve) 23%, var(--ctp-base));
-  }
-  :scope .design-message > span {
-    display: block;
-    font-size: 10px;
-    color: var(--ctp-subtext0);
-    margin-bottom: 7px;
-  }
-  :scope .design-message p {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    margin: 0;
-    line-height: 1.7;
-  }
-  :scope .design-progress {
-    display: flex;
-    gap: 12px;
-    align-items: flex-start;
-    padding: 14px 6px;
-    font-size: 12px;
-  }
-  :scope .design-progress > .spinner {
-    flex-shrink: 0;
-    margin-top: 2px;
-  }
-  :scope .design-progress strong {
-    font-weight: 500;
-  }
-  :scope .design-progress small {
-    display: block;
-    margin-top: 5px;
-    color: var(--ctp-subtext0);
-    overflow-wrap: anywhere;
-    font-size: 10px;
-  }
-  :scope .design-progress pre {
-    max-height: 150px;
-    overflow: auto;
-  }
-  :scope .design-proposal {
-    border: 1px solid var(--ctp-surface1);
-    background: var(--ctp-base);
-    border-radius: 12px;
-    padding: 15px;
-    margin-top: 16px;
-  }
-  :scope .design-proposal-title {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    color: var(--ctp-mauve);
-    font-size: 12px;
-  }
-  :scope .design-proposal > p {
-    font-size: 12px;
-    color: var(--ctp-subtext1);
-    line-height: 1.6;
-  }
-  :scope .design-proposal > button {
-    width: 100%;
-    margin-top: 14px;
-  }
-  :scope .design-preview {
-    border-top: 1px solid var(--ctp-surface1);
-    padding-top: 12px;
-    font-size: 11px;
-  }
-  :scope .design-preview summary {
-    cursor: pointer;
-    color: var(--ctp-subtext1);
-  }
-  :scope .design-preview article {
-    margin-top: 12px;
-    padding: 10px;
-    border-radius: 8px;
-    border: 1px solid var(--ctp-surface0);
-    background: var(--ctp-mantle);
-  }
-  :scope .design-preview strong,
-  :scope .design-preview small {
+}
+@media (max-width: 780px) {
+  :where(.workflow-workspace) .app-shell {
     display: block;
   }
-  :scope .design-preview small {
-    color: var(--ctp-subtext0);
-    margin-top: 7px;
-    overflow-wrap: anywhere;
-  }
-  :scope .design-preview p {
-    line-height: 1.7;
-  }
-  :scope .design-preview pre {
-    font-size: 10px;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    max-height: 300px;
-    overflow: auto;
-  }
-  :scope .design-preview > details {
-    margin-top: 12px;
-  }
-  :scope .design-compose {
-    padding: 13px;
-    background: var(--ctp-base);
-    border-top: 1px solid var(--ctp-surface0);
-  }
-  :scope .design-chat-heading,
-  :scope .design-compose {
-    flex-shrink: 0;
-  }
-  :scope .design-compose {
-    padding-bottom: 22px;
-  }
-  :scope .design-compose textarea {
-    max-height: min(180px, 25dvh, var(--chat-compose-max, 180px));
-  }
-  :scope .design-compose > div {
-    flex-wrap: wrap;
-  }
-  :scope .chat-resize-handle {
-    position: absolute;
+  :where(.workflow-workspace) .task-sidebar {
+    position: fixed;
+    z-index: 40;
+    top: 0;
     bottom: 0;
-    width: 22px;
-    height: 22px;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    border-radius: 0;
-    touch-action: none;
-  }
-  :scope .chat-resize-handle.right {
-    right: 0;
-    cursor: nwse-resize;
-  }
-  :scope .chat-resize-handle.left {
     left: 0;
-    cursor: nesw-resize;
-    transform: scaleX(-1);
-  }
-  :scope .chat-resize-handle::after {
-    content: "";
-    position: absolute;
-    bottom: 5px;
-    right: 5px;
-    width: 10px;
-    height: 10px;
-    background: repeating-linear-gradient(135deg, transparent 0 3px, var(--ctp-overlay1) 3px 4px);
-    clip-path: polygon(100% 0, 100% 100%, 0 100%);
-  }
-  :scope .chat-resize-handle:hover {
-    background: color-mix(in srgb, var(--ctp-mauve) 15%, transparent);
-  }
-  :scope .chat-resize-handle:focus-visible {
-    outline-offset: -3px;
-  }
-  :scope .design-compose textarea {
-    font-size: 12px;
-    line-height: 1.6;
-    resize: none;
-    background: var(--ctp-mantle);
-  }
-  :scope .design-compose > div {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-top: 8px;
-  }
-  :scope .design-compose small {
-    color: var(--ctp-overlay1);
-    font-size: 9px;
-  }
-  @media (max-width: 780px) {
-    :scope .design-dock {
-      right: 12px;
-      bottom: 10px;
-      max-width: calc(100vw - 24px);
-    }
-    :scope .design-chat {
-      max-width: calc(100vw - 24px);
-      height: min(640px, calc(100dvh - 92px));
-      bottom: 48px;
-    }
-    :scope .design-launchers {
-      max-width: calc(100vw - 24px);
-    }
-    :scope .design-launchers button {
-      font-size: 10px;
-    }
-  }
-  :scope .settings-ai-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 12px;
-    padding: 12px 0 20px;
-    color: var(--ctp-subtext0);
-    font-size: 12px;
-  }
-  :scope .ai-button {
-    color: var(--ctp-mauve);
-    border-color: color-mix(in srgb, var(--ctp-mauve) 35%, var(--ctp-surface0));
-    background: color-mix(in srgb, var(--ctp-mauve) 8%, var(--ctp-mantle));
-  }
-  :scope .profile-generation {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    margin: 20px 0;
-    padding: 20px;
-    border: 1px solid var(--ctp-surface1);
-    border-radius: 12px;
-    background: linear-gradient(
-      110deg,
-      color-mix(in srgb, var(--ctp-mauve) 8%, var(--ctp-mantle)),
-      var(--ctp-mantle)
-    );
-  }
-  :scope .profile-generation > svg {
-    color: var(--ctp-mauve);
-    flex-shrink: 0;
-  }
-  :scope .profile-generation > div {
-    flex: 1;
-  }
-  :scope .profile-generation strong {
-    font-size: 13px;
-  }
-  :scope .profile-generation p {
-    font-size: 12px;
-    line-height: 1.6;
-    color: var(--ctp-subtext0);
-    margin: 5px 0 0;
-  }
-  :scope .profile-generation button {
-    flex-shrink: 0;
-  }
-  @media (max-width: 780px) {
-    :scope .profile-generation {
-      flex-wrap: wrap;
-      padding: 17px;
-    }
-    :scope .profile-generation > div {
-      min-width: 180px;
-    }
-    :scope .profile-generation button {
-      width: 100%;
-    }
-  }
-
-  /* Workspaces use the available screen; reading surfaces keep a comfortable line length. */
-  :scope .task-content {
-    max-width: none;
-    width: 100%;
-  }
-  :scope .task-main {
-    padding: 28px clamp(18px, 3vw, 56px) 65px;
-  }
-  :scope .task-request {
-    padding-bottom: 18px;
-    margin-bottom: 18px;
-  }
-  :scope .task-request > p,
-  :scope .plan-rationale p {
-    max-width: 105ch;
-  }
-  :scope .workflow-canvas.inspecting {
-    grid-template-columns: minmax(0, 1fr) minmax(280px, 24%);
-  }
-  :scope .graph-panel {
-    height: clamp(470px, 58vh, 800px);
-  }
-  :scope .graph-toolbar {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    z-index: 5;
-  }
-  :scope .graph-toolbar span {
-    font-size: 11px;
-    color: var(--ctp-subtext0);
-    background: var(--ctp-base);
-    padding: 4px;
-  }
-  :scope .graph-toolbar button {
-    font-size: 11px;
-    padding: 6px 9px;
-  }
-  :scope .graph-toolbar {
-    max-width: calc(100% - 24px);
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-  :scope .tabs .expand-workspace {
-    padding: 7px 9px;
-    margin-left: auto;
-    border: 1px solid var(--ctp-surface1);
-    border-radius: 7px;
-    color: var(--ctp-subtext1);
-  }
-  :scope .workflow-dialog {
-    position: fixed;
-    inset: 16px;
-    margin: 0;
-    width: calc(100vw - 32px);
-    height: calc(100dvh - 32px);
-    max-width: none;
-    max-height: none;
-    padding: 0;
-    border: 1px solid var(--ctp-surface1);
-    border-radius: 14px;
-    color: var(--ctp-text);
-    background: var(--ctp-base);
-    box-shadow: 0 24px 100px #11111bb3;
-  }
-  :scope .workflow-dialog::backdrop {
-    background: #11111bd4;
-    backdrop-filter: blur(5px);
-  }
-  :scope .workflow-dialog .details-panel {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    border: 0;
-    border-radius: 0;
-  }
-  :scope .expanded-heading {
-    display: flex;
-    justify-content: space-between;
-    gap: 20px;
-    align-items: center;
-    flex-shrink: 0;
-    padding: 18px 22px 6px;
-  }
-  :scope .expanded-heading .eyebrow {
-    margin-bottom: 5px;
-    font-size: 9px;
-  }
-  :scope .expanded-heading h2 {
-    margin: 0;
-    font-size: 18px;
-    overflow-wrap: anywhere;
-  }
-  :scope .workflow-dialog .tabs {
-    flex-shrink: 0;
-  }
-  :scope .workflow-dialog .workflow-canvas {
-    flex: 1;
-    min-height: 0;
-  }
-  :scope .workflow-dialog .graph-panel {
-    height: 100%;
-    min-height: 0;
-  }
-  :scope .workflow-dialog .step-inspector {
-    max-height: 100%;
-    overflow: auto;
-  }
-  :scope .workflow-dialog .activity,
-  :scope .workflow-dialog .artifact-list,
-  :scope .workflow-dialog .results-panel,
-  :scope .workflow-dialog .plan-editor {
-    flex: 1;
-    min-height: 0;
-    max-height: none;
-  }
-  :scope .workflow-dialog .artifact-list,
-  :scope .workflow-dialog .results-panel,
-  :scope .workflow-dialog .plan-editor {
-    overflow: auto;
-  }
-  @media (max-width: 1000px) {
-    :scope .workflow-dialog .workflow-canvas.inspecting {
-      grid-template-rows: minmax(220px, 1fr) minmax(0, 40%);
-    }
-  }
-  @media (max-width: 780px) {
-    :scope .workflow-dialog {
-      inset: 6px;
-      width: calc(100vw - 12px);
-      height: calc(100dvh - 12px);
-      border-radius: 10px;
-    }
-    :scope .expanded-heading {
-      padding: 14px 14px 6px;
-      gap: 12px;
-    }
-    :scope .expanded-heading h2 {
-      font-size: 15px;
-    }
-    :scope .tabs .expand-workspace {
-      position: sticky;
-      right: 0;
-      z-index: 1;
-      background: var(--ctp-base);
-      box-shadow: -8px 0 8px var(--ctp-base);
-    }
-    :scope .tabs .expand-workspace > span {
-      display: none;
-    }
-  }
-  @media (max-width: 480px) {
-    :scope .tabs {
-      gap: 12px;
-    }
-    :scope .tabs > button:not(.expand-workspace) > svg {
-      display: none;
-    }
-  }
-  :scope .react-flow__node.workflow-node {
-    cursor: grab;
-  }
-  :scope .react-flow__node.workflow-node.dragging {
-    cursor: grabbing;
-  }
-  :scope .react-flow__node.workflow-node.active {
-    border: 2px solid var(--ctp-mauve);
-    background: color-mix(in srgb, var(--ctp-mauve) 12%, var(--ctp-base));
-    box-shadow: 0 0 0 5px #cba6f722;
-    animation: active-block 2s ease-in-out infinite;
-  }
-  :scope .react-flow__node.workflow-node.fail {
-    border-color: var(--ctp-red);
-  }
-  :scope .workflow-node.fail b {
-    color: var(--ctp-red);
-  }
-  @keyframes active-block {
-    50% {
-      box-shadow:
-        0 0 0 8px #cba6f70c,
-        0 0 28px #cba6f724;
-    }
-  }
-  :scope .result-banner {
-    display: flex;
-    gap: 16px;
-    padding: 20px 22px;
-    margin: 18px 0 22px;
-    border: 1px solid var(--ctp-surface2);
-    background: var(--ctp-mantle);
-    border-radius: 12px;
-  }
-  :scope .result-banner > div:last-child {
-    flex: 1;
-    min-width: 0;
-  }
-  :scope .result-banner strong {
-    font-size: 16px;
-  }
-  :scope .result-banner.completed {
-    border-color: color-mix(in srgb, var(--ctp-green) 50%, var(--ctp-surface1));
-  }
-  :scope .result-banner.failed,
-  :scope .result-banner.interrupted {
-    border-color: color-mix(in srgb, var(--ctp-red) 60%, var(--ctp-surface1));
-    background: color-mix(in srgb, var(--ctp-red) 5%, var(--ctp-mantle));
-  }
-  :scope .result-icon {
-    color: var(--ctp-mauve);
-    padding-top: 2px;
-  }
-  :scope .result-banner.completed .result-icon {
-    color: var(--ctp-green);
-  }
-  :scope .result-banner.failed .result-icon,
-  :scope .result-banner.interrupted .result-icon {
-    color: var(--ctp-red);
-  }
-  :scope .result-links {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 12px;
-  }
-  :scope .results-panel {
-    padding: 24px;
-  }
-  :scope .results-panel h2 {
-    margin: 0;
-    font-size: 18px;
-  }
-  :scope .result-artifact {
-    padding: 24px 0;
-    border-top: 1px solid var(--ctp-surface1);
-    margin-top: 20px;
-  }
-  :scope .result-artifact h3 {
-    margin: 0;
-    font-size: 14px;
-  }
-  :scope .step-result {
-    border-top: 1px solid var(--ctp-surface1);
-    border-bottom: 1px solid var(--ctp-surface1);
-    padding: 8px 0 14px;
-  }
-  :scope .markdown-body {
-    line-height: 1.75;
-    font-size: 14px;
-    color: var(--ctp-subtext1);
-    overflow-wrap: anywhere;
-    min-width: 0;
-  }
-  :scope .markdown-body > :first-child {
-    margin-top: 10px;
-  }
-  :scope .markdown-body > :last-child {
-    margin-bottom: 0;
-  }
-  :scope .markdown-body p,
-  :scope .markdown-body ul,
-  :scope .markdown-body ol {
-    max-width: 105ch;
-  }
-  :scope .markdown-body h1,
-  :scope .markdown-body h2,
-  :scope .markdown-body h3,
-  :scope .markdown-body h4 {
-    color: var(--ctp-text);
-    line-height: 1.4;
-    margin: 1.4em 0 0.5em;
-  }
-  :scope .markdown-body h1 {
-    font-size: 24px;
-  }
-  :scope .markdown-body h2 {
-    font-size: 20px;
-  }
-  :scope .markdown-body h3 {
-    font-size: 16px;
-  }
-  :scope .markdown-body strong {
-    color: var(--ctp-text);
-    font-size: inherit;
-  }
-  :scope .markdown-body pre {
-    background: var(--ctp-crust);
-    padding: 16px;
-    border: 1px solid var(--ctp-surface0);
-    border-radius: 8px;
-    overflow: auto;
-    white-space: pre;
-    max-height: none;
-  }
-  :scope .markdown-body code {
-    font-family: ui-monospace, monospace;
-    font-size: 0.9em;
-    background: var(--ctp-surface0);
-    padding: 2px 5px;
-    border-radius: 4px;
-    color: var(--ctp-lavender);
-  }
-  :scope .markdown-body pre code {
-    background: none;
-    padding: 0;
-    color: var(--ctp-text);
-  }
-  :scope .markdown-body blockquote {
-    border-left: 3px solid var(--ctp-mauve);
-    margin: 16px 0;
-    padding: 1px 18px;
-    background: var(--ctp-base);
-  }
-  :scope .markdown-body table {
-    display: block;
-    overflow-x: auto;
-    border-collapse: collapse;
-    max-width: 100%;
-  }
-  :scope .markdown-body td,
-  :scope .markdown-body th {
-    padding: 8px 12px;
-    border: 1px solid var(--ctp-surface1);
-    text-align: left;
-  }
-  :scope .markdown-body th {
-    color: var(--ctp-text);
-    background: var(--ctp-surface0);
-  }
-  :scope .markdown-body li {
-    margin: 5px 0;
-  }
-  :scope .markdown-body hr {
-    border: 0;
-    border-top: 1px solid var(--ctp-surface1);
-    margin: 20px 0;
-  }
-  :scope .markdown-actions {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    align-items: center;
-  }
-  :scope .markdown-actions button {
-    font-size: 11px;
-    padding: 6px 8px;
-  }
-  :scope .markdown-actions small {
-    color: var(--ctp-red);
-  }
-  :scope .artifact-list > details > .markdown-body {
-    padding: 0 18px 18px;
-  }
-  :scope .artifact-list .markdown-actions {
-    padding: 10px 12px 0;
-    justify-content: end;
-  }
-  :scope .design-dock {
+    width: 270px;
+    transform: translateX(-100%);
+    visibility: hidden;
     pointer-events: none;
-    z-index: 35;
+    transition: transform 150ms ease;
   }
-  :scope .design-dock > * {
+  :where(.workflow-workspace) .sidebar-open .task-sidebar {
+    transform: translateX(0);
+    visibility: visible;
     pointer-events: auto;
   }
-  :scope .design-chat {
-    position: fixed;
-    right: auto;
-    bottom: auto;
-    width: 440px;
-    max-width: calc(100vw - 24px);
-    height: min(690px, calc(100dvh - 116px));
-  }
-  :scope .design-chat-heading {
-    cursor: grab;
-    touch-action: none;
-    user-select: none;
-    padding: 12px;
-  }
-  :scope .design-chat-heading:active {
-    cursor: grabbing;
-  }
-  :scope .design-chat-heading:focus-visible {
-    outline: 2px solid var(--ctp-mauve);
-    outline-offset: -3px;
-  }
-  :scope .design-chat-heading .icon-button {
-    padding: 6px;
-  }
-  :scope .design-chat-heading > div {
-    min-width: 0;
-  }
-  :scope .design-message .markdown-body {
-    font-size: 13px;
-  }
-  :scope .design-message .markdown-body p {
-    white-space: normal;
-  }
-  :scope .design-launchers {
-    max-width: calc(100vw - 40px);
-    overflow-x: auto;
-    padding: 3px;
-  }
-  :scope .design-launchers > button {
-    flex-shrink: 0;
-    max-width: 200px;
-  }
-  :scope .design-launchers small {
+  :where(.workflow-workspace) .sidebar-backdrop {
     display: block;
-    max-width: 150px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--ctp-subtext0);
-    font-size: 10px;
-    text-align: left;
-    margin-top: 2px;
-  }
-  :scope .dock-status {
-    padding: 12px;
-    background: var(--ctp-mantle);
-    border: 1px solid var(--ctp-surface1);
-    border-radius: 8px;
-  }
-  :scope .notifications {
-    position: relative;
-  }
-  :scope .notifications > button {
-    position: relative;
-  }
-  :scope .notification-count {
-    border-radius: 10px;
-    background: var(--ctp-mauve);
-    color: var(--ctp-crust);
-    font-size: 10px;
-    min-width: 15px;
-    position: absolute;
-    top: -3px;
-    right: -4px;
-  }
-  :scope .notification-panel {
-    position: absolute;
-    right: 0;
-    top: 40px;
-    z-index: 50;
-    width: min(420px, calc(100vw - 32px));
-    max-height: 70vh;
-    overflow-y: auto;
-    padding: 16px;
-    background: var(--ctp-mantle);
-    border: 1px solid var(--ctp-surface1);
-    border-radius: 12px;
-    box-shadow: 0 16px 50px #11111b88;
-  }
-  :scope .notification-item {
-    display: flex;
-    flex-direction: column;
-    align-items: start;
-    width: 100%;
-    gap: 6px;
-    margin-top: 10px;
-    text-align: left;
-    padding: 12px;
-  }
-  :scope .notification-item span {
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    font-size: 12px;
-    color: var(--ctp-subtext0);
-  }
-  :scope .notification-item.unread {
-    border-left: 3px solid var(--ctp-mauve);
-  }
-  :scope .notification-item small {
-    color: var(--ctp-overlay2);
-  }
-  :scope .notification-toast {
     position: fixed;
-    bottom: 22px;
-    left: calc(50% + 100px);
-    transform: translateX(-50%);
-    z-index: 30;
-    width: min(580px, calc(100vw - 40px));
-    display: flex;
-    align-items: center;
+    inset: 0;
+    z-index: 39;
+    border: none;
+    border-radius: 0;
+    background: color-mix(in oklch, var(--shadow-color) 60%, transparent);
+  }
+  :where(.workflow-workspace) .mobile-menu {
+    display: inline-flex;
+  }
+  :where(.workflow-workspace) .workspace-topbar {
+    height: 58px;
+    padding: 0 14px;
     gap: 10px;
-    padding: 12px;
-    border-radius: 12px;
-    background: var(--ctp-surface0);
-    border: 1px solid var(--ctp-mauve);
-    box-shadow: 0 8px 30px #11111b77;
   }
-  :scope .notification-toast > .quiet {
+  :where(.workflow-workspace) .workspace-breadcrumb {
     flex: 1;
-    min-width: 0;
-    display: block;
-    text-align: left;
-  }
-  :scope .notification-toast strong,
-  :scope .notification-toast span {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  :scope .notification-toast span {
-    font-size: 12px;
-    color: var(--ctp-subtext0);
-    margin-top: 4px;
-  }
-  :scope .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-  }
-  :scope .script-source {
-    font-family: ui-monospace, monospace;
-    font-size: 12px;
-    line-height: 1.6;
-    tab-size: 2;
-    white-space: pre;
-  }
-  :scope .script-contract {
-    margin: 0 0 20px;
-    color: var(--ctp-subtext0);
-    font-size: 12px;
-    line-height: 1.7;
-  }
-  :scope .script-contract code {
-    color: var(--ctp-lavender);
-  }
-  @media (max-width: 1000px) {
-    :scope .workflow-canvas.inspecting {
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
-  @media (max-width: 700px) {
-    :scope .task-main {
-      padding: 18px 12px 80px;
-    }
-    :scope .graph-panel {
-      height: 430px;
-    }
-    :scope .graph-toolbar span {
-      display: none;
-    }
-    :scope .result-banner {
-      padding: 16px;
-      gap: 10px;
-    }
-    :scope .results-panel {
-      padding: 16px;
-    }
-    :scope .results-panel .card-title {
-      flex-wrap: wrap;
-    }
-    :scope .notification-toast {
-      left: 50%;
-      bottom: 70px;
-    }
-    :scope .design-chat {
-      height: min(690px, calc(100dvh - 116px));
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    :scope .react-flow__node.workflow-node.active {
-      animation: none;
-    }
-  }
-  :scope .task-history-entry {
-    position: relative;
-  }
-  :scope .task-history-entry .task-item {
-    padding-right: 34px;
-  }
-  :scope .history-delete {
-    position: absolute;
-    right: 3px;
-    top: 13px;
-    padding: 6px;
-    opacity: 0;
-  }
-  :scope .task-history-entry:hover .history-delete,
-  :scope .task-history-entry:focus-within .history-delete {
-    opacity: 1;
-  }
-  :scope .history-delete:hover {
-    color: var(--ctp-red);
-  }
-  :scope .request-actions {
-    display: flex;
-    flex-wrap: wrap;
     gap: 8px;
   }
-  @media (hover: none) {
-    :scope .history-delete {
-      opacity: 1;
-    }
+  :where(.workflow-workspace) .workspace-breadcrumb > span {
+    max-width: 95px;
   }
-  :scope .progress-step.fail,
-  :scope .progress-step.failed {
-    border-color: color-mix(in srgb, var(--ctp-red) 60%, var(--ctp-base));
+  :where(.workflow-workspace) .connection-text {
+    font-size: 0;
+    gap: 0;
   }
-  :scope .progress-step.fail .step-number,
-  :scope .progress-step.failed .step-number {
-    color: var(--ctp-red);
-    border-color: var(--ctp-red);
+  :where(.workflow-workspace) .topbar-right {
+    gap: 10px;
   }
-  :scope .result-checks {
-    padding: 16px 0;
+  :where(.workflow-workspace) .home-main {
+    min-height: calc(100dvh - 58px);
+    padding: 42px 20px 65px;
   }
-  :scope .result-checks > details,
-  :scope .result-checks details {
-    margin: 12px 0;
+  :where(.workflow-workspace) .home-symbol {
+    width: 54px;
+    height: 54px;
+    border-radius: 17px;
+    margin-bottom: 24px;
   }
-  @media (max-width: 700px) {
-    :scope .request-heading {
-      align-items: flex-start;
-    }
-    :scope .request-heading .eyebrow {
-      white-space: nowrap;
-      margin-top: 10px;
-    }
-    :scope .request-actions {
-      justify-content: flex-end;
-    }
+  :where(.workflow-workspace) .task-home h1 {
+    font-size: 30px;
   }
-  :scope .program-source {
-    font-family: var(--font-mono, monospace);
+  :where(.workflow-workspace) .task-home > p {
+    font-size: 12px;
+    margin-bottom: 27px;
+  }
+  :where(.workflow-workspace) .task-main,
+  :where(.workflow-workspace) .settings-main {
+    padding: 22px 17px 45px;
+  }
+  :where(.workflow-workspace) .task-request > p {
+    font-size: 14px;
+  }
+  :where(.workflow-workspace) .workflow-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  :where(.workflow-workspace) .workflow-heading h1 {
+    font-size: 21px;
+  }
+  :where(.workflow-workspace) .workflow-counts {
+    margin-left: 0;
+    flex-basis: 100%;
+    padding-top: 6px;
+  }
+  :where(.workflow-workspace) .working-card {
+    padding: 15px 12px;
+    gap: 12px;
+  }
+  :where(.workflow-workspace) .working-card strong {
     font-size: 13px;
-    line-height: 1.65;
-    tab-size: 2;
-    white-space: pre;
   }
-  :scope .program-language {
-    color: var(--accent);
-    font-family: monospace;
-    font-size: 12px;
+  :where(.workflow-workspace) .working-card .working-orb {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
   }
-  :scope .program-editor > .editor-field {
-    display: block;
-    color: var(--ctp-subtext1);
-    font-size: 12px;
+  :where(.workflow-workspace) .graph-panel {
+    height: 390px;
+  }
+  :where(.workflow-workspace) .graph-legend {
+    gap: 10px;
+    left: 45px;
+    right: 10px;
+    font-size: 8px;
+  }
+  :where(.workflow-workspace) .tabs {
+    padding: 0 11px;
+    gap: 16px;
+  }
+  :where(.workflow-workspace) .tabs button {
+    font-size: 10px;
+    gap: 5px;
+  }
+  :where(.workflow-workspace) .tabs > span {
+    display: none;
+  }
+  :where(.workflow-workspace) .step-progress {
     margin-top: 20px;
   }
-  :scope .program-editor label textarea {
-    display: block;
-    margin-top: 8px;
+  :where(.workflow-workspace) .progress-step {
+    flex-basis: 160px;
   }
-  :scope .program-editor .editor-actions small {
-    flex-basis: auto;
-    margin-left: auto;
+  :where(.workflow-workspace) .activity,
+  :where(.workflow-workspace) .artifact-list,
+  :where(.workflow-workspace) .plan-editor {
+    padding: 17px;
   }
-  :scope .react-flow__node.composition-group {
-    background: color-mix(in srgb, var(--ctp-surface0) 18%, transparent);
-    border: 1px solid var(--ctp-surface1);
-    border-radius: 16px;
+  :where(.workflow-workspace) .activity {
+    padding: 0;
   }
-  :scope .composition-heading {
-    display: flex;
-    align-items: center;
+  :where(.workflow-workspace) .activity-toolbar {
+    padding: 16px 14px 12px;
+  }
+  :where(.workflow-workspace) .activity-feed {
+    padding: 16px 14px;
+  }
+  :where(.workflow-workspace) .activity-search-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  :where(.workflow-workspace) .activity-search-row select {
+    width: 100%;
+  }
+  :where(.workflow-workspace) .activity-retention {
+    display: none;
+  }
+  :where(.workflow-workspace) .event-meta {
+    flex-wrap: wrap;
+    gap: 5px 9px;
+  }
+  :where(.workflow-workspace) .event-meta time {
+    margin-left: 0;
+  }
+  :where(.workflow-workspace) .activity-heading {
+    flex-wrap: wrap;
+  }
+  :where(.workflow-workspace) .activity-heading small {
+    margin: 0;
+  }
+  :where(.workflow-workspace) .field-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  :where(.workflow-workspace) .settings-section-title {
+    flex-direction: column;
     gap: 12px;
-    padding: 14px 18px;
-    color: var(--ctp-subtext1);
+  }
+  :where(.workflow-workspace) .settings-tabs {
+    gap: 20px;
+    margin-top: 22px;
+  }
+  :where(.workflow-workspace) .settings-tabs button {
     font-size: 11px;
   }
-  :scope .composition-heading strong {
-    color: var(--ctp-mauve);
-    font-size: 13px;
+  :where(.workflow-workspace) .settings-card,
+  :where(.workflow-workspace) .setup-card {
+    padding: 19px;
   }
-  :scope .composition-heading small {
-    margin-left: auto;
-  }
-  :scope .react-flow__node.composition-junction {
-    background: var(--ctp-surface1);
-    border: 1px solid var(--ctp-overlay0);
-    border-radius: 50%;
-  }
-  :scope .workflow-graph .react-flow__edge,
-  :scope .workflow-graph .react-flow__edge-interaction {
-    pointer-events: none !important;
-  }
-  :scope .composition-heading {
+  :where(.workflow-workspace) .settings-save {
+    padding: 12px 10px;
     flex-wrap: wrap;
-    gap: 5px 10px;
-    padding: 12px 16px;
-    cursor: pointer;
   }
-  :scope .composition-heading strong {
+  :where(.workflow-workspace) .settings-save > span {
+    flex-basis: 100%;
+  }
+  :where(.workflow-workspace) .settings-save button {
+    flex: 1;
+    font-size: 11px;
+  }
+  :where(.workflow-workspace) .block-settings-layout {
+    grid-template-columns: 1fr;
+  }
+  :where(.workflow-workspace) .block-catalog {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+  :where(.workflow-workspace) .block-catalog button {
+    flex: 0 0 170px;
+  }
+  :where(.workflow-workspace) .block-settings-layout .settings-card {
+    margin-top: 0;
+  }
+  :where(.workflow-workspace) .card-title {
+    flex-wrap: wrap;
+  }
+  :where(.workflow-workspace) .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+  :where(.workflow-workspace) .editor-help {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  :where(.workflow-workspace) .editor-heading {
+    gap: 12px;
+  }
+  :where(.workflow-workspace) .draft-notice {
+    flex-wrap: wrap;
+  }
+  :where(.workflow-workspace) .error-banner {
+    margin: 15px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(.workflow-workspace) *,
+  :where(.workflow-workspace) *:before {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Semantic roles stay consistent across the composer, settings and graph. */
+:where(.workflow-workspace) ::selection {
+  background: color-mix(in srgb, var(--muted-foreground) 30%, transparent);
+}
+:where(.workflow-workspace) a {
+  color: var(--info);
+}
+:where(.workflow-workspace) .task-sidebar {
+  background: var(--card);
+  border-color: var(--border);
+}
+:where(.workflow-workspace) .workspace-topbar {
+  border-color: var(--border);
+}
+:where(.workflow-workspace) button.primary {
+  color: var(--primary-foreground);
+  background: var(--primary);
+  border-color: var(--primary);
+}
+:where(.workflow-workspace) button.primary:hover:not(:disabled) {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+:where(.workflow-workspace) .settings-card,
+:where(.workflow-workspace) .setup-card {
+  background: var(--card);
+  border-color: var(--border);
+}
+:where(.workflow-workspace) .new-task-button,
+:where(.workflow-workspace) .task-item.selected,
+:where(.workflow-workspace) .settings-button.selected {
+  background: color-mix(in srgb, var(--primary) 12%, var(--card));
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--card));
+}
+:where(.workflow-workspace) .home-symbol,
+:where(.workflow-workspace) .brand-mark,
+:where(.workflow-workspace) .working-orb {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, var(--card));
+  border-color: color-mix(in srgb, var(--primary) 25%, var(--card));
+}
+:where(.workflow-workspace) .chatgpt-login,
+:where(.workflow-workspace) .chatgpt-connected {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px;
+}
+:where(.workflow-workspace) .chatgpt-connected {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+:where(.workflow-workspace) .chatgpt-connected > svg {
+  color: var(--success);
+  flex-shrink: 0;
+}
+:where(.workflow-workspace) .chatgpt-connected strong {
+  display: block;
+}
+:where(.workflow-workspace) .chatgpt-connected small {
+  margin: 4px 0 0;
+}
+:where(.workflow-workspace) .connection-dot.online,
+:where(.workflow-workspace) .status-dot.completed {
+  background: var(--success);
+}
+:where(.workflow-workspace) .status-dot.running,
+:where(.workflow-workspace) .status-dot.planning,
+:where(.workflow-workspace) .live-dot {
+  background: var(--primary);
+}
+:where(.workflow-workspace) .status-dot.draft,
+:where(.workflow-workspace) .status-dot.paused,
+:where(.workflow-workspace) .status-dot.needs_input {
+  background: var(--warning);
+}
+:where(.workflow-workspace) .status-dot.failed,
+:where(.workflow-workspace) .status-dot.interrupted {
+  background: var(--destructive);
+}
+:where(.workflow-workspace) .setup-notice,
+:where(.workflow-workspace) .completion-card {
+  background: color-mix(in srgb, var(--success) 9%, var(--background));
+  border-color: color-mix(in srgb, var(--success) 35%, var(--background));
+  color: var(--foreground);
+}
+:where(.workflow-workspace) .completed-icon,
+:where(.workflow-workspace) .progress-step.pass .step-number {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 15%, var(--background));
+}
+:where(.workflow-workspace) .working-card,
+:where(.workflow-workspace) .progress-step.running {
+  background: color-mix(in srgb, var(--primary) 8%, var(--background));
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--background));
+}
+:where(.workflow-workspace) .workflow-node.pass {
+  border-color: var(--success);
+}
+:where(.workflow-workspace) .workflow-node.pass b {
+  color: var(--success);
+}
+:where(.workflow-workspace) .workflow-node.active {
+  border-color: var(--primary);
+}
+:where(.workflow-workspace) .workflow-node.retry {
+  border-color: var(--warning);
+}
+:where(.workflow-workspace) .workflow-node.active b {
+  color: var(--primary);
+}
+:where(.workflow-workspace) .react-flow__node.terminal.complete {
+  border-color: var(--success);
+  color: var(--success);
+  background: var(--card);
+}
+:where(.workflow-workspace) .react-flow__node.terminal.failed {
+  border-color: var(--destructive);
+  color: var(--destructive);
+  background: var(--card);
+}
+:where(.workflow-workspace) .error-banner,
+:where(.workflow-workspace) .inline-error,
+:where(.workflow-workspace) .validation-error {
+  background: color-mix(in srgb, var(--destructive) 9%, var(--background));
+  border-color: color-mix(in srgb, var(--destructive) 45%, var(--background));
+  color: var(--destructive);
+}
+:where(.workflow-workspace) button.danger,
+:where(.workflow-workspace) button.danger-quiet {
+  color: var(--destructive);
+  background: color-mix(in srgb, var(--destructive) 8%, var(--background));
+  border-color: color-mix(in srgb, var(--destructive) 30%, var(--background));
+}
+
+:where(.workflow-workspace) .has-design-chats .settings-save {
+  bottom: 68px;
+}
+:where(.workflow-workspace) .has-design-chats .settings-main {
+  padding-bottom: 110px;
+}
+:where(.workflow-workspace) .design-dock {
+  position: fixed;
+  z-index: 35;
+  right: 24px;
+  bottom: 18px;
+  max-width: calc(100vw - 32px);
+}
+:where(.workflow-workspace) .design-launchers {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: min(700px, calc(100vw - 32px));
+  overflow-x: auto;
+  padding: 5px 0;
+}
+:where(.workflow-workspace) .design-launchers button {
+  flex-shrink: 0;
+  background: var(--card);
+  border-color: var(--border);
+  color: var(--muted-foreground);
+  box-shadow: 0 4px 16px color-mix(in oklch, var(--shadow-color) 37.6%, transparent);
+}
+:where(.workflow-workspace) .design-launchers button.active {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+:where(.workflow-workspace) .design-chat {
+  position: absolute;
+  right: 0;
+  bottom: 55px;
+  display: flex;
+  flex-direction: column;
+  width: 440px;
+  max-width: calc(100vw - 32px);
+  height: min(690px, calc(100dvh - 116px));
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 16px 70px color-mix(in oklch, var(--shadow-color) 60%, transparent);
+  overflow: hidden;
+}
+:where(.workflow-workspace) .design-chat-heading {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 15px 16px;
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
+}
+:where(.workflow-workspace) .design-chat-heading > div {
+  flex: 1;
+}
+:where(.workflow-workspace) .design-chat-heading strong {
+  display: block;
+  font-size: 13px;
+}
+:where(.workflow-workspace) .design-chat-heading small {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  margin-top: 3px;
+}
+:where(.workflow-workspace) .design-avatar {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, var(--background));
+}
+:where(.workflow-workspace) .design-conversation {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px 16px;
+}
+:where(.workflow-workspace) .design-intro {
+  padding: 6px 6px 20px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .design-intro > svg {
+  color: var(--primary);
+}
+:where(.workflow-workspace) .design-intro h3 {
+  font-size: 14px;
+  color: var(--foreground);
+  margin: 10px 0;
+}
+:where(.workflow-workspace) .design-intro p {
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 8px 0;
+}
+:where(.workflow-workspace) .design-intro small {
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .design-message {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--background);
+  max-width: 95%;
+  font-size: 12px;
+}
+:where(.workflow-workspace) .design-message.user {
+  margin-left: auto;
+  background: color-mix(in srgb, var(--primary) 13%, var(--background));
+  border: 1px solid color-mix(in srgb, var(--primary) 23%, var(--background));
+}
+:where(.workflow-workspace) .design-message > span {
+  display: block;
+  font-size: 10px;
+  color: var(--muted-foreground);
+  margin-bottom: 7px;
+}
+:where(.workflow-workspace) .design-message p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+  line-height: 1.7;
+}
+:where(.workflow-workspace) .design-progress {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 6px;
+  font-size: 12px;
+}
+:where(.workflow-workspace) .design-progress > .spinner {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+:where(.workflow-workspace) .design-progress strong {
+  font-weight: 500;
+}
+:where(.workflow-workspace) .design-progress small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+  font-size: 10px;
+}
+:where(.workflow-workspace) .design-progress pre {
+  max-height: 150px;
+  overflow: auto;
+}
+:where(.workflow-workspace) .design-proposal {
+  border: 1px solid var(--border);
+  background: var(--background);
+  border-radius: 12px;
+  padding: 15px;
+  margin-top: 16px;
+}
+:where(.workflow-workspace) .design-proposal-title {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--primary);
+  font-size: 12px;
+}
+:where(.workflow-workspace) .design-proposal > p {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  line-height: 1.6;
+}
+:where(.workflow-workspace) .design-proposal > button {
+  width: 100%;
+  margin-top: 14px;
+}
+:where(.workflow-workspace) .design-preview {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  font-size: 11px;
+}
+:where(.workflow-workspace) .design-preview summary {
+  cursor: pointer;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .design-preview article {
+  margin-top: 12px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+}
+:where(.workflow-workspace) .design-preview strong,
+:where(.workflow-workspace) .design-preview small {
+  display: block;
+}
+:where(.workflow-workspace) .design-preview small {
+  color: var(--muted-foreground);
+  margin-top: 7px;
+  overflow-wrap: anywhere;
+}
+:where(.workflow-workspace) .design-preview p {
+  line-height: 1.7;
+}
+:where(.workflow-workspace) .design-preview pre {
+  font-size: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 300px;
+  overflow: auto;
+}
+:where(.workflow-workspace) .design-preview > details {
+  margin-top: 12px;
+}
+:where(.workflow-workspace) .design-compose {
+  padding: 13px;
+  background: var(--background);
+  border-top: 1px solid var(--border);
+}
+:where(.workflow-workspace) .design-chat-heading,
+:where(.workflow-workspace) .design-compose {
+  flex-shrink: 0;
+}
+:where(.workflow-workspace) .design-compose {
+  padding-bottom: 22px;
+}
+:where(.workflow-workspace) .design-compose textarea {
+  max-height: min(180px, 25dvh, var(--chat-compose-max, 180px));
+}
+:where(.workflow-workspace) .design-compose > div {
+  flex-wrap: wrap;
+}
+:where(.workflow-workspace) .chat-resize-handle {
+  position: absolute;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  touch-action: none;
+}
+:where(.workflow-workspace) .chat-resize-handle.right {
+  right: 0;
+  cursor: nwse-resize;
+}
+:where(.workflow-workspace) .chat-resize-handle.left {
+  left: 0;
+  cursor: nesw-resize;
+  transform: scaleX(-1);
+}
+:where(.workflow-workspace) .chat-resize-handle::after {
+  content: "";
+  position: absolute;
+  bottom: 5px;
+  right: 5px;
+  width: 10px;
+  height: 10px;
+  background: repeating-linear-gradient(135deg, transparent 0 3px, var(--muted-foreground) 3px 4px);
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+:where(.workflow-workspace) .chat-resize-handle:hover {
+  background: color-mix(in srgb, var(--primary) 15%, transparent);
+}
+:where(.workflow-workspace) .chat-resize-handle:focus-visible {
+  outline-offset: -3px;
+}
+:where(.workflow-workspace) .design-compose textarea {
+  font-size: 12px;
+  line-height: 1.6;
+  resize: none;
+  background: var(--card);
+}
+:where(.workflow-workspace) .design-compose > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+:where(.workflow-workspace) .design-compose small {
+  color: var(--muted-foreground);
+  font-size: 9px;
+}
+@media (max-width: 780px) {
+  :where(.workflow-workspace) .design-dock {
+    right: 12px;
+    bottom: 10px;
+    max-width: calc(100vw - 24px);
+  }
+  :where(.workflow-workspace) .design-chat {
+    max-width: calc(100vw - 24px);
+    height: min(640px, calc(100dvh - 92px));
+    bottom: 48px;
+  }
+  :where(.workflow-workspace) .design-launchers {
+    max-width: calc(100vw - 24px);
+  }
+  :where(.workflow-workspace) .design-launchers button {
+    font-size: 10px;
+  }
+}
+:where(.workflow-workspace) .settings-ai-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 0 20px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+:where(.workflow-workspace) .ai-button {
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+  background: color-mix(in srgb, var(--primary) 8%, var(--card));
+}
+:where(.workflow-workspace) .profile-generation {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 20px 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: linear-gradient(
+    110deg,
+    color-mix(in srgb, var(--primary) 8%, var(--card)),
+    var(--card)
+  );
+}
+:where(.workflow-workspace) .profile-generation > svg {
+  color: var(--primary);
+  flex-shrink: 0;
+}
+:where(.workflow-workspace) .profile-generation > div {
+  flex: 1;
+}
+:where(.workflow-workspace) .profile-generation strong {
+  font-size: 13px;
+}
+:where(.workflow-workspace) .profile-generation p {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+  margin: 5px 0 0;
+}
+:where(.workflow-workspace) .profile-generation button {
+  flex-shrink: 0;
+}
+@media (max-width: 780px) {
+  :where(.workflow-workspace) .profile-generation {
+    flex-wrap: wrap;
+    padding: 17px;
+  }
+  :where(.workflow-workspace) .profile-generation > div {
+    min-width: 180px;
+  }
+  :where(.workflow-workspace) .profile-generation button {
+    width: 100%;
+  }
+}
+
+/* Workspaces use the available screen; reading surfaces keep a comfortable line length. */
+:where(.workflow-workspace) .task-content {
+  max-width: none;
+  width: 100%;
+}
+:where(.workflow-workspace) .task-main {
+  padding: 28px clamp(18px, 3vw, 56px) 65px;
+}
+:where(.workflow-workspace) .task-request {
+  padding-bottom: 18px;
+  margin-bottom: 18px;
+}
+:where(.workflow-workspace) .task-request > p,
+:where(.workflow-workspace) .plan-rationale p {
+  max-width: 105ch;
+}
+:where(.workflow-workspace) .workflow-canvas.inspecting {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 24%);
+}
+:where(.workflow-workspace) .graph-panel {
+  height: clamp(470px, 58vh, 800px);
+}
+:where(.workflow-workspace) .graph-toolbar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  z-index: 5;
+}
+:where(.workflow-workspace) .graph-toolbar span {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  background: var(--background);
+  padding: 4px;
+}
+:where(.workflow-workspace) .graph-toolbar button {
+  font-size: 11px;
+  padding: 6px 9px;
+}
+:where(.workflow-workspace) .graph-toolbar {
+  max-width: calc(100% - 24px);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+:where(.workflow-workspace) .tabs .expand-workspace {
+  padding: 7px 9px;
+  margin-left: auto;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .workflow-dialog {
+  position: fixed;
+  inset: 16px;
+  margin: 0;
+  width: calc(100vw - 32px);
+  height: calc(100dvh - 32px);
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  color: var(--foreground);
+  background: var(--background);
+  box-shadow: 0 24px 100px color-mix(in oklch, var(--shadow-color) 70.2%, transparent);
+}
+:where(.workflow-workspace) .workflow-dialog::backdrop {
+  background: color-mix(in oklch, var(--shadow-color) 83.1%, transparent);
+  backdrop-filter: blur(5px);
+}
+:where(.workflow-workspace) .workflow-dialog .details-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 0;
+  border-radius: 0;
+}
+:where(.workflow-workspace) .expanded-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 18px 22px 6px;
+}
+:where(.workflow-workspace) .expanded-heading .eyebrow {
+  margin-bottom: 5px;
+  font-size: 9px;
+}
+:where(.workflow-workspace) .expanded-heading h2 {
+  margin: 0;
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+:where(.workflow-workspace) .workflow-dialog .tabs {
+  flex-shrink: 0;
+}
+:where(.workflow-workspace) .workflow-dialog .workflow-canvas {
+  flex: 1;
+  min-height: 0;
+}
+:where(.workflow-workspace) .workflow-dialog .graph-panel {
+  height: 100%;
+  min-height: 0;
+}
+:where(.workflow-workspace) .workflow-dialog .step-inspector {
+  max-height: 100%;
+  overflow: auto;
+}
+:where(.workflow-workspace) .workflow-dialog .activity,
+:where(.workflow-workspace) .workflow-dialog .artifact-list,
+:where(.workflow-workspace) .workflow-dialog .results-panel,
+:where(.workflow-workspace) .workflow-dialog .plan-editor {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+:where(.workflow-workspace) .workflow-dialog .artifact-list,
+:where(.workflow-workspace) .workflow-dialog .results-panel,
+:where(.workflow-workspace) .workflow-dialog .plan-editor {
+  overflow: auto;
+}
+@media (max-width: 1000px) {
+  :where(.workflow-workspace) .workflow-dialog .workflow-canvas.inspecting {
+    grid-template-rows: minmax(220px, 1fr) minmax(0, 40%);
+  }
+}
+@media (max-width: 780px) {
+  :where(.workflow-workspace) .workflow-dialog {
+    inset: 6px;
+    width: calc(100vw - 12px);
+    height: calc(100dvh - 12px);
+    border-radius: 10px;
+  }
+  :where(.workflow-workspace) .expanded-heading {
+    padding: 14px 14px 6px;
+    gap: 12px;
+  }
+  :where(.workflow-workspace) .expanded-heading h2 {
     font-size: 15px;
   }
-  :scope .composition-heading > span {
-    font-size: 12px;
+  :where(.workflow-workspace) .tabs .expand-workspace {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    background: var(--background);
+    box-shadow: -8px 0 8px var(--background);
   }
-  :scope .composition-heading small {
-    font-size: 11px;
+  :where(.workflow-workspace) .tabs .expand-workspace > span {
+    display: none;
   }
-  :scope .composition-step .graph-label {
-    padding: 12px 14px;
+}
+@media (max-width: 480px) {
+  :where(.workflow-workspace) .tabs {
+    gap: 12px;
   }
-  :scope .composition-step .graph-label strong {
-    font-size: 16px;
-    line-height: 1.3;
+  :where(.workflow-workspace) .tabs > button:not(.expand-workspace) > svg {
+    display: none;
   }
-  :scope .composition-step .graph-label small,
-  :scope .composition-step .graph-label > span {
-    font-size: 11px;
+}
+:where(.workflow-workspace) .react-flow__node.workflow-node {
+  cursor: grab;
+}
+:where(.workflow-workspace) .react-flow__node.workflow-node.dragging {
+  cursor: grabbing;
+}
+:where(.workflow-workspace) .react-flow__node.workflow-node.active {
+  border: 2px solid var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, var(--background));
+  box-shadow: 0 0 0 5px color-mix(in oklch, var(--primary) 13.3%, transparent);
+  animation: active-block 2s ease-in-out infinite;
+}
+:where(.workflow-workspace) .react-flow__node.workflow-node.fail {
+  border-color: var(--destructive);
+}
+:where(.workflow-workspace) .workflow-node.fail b {
+  color: var(--destructive);
+}
+@keyframes active-block {
+  50% {
+    box-shadow:
+      0 0 0 8px color-mix(in oklch, var(--primary) 4.7%, transparent),
+      0 0 28px color-mix(in oklch, var(--primary) 14.1%, transparent);
   }
-  :scope .composition-step .graph-label b {
-    font-size: 10px;
-    margin-top: 8px;
+}
+:where(.workflow-workspace) .result-banner {
+  display: flex;
+  gap: 16px;
+  padding: 20px 22px;
+  margin: 18px 0 22px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 12px;
+}
+:where(.workflow-workspace) .result-banner > div:last-child {
+  flex: 1;
+  min-width: 0;
+}
+:where(.workflow-workspace) .result-banner strong {
+  font-size: 16px;
+}
+:where(.workflow-workspace) .result-banner.completed {
+  border-color: color-mix(in srgb, var(--success) 50%, var(--border));
+}
+:where(.workflow-workspace) .result-banner.failed,
+:where(.workflow-workspace) .result-banner.interrupted {
+  border-color: color-mix(in srgb, var(--destructive) 60%, var(--border));
+  background: color-mix(in srgb, var(--destructive) 5%, var(--card));
+}
+:where(.workflow-workspace) .result-icon {
+  color: var(--primary);
+  padding-top: 2px;
+}
+:where(.workflow-workspace) .result-banner.completed .result-icon {
+  color: var(--success);
+}
+:where(.workflow-workspace) .result-banner.failed .result-icon,
+:where(.workflow-workspace) .result-banner.interrupted .result-icon {
+  color: var(--destructive);
+}
+:where(.workflow-workspace) .result-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+:where(.workflow-workspace) .results-panel {
+  padding: 24px;
+}
+:where(.workflow-workspace) .results-panel h2 {
+  margin: 0;
+  font-size: 18px;
+}
+:where(.workflow-workspace) .result-artifact {
+  padding: 24px 0;
+  border-top: 1px solid var(--border);
+  margin-top: 20px;
+}
+:where(.workflow-workspace) .result-artifact h3 {
+  margin: 0;
+  font-size: 14px;
+}
+:where(.workflow-workspace) .step-result {
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 0 14px;
+}
+:where(.workflow-workspace) .markdown-body {
+  line-height: 1.75;
+  font-size: 14px;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+:where(.workflow-workspace) .markdown-body > :first-child {
+  margin-top: 10px;
+}
+:where(.workflow-workspace) .markdown-body > :last-child {
+  margin-bottom: 0;
+}
+:where(.workflow-workspace) .markdown-body p,
+:where(.workflow-workspace) .markdown-body ul,
+:where(.workflow-workspace) .markdown-body ol {
+  max-width: 105ch;
+}
+:where(.workflow-workspace) .markdown-body h1,
+:where(.workflow-workspace) .markdown-body h2,
+:where(.workflow-workspace) .markdown-body h3,
+:where(.workflow-workspace) .markdown-body h4 {
+  color: var(--foreground);
+  line-height: 1.4;
+  margin: 1.4em 0 0.5em;
+}
+:where(.workflow-workspace) .markdown-body h1 {
+  font-size: 24px;
+}
+:where(.workflow-workspace) .markdown-body h2 {
+  font-size: 20px;
+}
+:where(.workflow-workspace) .markdown-body h3 {
+  font-size: 16px;
+}
+:where(.workflow-workspace) .markdown-body strong {
+  color: var(--foreground);
+  font-size: inherit;
+}
+:where(.workflow-workspace) .markdown-body pre {
+  background: var(--background);
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: auto;
+  white-space: pre;
+  max-height: none;
+}
+:where(.workflow-workspace) .markdown-body code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.9em;
+  background: var(--muted);
+  padding: 2px 5px;
+  border-radius: 4px;
+  color: var(--primary);
+}
+:where(.workflow-workspace) .markdown-body pre code {
+  background: none;
+  padding: 0;
+  color: var(--foreground);
+}
+:where(.workflow-workspace) .markdown-body blockquote {
+  border-left: 3px solid var(--primary);
+  margin: 16px 0;
+  padding: 1px 18px;
+  background: var(--background);
+}
+:where(.workflow-workspace) .markdown-body table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  max-width: 100%;
+}
+:where(.workflow-workspace) .markdown-body td,
+:where(.workflow-workspace) .markdown-body th {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+:where(.workflow-workspace) .markdown-body th {
+  color: var(--foreground);
+  background: var(--muted);
+}
+:where(.workflow-workspace) .markdown-body li {
+  margin: 5px 0;
+}
+:where(.workflow-workspace) .markdown-body hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 20px 0;
+}
+:where(.workflow-workspace) .markdown-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+:where(.workflow-workspace) .markdown-actions button {
+  font-size: 11px;
+  padding: 6px 8px;
+}
+:where(.workflow-workspace) .markdown-actions small {
+  color: var(--destructive);
+}
+:where(.workflow-workspace) .artifact-list > details > .markdown-body {
+  padding: 0 18px 18px;
+}
+:where(.workflow-workspace) .artifact-list .markdown-actions {
+  padding: 10px 12px 0;
+  justify-content: end;
+}
+:where(.workflow-workspace) .design-dock {
+  pointer-events: none;
+  z-index: 35;
+}
+:where(.workflow-workspace) .design-dock > * {
+  pointer-events: auto;
+}
+:where(.workflow-workspace) .design-chat {
+  position: fixed;
+  right: auto;
+  bottom: auto;
+  width: 440px;
+  max-width: calc(100vw - 24px);
+  height: min(690px, calc(100dvh - 116px));
+}
+:where(.workflow-workspace) .design-chat-heading {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  padding: 12px;
+}
+:where(.workflow-workspace) .design-chat-heading:active {
+  cursor: grabbing;
+}
+:where(.workflow-workspace) .design-chat-heading:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -3px;
+}
+:where(.workflow-workspace) .design-chat-heading .icon-button {
+  padding: 6px;
+}
+:where(.workflow-workspace) .design-chat-heading > div {
+  min-width: 0;
+}
+:where(.workflow-workspace) .design-message .markdown-body {
+  font-size: 13px;
+}
+:where(.workflow-workspace) .design-message .markdown-body p {
+  white-space: normal;
+}
+:where(.workflow-workspace) .design-launchers {
+  max-width: calc(100vw - 40px);
+  overflow-x: auto;
+  padding: 3px;
+}
+:where(.workflow-workspace) .design-launchers > button {
+  flex-shrink: 0;
+  max-width: 200px;
+}
+:where(.workflow-workspace) .design-launchers small {
+  display: block;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  text-align: left;
+  margin-top: 2px;
+}
+:where(.workflow-workspace) .dock-status {
+  padding: 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+:where(.workflow-workspace) .notifications {
+  position: relative;
+}
+:where(.workflow-workspace) .notifications > button {
+  position: relative;
+}
+:where(.workflow-workspace) .notification-count {
+  border-radius: 10px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 10px;
+  min-width: 15px;
+  position: absolute;
+  top: -3px;
+  right: -4px;
+}
+:where(.workflow-workspace) .notification-panel {
+  position: absolute;
+  right: 0;
+  top: 40px;
+  z-index: 50;
+  width: min(420px, calc(100vw - 32px));
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 16px 50px color-mix(in oklch, var(--shadow-color) 53.3%, transparent);
+}
+:where(.workflow-workspace) .notification-item {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  width: 100%;
+  gap: 6px;
+  margin-top: 10px;
+  text-align: left;
+  padding: 12px;
+}
+:where(.workflow-workspace) .notification-item span {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .notification-item.unread {
+  border-left: 3px solid var(--primary);
+}
+:where(.workflow-workspace) .notification-item small {
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .notification-toast {
+  position: fixed;
+  bottom: 22px;
+  left: calc(50% + 100px);
+  transform: translateX(-50%);
+  z-index: 30;
+  width: min(580px, calc(100vw - 40px));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--muted);
+  border: 1px solid var(--primary);
+  box-shadow: 0 8px 30px color-mix(in oklch, var(--shadow-color) 46.7%, transparent);
+}
+:where(.workflow-workspace) .notification-toast > .quiet {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  text-align: left;
+}
+:where(.workflow-workspace) .notification-toast strong,
+:where(.workflow-workspace) .notification-toast span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:where(.workflow-workspace) .notification-toast span {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin-top: 4px;
+}
+:where(.workflow-workspace) .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+:where(.workflow-workspace) .script-source {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  tab-size: 2;
+  white-space: pre;
+}
+:where(.workflow-workspace) .script-contract {
+  margin: 0 0 20px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.7;
+}
+:where(.workflow-workspace) .script-contract code {
+  color: var(--primary);
+}
+@media (max-width: 1000px) {
+  :where(.workflow-workspace) .workflow-canvas.inspecting {
+    grid-template-columns: minmax(0, 1fr);
   }
-  :scope .composition-junction .react-flow__handle {
-    opacity: 0;
+}
+@media (max-width: 700px) {
+  :where(.workflow-workspace) .task-main {
+    padding: 18px 12px 80px;
   }
+  :where(.workflow-workspace) .graph-panel {
+    height: 430px;
+  }
+  :where(.workflow-workspace) .graph-toolbar span {
+    display: none;
+  }
+  :where(.workflow-workspace) .result-banner {
+    padding: 16px;
+    gap: 10px;
+  }
+  :where(.workflow-workspace) .results-panel {
+    padding: 16px;
+  }
+  :where(.workflow-workspace) .results-panel .card-title {
+    flex-wrap: wrap;
+  }
+  :where(.workflow-workspace) .notification-toast {
+    left: 50%;
+    bottom: 70px;
+  }
+  :where(.workflow-workspace) .design-chat {
+    height: min(690px, calc(100dvh - 116px));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(.workflow-workspace) .react-flow__node.workflow-node.active {
+    animation: none;
+  }
+}
+:where(.workflow-workspace) .task-history-entry {
+  position: relative;
+}
+:where(.workflow-workspace) .task-history-entry .task-item {
+  padding-right: 34px;
+}
+:where(.workflow-workspace) .history-delete {
+  position: absolute;
+  right: 3px;
+  top: 13px;
+  padding: 6px;
+  opacity: 0;
+}
+:where(.workflow-workspace) .task-history-entry:hover .history-delete,
+:where(.workflow-workspace) .task-history-entry:focus-within .history-delete {
+  opacity: 1;
+}
+:where(.workflow-workspace) .history-delete:hover {
+  color: var(--destructive);
+}
+:where(.workflow-workspace) .request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@media (hover: none) {
+  :where(.workflow-workspace) .history-delete {
+    opacity: 1;
+  }
+}
+:where(.workflow-workspace) .progress-step.fail,
+:where(.workflow-workspace) .progress-step.failed {
+  border-color: color-mix(in srgb, var(--destructive) 60%, var(--background));
+}
+:where(.workflow-workspace) .progress-step.fail .step-number,
+:where(.workflow-workspace) .progress-step.failed .step-number {
+  color: var(--destructive);
+  border-color: var(--destructive);
+}
+:where(.workflow-workspace) .result-checks {
+  padding: 16px 0;
+}
+:where(.workflow-workspace) .result-checks > details,
+:where(.workflow-workspace) .result-checks details {
+  margin: 12px 0;
+}
+@media (max-width: 700px) {
+  :where(.workflow-workspace) .request-heading {
+    align-items: flex-start;
+  }
+  :where(.workflow-workspace) .request-heading .eyebrow {
+    white-space: nowrap;
+    margin-top: 10px;
+  }
+  :where(.workflow-workspace) .request-actions {
+    justify-content: flex-end;
+  }
+}
+:where(.workflow-workspace) .program-source {
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  line-height: 1.65;
+  tab-size: 2;
+  white-space: pre;
+}
+:where(.workflow-workspace) .program-language {
+  color: var(--primary);
+  font-family: monospace;
+  font-size: 12px;
+}
+:where(.workflow-workspace) .program-editor > .editor-field {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  margin-top: 20px;
+}
+:where(.workflow-workspace) .program-editor label textarea {
+  display: block;
+  margin-top: 8px;
+}
+:where(.workflow-workspace) .program-editor .editor-actions small {
+  flex-basis: auto;
+  margin-left: auto;
+}
+:where(.workflow-workspace) .react-flow__node.composition-group {
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+:where(.workflow-workspace) .composition-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+:where(.workflow-workspace) .composition-heading strong {
+  color: var(--primary);
+  font-size: 13px;
+}
+:where(.workflow-workspace) .composition-heading small {
+  margin-left: auto;
+}
+:where(.workflow-workspace) .react-flow__node.composition-junction {
+  background: var(--border);
+  border: 1px solid var(--muted-foreground);
+  border-radius: 50%;
+}
+:where(.workflow-workspace) .workflow-graph .react-flow__edge,
+:where(.workflow-workspace) .workflow-graph .react-flow__edge-interaction {
+  pointer-events: none !important;
+}
+:where(.workflow-workspace) .composition-heading {
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  padding: 12px 16px;
+  cursor: pointer;
+}
+:where(.workflow-workspace) .composition-heading strong {
+  font-size: 15px;
+}
+:where(.workflow-workspace) .composition-heading > span {
+  font-size: 12px;
+}
+:where(.workflow-workspace) .composition-heading small {
+  font-size: 11px;
+}
+:where(.workflow-workspace) .composition-step .graph-label {
+  padding: 12px 14px;
+}
+:where(.workflow-workspace) .composition-step .graph-label strong {
+  font-size: 16px;
+  line-height: 1.3;
+}
+:where(.workflow-workspace) .composition-step .graph-label small,
+:where(.workflow-workspace) .composition-step .graph-label > span {
+  font-size: 11px;
+}
+:where(.workflow-workspace) .composition-step .graph-label b {
+  font-size: 10px;
+  margin-top: 8px;
+}
+:where(.workflow-workspace) .composition-junction .react-flow__handle {
+  opacity: 0;
+}
 
-  :scope .design-tool-activity {
-    margin: 12px 0;
-    font-size: 11px;
-    color: var(--ctp-subtext0);
-    overflow-wrap: anywhere;
+:where(.workflow-workspace) .design-tool-activity {
+  margin: 12px 0;
+  font-size: 11px;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+:where(.workflow-workspace) .design-tool-activity p {
+  white-space: pre-wrap;
+  max-height: 160px;
+  overflow: auto;
+}
+:where(.workflow-workspace) .design-page-context {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+@media (max-width: 600px) {
+  :where(.workflow-workspace) .workspace-topbar .workspace-breadcrumb {
+    min-width: 0;
+    overflow: hidden;
   }
-  :scope .design-tool-activity p {
-    white-space: pre-wrap;
-    max-height: 160px;
-    overflow: auto;
-  }
-  :scope .design-page-context {
-    display: block;
-    color: var(--ctp-overlay1);
+  :where(.workflow-workspace) .workspace-topbar .ai-button {
+    white-space: nowrap;
     font-size: 10px;
-  }
-  @media (max-width: 600px) {
-    :scope .workspace-topbar .workspace-breadcrumb {
-      min-width: 0;
-      overflow: hidden;
-    }
-    :scope .workspace-topbar .ai-button {
-      white-space: nowrap;
-      font-size: 10px;
-      padding: 6px;
-    }
+    padding: 6px;
   }
 }

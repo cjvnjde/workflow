@@ -3,14 +3,14 @@
   max-height: calc(100dvh - 40px);
   overflow: auto;
   padding: 26px;
-  border: 1px solid var(--ctp-surface1);
+  border: 1px solid var(--border);
   border-radius: 16px;
-  background: var(--ctp-base);
-  color: var(--ctp-text);
-  box-shadow: 0 24px 80px #0008;
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 24px 80px color-mix(in oklch, var(--shadow-color) 53.3%, transparent);
 }
 .remember-dialog::backdrop {
-  background: #11111baa;
+  background: color-mix(in oklch, var(--shadow-color) 66.7%, transparent);
   backdrop-filter: blur(3px);
 }
 .remember-dialog .remember-heading {
@@ -29,14 +29,14 @@
 .remember-dialog .remember-boundary,
 .remember-dialog .remember-mode {
   line-height: 1.6;
-  color: var(--ctp-subtext0);
+  color: var(--muted-foreground);
 }
 .remember-dialog .remember-boundary {
   font-size: 11px;
 }
 .remember-dialog .remember-mode {
   padding: 12px;
-  border: 1px solid var(--ctp-surface1);
+  border: 1px solid var(--border);
   border-radius: 8px;
 }
 .remember-dialog textarea {
@@ -45,7 +45,7 @@
 .remember-dialog .remember-evidence,
 .remember-dialog .remember-existing {
   margin: 18px 0;
-  border-top: 1px solid var(--ctp-surface1);
+  border-top: 1px solid var(--border);
   padding-top: 16px;
 }
 .remember-dialog .remember-evidence > summary,
@@ -57,12 +57,12 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   padding: 12px;
-  background: var(--ctp-mantle);
+  background: var(--card);
   border-radius: 8px;
 }
 .remember-dialog .remember-conflict {
   padding: 14px;
-  border: 1px solid var(--ctp-yellow);
+  border: 1px solid var(--warning);
   border-radius: 8px;
 }
 .remember-dialog .remember-actions {

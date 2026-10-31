@@ -285,7 +285,7 @@ test("observation annotations keep recorded facts separate and fit mobile screen
   await expect(facts).toContainText("fixture/independent-reviewer");
   await expect(facts.getByRole("link")).toHaveAttribute(
     "href",
-    `#run=${observed.observation!.sources[0]!.runId}`,
+    `/?run=${observed.observation!.sources[0]!.runId}`,
   );
   await panel
     .getByLabel("Your annotation", { exact: true })

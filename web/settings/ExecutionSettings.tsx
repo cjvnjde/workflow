@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useForm, useStore } from "@tanstack/react-form";
 import type { z } from "zod";
 import {
   identifierSchema,
@@ -12,9 +12,9 @@ import { useAutosize } from "../shared/autosize.js";
 type Execution = z.infer<typeof executionSettingsSchema>;
 type Command = Execution["commands"][string];
 export interface ExecutionSettingsProps {
-  modelValue: Execution;
+  value: Execution;
   approval: OrchestrationSettings["approval"];
-  onUpdateModelValue: (value: Execution) => void;
+  onChange: (value: Execution) => void;
   onUpdateApproval: (value: OrchestrationSettings["approval"]) => void;
 }
 
@@ -73,15 +73,33 @@ function CommandCard({
 }
 
 export default function ExecutionSettings({
-  modelValue: execution,
+  value: execution,
   approval,
-  onUpdateModelValue,
+  onChange,
   onUpdateApproval,
 }: ExecutionSettingsProps) {
-  const [newCommand, setNewCommand] = useState("");
+  const commandForm = useForm({
+    defaultValues: { name: "" },
+    validators: {
+      onSubmit: ({ value }) => {
+        const result = identifierSchema.safeParse(value.name);
+        if (!result.success) return result.error.issues[0]?.message;
+        if (execution.commands[value.name]) return "A command with this name already exists.";
+        return undefined;
+      },
+    },
+    onSubmit: ({ value }) => {
+      onChange({
+        ...execution,
+        commands: { ...execution.commands, [value.name]: { argv: [""], timeoutMs: 120_000 } },
+      });
+      commandForm.reset();
+    },
+  });
+  const newCommand = useStore(commandForm.store, (state) => state.values.name);
   const instructionsRef = useAutosize(execution.instructions);
   function setBudget(key: "maxCostUsd" | "maxTaskCostUsd" | "maxSetupCostUsd", value: string) {
-    onUpdateModelValue({
+    onChange({
       ...execution,
       budget: {
         inputTokensPerCall: 4000,
@@ -92,13 +110,6 @@ export default function ExecutionSettings({
         [key]: value ? Number(value) : undefined,
       },
     });
-  }
-  function addCommand() {
-    onUpdateModelValue({
-      ...execution,
-      commands: { ...execution.commands, [newCommand]: { argv: [""], timeoutMs: 120_000 } },
-    });
-    setNewCommand("");
   }
   return (
     <section>
@@ -131,9 +142,7 @@ export default function ExecutionSettings({
               value={execution.instructions}
               ref={instructionsRef}
               rows={3}
-              onChange={(event) =>
-                onUpdateModelValue({ ...execution, instructions: event.target.value })
-              }
+              onChange={(event) => onChange({ ...execution, instructions: event.target.value })}
             />
           )}
         </Field>
@@ -147,7 +156,7 @@ export default function ExecutionSettings({
                 max="500"
                 value={execution.maxSteps}
                 onChange={(event) =>
-                  onUpdateModelValue({ ...execution, maxSteps: Number(event.target.value) })
+                  onChange({ ...execution, maxSteps: Number(event.target.value) })
                 }
               />
             )}
@@ -223,7 +232,7 @@ export default function ExecutionSettings({
           name={name}
           command={command}
           onUpdate={(updated) =>
-            onUpdateModelValue({
+            onChange({
               ...execution,
               commands: { ...execution.commands, [name]: updated },
             })
@@ -231,14 +240,14 @@ export default function ExecutionSettings({
           onRemove={() => {
             const commands = { ...execution.commands };
             delete commands[name];
-            onUpdateModelValue({ ...execution, commands });
+            onChange({ ...execution, commands });
           }}
         />
       ))}
       <div className="inline-add">
         <input
           value={newCommand}
-          onChange={(event) => setNewCommand(event.target.value)}
+          onChange={(event) => commandForm.setFieldValue("name", event.target.value)}
           aria-label="New command name"
           placeholder="test, lint, commit…"
         />
@@ -246,7 +255,7 @@ export default function ExecutionSettings({
           disabled={
             !identifierSchema.safeParse(newCommand).success || !!execution.commands[newCommand]
           }
-          onClick={addCommand}
+          onClick={() => void commandForm.handleSubmit()}
         >
           Add command
         </button>

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useForm, useStore } from "@tanstack/react-form";
 import { resolveAgentSettings } from "../../../src/contracts/index.js";
 import type { SetupJobsController } from "./use-setup-jobs.js";
 import { setupActive, setupStageLabels, setupStatusLabels } from "./setup-presentation.js";
@@ -43,11 +44,25 @@ function SetupProgressDetails({
   const needsModelToResume = !!job?.stages.some(
     (stage) => ["profiles", "cases", "blocks"].includes(stage.id) && stage.status !== "completed",
   );
-  const [instructions, setInstructions] = useState("");
+  const setupForm = useForm({
+    defaultValues: { instructions: "" },
+    onSubmit: ({ value }) =>
+      controller.start({ instructions: value.instructions, regenerate: !!(completed || job) }),
+  });
+  const instructions = useStore(setupForm.store, (state) => state.values.instructions);
   const [showForm, setShowForm] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [limit, setLimit] = useState({ revision: job?.revision, value: "" });
-  const resumeLimit = limit.revision === job?.revision ? limit.value : "";
+  const resumeForm = useForm({
+    defaultValues: { limit: "" },
+    onSubmit: async ({ value }) => {
+      if (needsModelToResume && !validResumeLimit) return;
+      await controller.resume(needsModelToResume && value.limit ? Number(value.limit) : undefined);
+    },
+  });
+  const resumeLimit = useStore(resumeForm.store, (state) => state.values.limit);
+  useEffect(() => {
+    resumeForm.reset();
+  }, [resumeForm, job?.revision]);
   const validResumeLimit =
     !resumeLimit ||
     (Number.isFinite(Number(resumeLimit)) &&
@@ -58,7 +73,7 @@ function SetupProgressDetails({
   const showInitialForm = !job && !completed;
   const textarea = useAutosize(instructions);
   function newSetup() {
-    setInstructions(job?.instructions ?? "");
+    setupForm.setFieldValue("instructions", job?.instructions ?? "");
     setShowForm(true);
   }
   async function copyId() {
@@ -69,10 +84,6 @@ function SetupProgressDetails({
     } catch {
       setCopied(false);
     }
-  }
-  async function resume() {
-    if (needsModelToResume && !validResumeLimit) return;
-    await controller.resume(needsModelToResume && resumeLimit ? Number(resumeLimit) : undefined);
   }
   if (demo && !job && compact) return null;
   return (
@@ -275,9 +286,7 @@ function SetupProgressDetails({
                   <input
                     id="setup-resume-limit"
                     value={resumeLimit}
-                    onChange={(event) =>
-                      setLimit({ revision: job.revision, value: event.target.value })
-                    }
+                    onChange={(event) => resumeForm.setFieldValue("limit", event.target.value)}
                     type="number"
                     min={job.maxSetupCostUsd}
                     step="any"
@@ -306,7 +315,7 @@ function SetupProgressDetails({
                       demo ||
                       (needsModelToResume && !validResumeLimit)
                     }
-                    onClick={() => void resume()}
+                    onClick={() => void resumeForm.handleSubmit()}
                   >
                     Resume setup
                   </button>
@@ -346,22 +355,28 @@ function SetupProgressDetails({
               className="setup-start-form"
               onSubmit={(event) => {
                 event.preventDefault();
-                void controller.start({ instructions, regenerate: !!(completed || job) });
+                void setupForm.handleSubmit();
               }}
             >
               <label htmlFor="setup-preferences">
                 Setup preferences <span>optional</span>
               </label>
-              <textarea
-                id="setup-preferences"
-                ref={textarea}
-                value={instructions}
-                onChange={(event) => setInstructions(event.target.value)}
-                rows={2}
-                maxLength={8000}
-                placeholder="For example: prioritize low cost, keep publication manual, use the existing test commands…"
-                disabled={state.pending || blocked}
-              />
+              <setupForm.Field name="instructions">
+                {(field) => (
+                  <textarea
+                    id="setup-preferences"
+                    name={field.name}
+                    ref={textarea}
+                    value={field.state.value}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                    onBlur={field.handleBlur}
+                    rows={2}
+                    maxLength={8000}
+                    placeholder="For example: prioritize low cost, keep publication manual, use the existing test commands…"
+                    disabled={state.pending || blocked}
+                  />
+                )}
+              </setupForm.Field>
               <p>
                 Uses{" "}
                 {hasDefault ? `${agent?.provider}/${agent?.model}` : "your saved default model"}.{" "}

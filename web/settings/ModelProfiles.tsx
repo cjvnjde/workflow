@@ -10,10 +10,10 @@ import { useAutosize } from "../shared/autosize.js";
 
 type Profile = OrchestrationSettings["profiles"][number];
 export interface ModelProfilesProps {
-  modelValue: OrchestrationSettings;
+  value: OrchestrationSettings;
   models: AvailableModel[];
   busy: boolean;
-  onUpdateModelValue: (value: OrchestrationSettings) => void;
+  onChange: (value: OrchestrationSettings) => void;
   onGenerate: (prompt: string) => void;
 }
 
@@ -196,14 +196,14 @@ function ProfileCard({
 }
 
 export default function ModelProfiles({
-  modelValue: settings,
+  value: settings,
   models,
   busy,
-  onUpdateModelValue,
+  onChange,
   onGenerate,
 }: ModelProfilesProps) {
   function updateProfile(profile: Profile) {
-    onUpdateModelValue({
+    onChange({
       ...settings,
       profiles: settings.profiles.map((item) => (item.id === profile.id ? profile : item)),
     });
@@ -212,7 +212,7 @@ export default function ModelProfiles({
     const model =
       models.find((item) => item.provider === "openai" && item.id === "gpt-6.1-sol") ?? models[0];
     if (!model) return;
-    onUpdateModelValue({
+    onChange({
       ...settings,
       profiles: [
         ...settings.profiles,
@@ -283,7 +283,7 @@ export default function ModelProfiles({
               id={id}
               value={settings.coordinatorProfile}
               onChange={(event) =>
-                onUpdateModelValue({ ...settings, coordinatorProfile: event.target.value })
+                onChange({ ...settings, coordinatorProfile: event.target.value })
               }
             >
               <option value="">Project default model</option>
@@ -316,7 +316,7 @@ export default function ModelProfiles({
           models={models}
           onUpdate={updateProfile}
           onRemove={() =>
-            onUpdateModelValue({
+            onChange({
               ...settings,
               coordinatorProfile:
                 settings.coordinatorProfile === profile.id ? "" : settings.coordinatorProfile,
@@ -324,7 +324,7 @@ export default function ModelProfiles({
             })
           }
           onEnable={(enabled) =>
-            onUpdateModelValue({
+            onChange({
               ...settings,
               coordinatorProfile:
                 !enabled && settings.coordinatorProfile === profile.id

@@ -1,10 +1,12 @@
-import { createRoot } from "react-dom/client";
-import { WorkflowApp } from "./app/workflow-app.js";
-import "./theme.css";
+import { startTransition, StrictMode } from "react";
+import { hydrateRoot } from "react-dom/client";
+import { StartClient } from "@tanstack/react-start/client";
 
-const root = document.getElementById("root");
-if (!root) {
-  throw new Error("Missing application root");
-}
-
-createRoot(root).render(<WorkflowApp />);
+startTransition(() => {
+  hydrateRoot(
+    document,
+    <StrictMode>
+      <StartClient />
+    </StrictMode>,
+  );
+});

@@ -35,8 +35,11 @@ async function until(check: () => boolean) {
 
 test("TypeScript compiler catches type errors, missing exports and invalid inputs without evaluating source", async (t) => {
   const { project } = await fixture(t);
-  assert.equal(checkProgram(project, { source: scripted, input }).input.request, input.request);
-  assert.throws(
+  assert.equal(
+    (await checkProgram(project, { source: scripted, input })).input.request,
+    input.request,
+  );
+  await assert.rejects(
     () =>
       checkProgram(project, {
         source: scripted.replace("ctx.input.request", "ctx.input.absent"),
@@ -44,24 +47,27 @@ test("TypeScript compiler catches type errors, missing exports and invalid input
       }),
     /absent/,
   );
-  assert.throws(
+  await assert.rejects(
     () => checkProgram(project, { source: "export const x = 1", input }),
     /default export/,
   );
-  assert.throws(
+  await assert.rejects(
     () => checkProgram(project, { source: scripted, filename: "../escape.ts", input }),
     /project-relative/,
   );
-  assert.throws(() => checkProgram(project, { source: scripted, input: [] }));
+  await assert.rejects(() => checkProgram(project, { source: scripted, input: [] }));
   // Compilation must never evaluate even top-level orchestration statements.
-  checkProgram(project, { source: `throw new Error("Must not evaluate");\n${scripted}`, input });
+  await checkProgram(project, {
+    source: `throw new Error("Must not evaluate");\n${scripted}`,
+    input,
+  });
 });
 
 test("shipped TypeScript examples typecheck with the installed SDK", async (t) => {
   const { project } = await fixture(t);
   for (const name of ["implement-reviewed", "scripts-only", "composed", "shared-tools"]) {
     const source = await readFile(new URL(`../examples/${name}.ts`, import.meta.url), "utf8");
-    checkProgram(project, { source, input: {} });
+    await checkProgram(project, { source, input: {} });
   }
 });
 

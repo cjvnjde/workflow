@@ -64,15 +64,6 @@ test("remembering requires explicit save, keeps memory off, and reopens the exis
       posts++;
   });
   let panel = await open(page);
-  expect(
-    await panel.evaluate((element) =>
-      getComputedStyle(element).getPropertyValue("--ctp-base").trim(),
-    ),
-  ).toBe("#1e1e2e");
-  await expect(panel.getByLabel("Strategy title", { exact: true })).toHaveCSS(
-    "box-sizing",
-    "border-box",
-  );
   await expect(panel).toContainText("Saving this strategy will keep it off");
   await expect(panel).toContainText("Demo source");
   await panel

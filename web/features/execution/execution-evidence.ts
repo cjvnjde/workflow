@@ -1,5 +1,14 @@
 import type { WorkflowRun } from "../../../src/contracts/index.js";
 
+export interface StepAttemptInterval {
+  nodeId: string;
+  visit: number;
+  start: number;
+  end: number;
+  outcome: string;
+  label: string;
+}
+
 /** Intervals are actual step attempts, not planned graph branches. */
 export function executionEvidence(
   run: Pick<WorkflowRun, "status" | "updatedAt"> & {
@@ -23,7 +32,7 @@ export function executionEvidence(
       ? `${label} · ${id}`
       : label;
   };
-  const intervals = run.attempts.map((attempt) => {
+  const intervals: StepAttemptInterval[] = run.attempts.map((attempt) => {
     const start = Date.parse(attempt.startedAt);
     const end = Date.parse(
       attempt.finishedAt ?? (terminal ? run.updatedAt : new Date(now).toISOString()),

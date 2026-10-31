@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import type { StrategyMetadata } from "../../../src/contracts/index.js";
 import { usageCost, usageTokens } from "../usage/usage-presentation.js";
 import "./StrategyFacts.css";
@@ -50,8 +51,10 @@ export default function StrategyFacts({ metadata }: { metadata: StrategyMetadata
         <div>
           <dt>Source workflow</dt>
           <dd>
-            <a href={`#run=${metadata.sourceRunId}`}>{metadata.sourceRunId}</a> · revision{" "}
-            {metadata.sourceRunRevision}
+            <Link to="/" search={{ run: metadata.sourceRunId }}>
+              {metadata.sourceRunId}
+            </Link>{" "}
+            · revision {metadata.sourceRunRevision}
           </dd>
         </div>
       </dl>

@@ -14,14 +14,14 @@ test("a terminal-created session opens by ID, shares links, and survives browser
   await page.getByRole("button", { name: "Open session by ID", exact: true }).click();
   await page.getByLabel("Session ID or Workflow link", { exact: true }).fill(task.id);
   await page.getByRole("button", { name: "Open session", exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(`#task=${task.id}$`));
+  await expect(page).toHaveURL(new RegExp(`\\?task=${task.id}$`));
   await expect(page.getByLabel("Shared session", { exact: true })).toContainText(task.id);
   await expect(page.locator(".task-request > p")).toHaveText(task.prompt);
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.getByRole("button", { name: "Copy link", exact: true }).click();
   await expect
     .poll(() => page.evaluate(() => navigator.clipboard.readText()))
-    .toContain(`#task=${task.id}`);
+    .toContain(`?task=${task.id}`);
   await page.getByRole("button", { name: "Continue in terminal", exact: true }).click();
   await expect
     .poll(() => page.evaluate(() => navigator.clipboard.readText()))
@@ -29,7 +29,7 @@ test("a terminal-created session opens by ID, shares links, and survives browser
   await page.reload();
   await expect(page.locator(".task-request > p")).toHaveText(task.prompt);
   await page.goto(`/?session=${task.id}`);
-  await expect(page).toHaveURL(new RegExp(`#task=${task.id}$`));
+  await expect(page).toHaveURL(new RegExp(`\\?task=${task.id}$`));
   await expect(page.getByLabel("Shared session", { exact: true })).toContainText(task.id);
 });
 

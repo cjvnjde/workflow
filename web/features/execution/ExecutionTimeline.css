@@ -1,5 +1,5 @@
 .execution-timeline {
-  border: 1px solid var(--ui-edge);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 12px;
   margin-top: 16px;
@@ -30,7 +30,7 @@
 }
 .execution-timeline p {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--muted-foreground);
   line-height: 1.6;
 }
 .execution-timeline .timeline-scroll {
@@ -53,27 +53,27 @@
 }
 .execution-timeline .timeline-label {
   border: none;
-  border-bottom: 1px solid var(--ui-edge);
+  border-bottom: 1px solid var(--border);
   border-radius: 0;
   background: transparent;
 }
 .execution-timeline .timeline-label.child {
   padding-left: 24px;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 .execution-timeline .timeline-ruler {
   position: relative;
   height: 36px;
   touch-action: none;
   cursor: crosshair;
-  border-bottom: 1px solid var(--ui-edge);
+  border-bottom: 1px solid var(--border);
   user-select: none;
 }
 .execution-timeline .timeline-ruler span {
   position: absolute;
   top: 8px;
   font-size: 10px;
-  color: var(--muted);
+  color: var(--muted-foreground);
   transform: translateX(-50%);
 }
 .execution-timeline .timeline-ruler span:first-child {
@@ -85,12 +85,12 @@
 .execution-timeline .timeline-lane {
   position: relative;
   height: 34px;
-  border-bottom: 1px solid var(--ui-edge);
+  border-bottom: 1px solid var(--border);
   background: repeating-linear-gradient(
     to right,
     transparent,
     transparent calc(25% - 1px),
-    var(--ui-edge) 25%
+    var(--border) 25%
   );
 }
 .execution-timeline .timeline-span {
@@ -101,22 +101,22 @@
   min-width: 5px;
   border: 0;
   border-radius: 3px;
-  background: var(--accent);
+  background: var(--primary);
   padding: 0;
   opacity: 0.8;
 }
 .execution-timeline .timeline-span.child {
   height: 9px;
   top: 12px;
-  background: var(--ctp-blue);
+  background: var(--info);
 }
 .execution-timeline .timeline-span.failed,
 .execution-timeline .timeline-span.interrupted {
-  background: var(--ctp-red);
+  background: var(--destructive);
 }
 .execution-timeline .timeline-span.started,
 .execution-timeline .timeline-span.progress {
-  background: var(--ctp-yellow);
+  background: var(--warning);
 }
 .execution-timeline .timeline-span.marker {
   width: 4px !important;
@@ -132,7 +132,7 @@
 .execution-timeline .range-highlight {
   position: absolute;
   height: 100%;
-  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  background: color-mix(in srgb, var(--primary) 25%, transparent);
   pointer-events: none;
 }
 .execution-timeline .timeline-pages {

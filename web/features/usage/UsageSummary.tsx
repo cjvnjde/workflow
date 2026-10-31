@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { createColumnHelper, tableFeatures, useTable } from "@tanstack/react-table";
 import {
   usageReportSchema,
   type UsageReport,
@@ -7,6 +9,15 @@ import {
 import { request } from "../../shared/api.js";
 import { usageCost, usagePhaseLabels, usageTokens } from "./usage-presentation.js";
 import Icon from "../../shared/Icon.js";
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../components/ui/table.js";
 import "./UsageSummary.css";
 
 type UsageSummaryProps = {
@@ -32,48 +43,22 @@ function UsageDetails({
   active = false,
   endpoint,
 }: UsageSummaryProps & { endpoint: string | undefined }) {
-  const [report, setReport] = useState<UsageReport>();
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const requests = useRef<{ controller: AbortController | undefined }>({ controller: undefined });
-  const refresh = useCallback(async () => {
-    if (!endpoint) return;
-    const pending = requests.current;
-    pending.controller?.abort();
-    const lookup = new AbortController();
-    pending.controller = lookup;
-    setLoading(true);
-    try {
-      const value = await request(endpoint, usageReportSchema, { signal: lookup.signal });
-      if (lookup.signal.aborted) return;
-      setReport(value);
-      setError("");
-    } catch (failure) {
-      if (lookup.signal.aborted) return;
-      setError(failure instanceof Error ? failure.message : String(failure));
-    } finally {
-      if (!lookup.signal.aborted) setLoading(false);
-    }
-  }, [endpoint]);
+  const queryClient = useQueryClient();
+  const queryKey = ["usage", scope, endpoint];
+  const query = useQuery({
+    queryKey,
+    enabled: !!endpoint,
+    queryFn: ({ signal }) => request(endpoint!, usageReportSchema, { signal }),
+    refetchInterval: ({ state }) =>
+      active || state.data?.sessions.some((session) => session.status === "running") ? 5000 : false,
+  });
+  const report = query.data;
+  const error = query.error?.message ?? "";
+  const loading = query.isFetching;
+  const refresh = () => query.refetch();
   useEffect(() => {
-    let disposed = false;
-    const pending = requests.current;
-    void Promise.resolve().then(() => {
-      if (!disposed) void refresh();
-    });
-    return () => {
-      disposed = true;
-      pending.controller?.abort();
-    };
-  }, [refresh, revision]);
-  const hasRunning = report?.sessions.some((session) => session.status === "running") ?? false;
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (document.visibilityState === "visible" && !loading && (active || hasRunning))
-        void refresh();
-    }, 5000);
-    return () => clearInterval(timer);
-  }, [active, hasRunning, loading, refresh]);
+    void queryClient.invalidateQueries({ queryKey: ["usage", scope, endpoint] });
+  }, [queryClient, scope, endpoint, revision]);
   const title =
     scope === "project"
       ? "Project AI usage"
@@ -192,39 +177,7 @@ function UsageDetails({
                 ))}
               </ul>
             )}
-            {!!report.models.length && (
-              <div className="usage-table-wrap">
-                <table className="usage-table">
-                  <caption>Cost by model</caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">Model</th>
-                      <th scope="col">Sessions</th>
-                      <th scope="col">Tokens</th>
-                      <th scope="col">Recorded cost</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.models.map((model) => (
-                      <tr key={`${model.provider}/${model.model}`}>
-                        <th scope="row">
-                          <strong>{model.model}</strong>
-                          <small>{model.provider}</small>
-                        </th>
-                        <td>{model.sessionCount}</td>
-                        <td>{usageTokens(model.usage).toLocaleString()}</td>
-                        <td>
-                          {usageCost(
-                            model.usage,
-                            unfinished(undefined, model.provider, model.model),
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            {!!report.models.length && <ModelUsageTable report={report} />}
             {!!(
               report.legacyExecution.requests ||
               usageTokens(report.legacyExecution) ||
@@ -296,5 +249,85 @@ function UsageDetails({
         </p>
       )}
     </section>
+  );
+}
+
+type ModelUsageRow = UsageReport["models"][number] & { unfinished: boolean };
+const modelFeatures = tableFeatures({});
+const modelColumn = createColumnHelper<typeof modelFeatures, ModelUsageRow>();
+const modelColumns = modelColumn.columns([
+  modelColumn.accessor("model", {
+    header: "Model",
+    cell: ({ row }) => (
+      <>
+        <strong>{row.original.model}</strong>
+        <small>{row.original.provider}</small>
+      </>
+    ),
+  }),
+  modelColumn.accessor("sessionCount", { header: "Sessions" }),
+  modelColumn.accessor((model) => usageTokens(model.usage), {
+    id: "tokens",
+    header: "Tokens",
+    cell: (cell) => cell.getValue().toLocaleString(),
+  }),
+  modelColumn.accessor("usage", {
+    header: "Recorded cost",
+    cell: ({ row }) => usageCost(row.original.usage, row.original.unfinished),
+  }),
+]);
+
+function ModelUsageTable({ report }: { report: UsageReport }) {
+  const data = useMemo(
+    () =>
+      report.models.map((model) => ({
+        ...model,
+        unfinished: report.sessions.some(
+          (session) =>
+            ["running", "interrupted"].includes(session.status) &&
+            session.provider === model.provider &&
+            session.model === model.model,
+        ),
+      })),
+    [report.models, report.sessions],
+  );
+  const table = useTable({
+    features: modelFeatures,
+    columns: modelColumns,
+    data,
+    getRowId: (model) => `${model.provider}/${model.model}`,
+  });
+  return (
+    <Table className="usage-table">
+      <TableCaption>Cost by model</TableCaption>
+      <TableHeader>
+        {table.getHeaderGroups().map((group) => (
+          <TableRow key={group.id}>
+            {group.headers.map((header) => (
+              <TableHead key={header.id} scope="col">
+                {header.isPlaceholder ? null : <table.FlexRender header={header} />}
+              </TableHead>
+            ))}
+          </TableRow>
+        ))}
+      </TableHeader>
+      <TableBody>
+        {table.getRowModel().rows.map((row) => (
+          <TableRow key={row.id}>
+            {row.getAllCells().map((cell) =>
+              cell.column.id === "model" ? (
+                <TableHead key={cell.id} scope="row">
+                  <table.FlexRender cell={cell} />
+                </TableHead>
+              ) : (
+                <TableCell key={cell.id}>
+                  <table.FlexRender cell={cell} />
+                </TableCell>
+              ),
+            )}
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }

@@ -530,10 +530,10 @@ export default function PlanEditor({
           <CodeEditor
             label="Workflow graph JSON"
             language="json"
-            modelValue={draft.text}
-            readonly={locked}
+            value={draft.text}
+            readOnly={locked}
             minLines={12}
-            onUpdateModelValue={draft.edit}
+            onChange={draft.edit}
           />
         </>
       )}

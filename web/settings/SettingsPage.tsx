@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { useForm, useStore } from "@tanstack/react-form";
 import type { z } from "zod";
 import {
   modelCatalogSchema,
@@ -36,6 +37,10 @@ const tabs = [
 type Section = (typeof tabs)[number][0];
 type EditorHandle = { discard: () => void };
 type ExecutionConfig = z.infer<typeof executionSettingsSchema>;
+type SettingsValues = {
+  state: OrchestrationState | undefined;
+  execution: ExecutionConfig | undefined;
+};
 export interface SettingsContext {
   section: Section;
   blockId?: string;
@@ -67,14 +72,21 @@ export default function SettingsPage({
 }: SettingsPageProps) {
   const [tab, setTab] = useState<Section>("providers");
   const [selectedBlock, setSelectedBlock] = useState("");
-  const [state, setState] = useState<OrchestrationState>();
-  const [saved, setSaved] = useState("");
+  const [defaults, setDefaults] = useState<SettingsValues>({
+    state: undefined,
+    execution: undefined,
+  });
+  const form = useForm({
+    defaultValues: defaults,
+    onSubmit: async () => {
+      await perform(save);
+    },
+  });
+  const { state, execution } = useStore(form.store, (state) => state.values);
   const [models, setModels] = useState<AvailableModel[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [execution, setExecution] = useState<ExecutionConfig>();
-  const [savedExecution, setSavedExecution] = useState("");
   const [blockDirty, setBlockDirty] = useState(false);
   const [modelDirty, setModelDirty] = useState(false);
   const [triggerDirty, setTriggerDirty] = useState(false);
@@ -88,8 +100,10 @@ export default function SettingsPage({
   const [staleSettings, setStaleSettings] = useState(false);
   const requests = useRef<{ controller: AbortController | undefined }>({ controller: undefined });
   const lifetime = useRef<AbortController | undefined>(undefined);
-  const dirty = !!state && JSON.stringify(state.settings) !== saved;
-  const executionDirty = !!execution && JSON.stringify(execution) !== savedExecution;
+  const dirty =
+    !!state && JSON.stringify(state.settings) !== JSON.stringify(defaults.state?.settings);
+  const executionDirty =
+    !!execution && JSON.stringify(execution) !== JSON.stringify(defaults.execution);
   const hasEdits =
     dirty || executionDirty || blockDirty || modelDirty || triggerDirty || memoryDirty;
   const latest = useRef({ hasEdits, executionDirty });
@@ -136,36 +150,38 @@ export default function SettingsPage({
     };
   }, []);
 
-  const load = useCallback(async (revision: number, force = false) => {
-    const pending = requests.current;
-    pending.controller?.abort();
-    const lookup = new AbortController();
-    pending.controller = lookup;
-    try {
-      const options = { signal: lookup.signal };
-      const [loaded, catalog, config] = await Promise.all([
-        request("/api/settings/orchestration", orchestrationStateSchema, options),
-        request("/api/models", modelCatalogSchema, options),
-        request("/api/settings/execution", executionSettingsSchema, options),
-      ]);
-      if (lookup.signal.aborted) return;
-      if (!force && latest.current.hasEdits) {
-        setStaleSettings(true);
-        return;
+  const load = useCallback(
+    async (revision: number, force = false) => {
+      const pending = requests.current;
+      pending.controller?.abort();
+      const lookup = new AbortController();
+      pending.controller = lookup;
+      try {
+        const options = { signal: lookup.signal };
+        const [loaded, catalog, config] = await Promise.all([
+          request("/api/settings/orchestration", orchestrationStateSchema, options),
+          request("/api/models", modelCatalogSchema, options),
+          request("/api/settings/execution", executionSettingsSchema, options),
+        ]);
+        if (lookup.signal.aborted) return;
+        if (!force && latest.current.hasEdits) {
+          setStaleSettings(true);
+          return;
+        }
+        const next = { state: loaded, execution: config };
+        setDefaults(next);
+        form.reset(next);
+        setModels(catalog.models);
+        setStaleSettings(false);
+        setEditorRevision((value) => value + 1);
+      } catch (failure) {
+        if (!lookup.signal.aborted) throw failure;
+      } finally {
+        if (!lookup.signal.aborted) setLoadedDesignRevision(revision);
       }
-      setState(loaded);
-      setSaved(JSON.stringify(loaded.settings));
-      setModels(catalog.models);
-      setExecution(config);
-      setSavedExecution(JSON.stringify(config));
-      setStaleSettings(false);
-      setEditorRevision((value) => value + 1);
-    } catch (failure) {
-      if (!lookup.signal.aborted) throw failure;
-    } finally {
-      if (!lookup.signal.aborted) setLoadedDesignRevision(revision);
-    }
-  }, []);
+    },
+    [form, setModels, setStaleSettings, setEditorRevision, setLoadedDesignRevision, setDefaults],
+  );
   useEffect(() => {
     let disposed = false;
     const pending = requests.current;
@@ -190,9 +206,7 @@ export default function SettingsPage({
 
   function discardSettings() {
     if (busy) return;
-    if (state)
-      setState({ ...state, settings: JSON.parse(saved) as OrchestrationState["settings"] });
-    if (execution) setExecution(JSON.parse(savedExecution) as ExecutionConfig);
+    form.reset(defaults);
     setError("");
     setNotice("");
   }
@@ -223,8 +237,8 @@ export default function SettingsPage({
         body: state,
         signal: lifetime.current?.signal,
       });
-      setState(updated);
-      setSaved(JSON.stringify(updated.settings));
+      setDefaults((current) => ({ ...current, state: updated }));
+      form.setFieldValue("state", updated);
       await onSaved();
       setNotice("Settings saved. New task requests use these instructions and capabilities.");
     }
@@ -234,8 +248,8 @@ export default function SettingsPage({
         body: execution,
         signal: lifetime.current?.signal,
       });
-      setExecution(updated);
-      setSavedExecution(JSON.stringify(updated));
+      setDefaults((current) => ({ ...current, execution: updated }));
+      form.setFieldValue("execution", updated);
       await onSaved();
       setNotice("Execution settings saved.");
     }
@@ -265,8 +279,8 @@ export default function SettingsPage({
     // Provider defaults share config.json with execution settings. Preserve local edits.
     if (!latest.current.executionDirty) {
       const config = await request("/api/settings/execution", executionSettingsSchema, { signal });
-      setExecution(config);
-      setSavedExecution(JSON.stringify(config));
+      setDefaults((current) => ({ ...current, execution: config }));
+      form.setFieldValue("execution", config);
     }
     await onSaved();
     await setupController.refresh();
@@ -278,7 +292,7 @@ export default function SettingsPage({
     }
   }
   function updateSettings(settings: OrchestrationState["settings"]) {
-    setState((current) => (current ? { ...current, settings } : current));
+    form.setFieldValue("state", (current) => (current ? { ...current, settings } : current));
   }
   return (
     <div className="settings-page">
@@ -357,16 +371,14 @@ export default function SettingsPage({
           )}
           {tab === "profiles" && (
             <ModelProfiles
-              modelValue={state.settings}
-              onUpdateModelValue={updateSettings}
+              value={state.settings}
+              onChange={updateSettings}
               models={models}
               busy={busy}
               onGenerate={(prompt) => design("profiles", prompt)}
             />
           )}
-          {tab === "cases" && (
-            <TaskCases modelValue={state.settings} onUpdateModelValue={updateSettings} />
-          )}
+          {tab === "cases" && <TaskCases value={state.settings} onChange={updateSettings} />}
           {tab === "blocks" && (
             <BlockSettings
               key={editorRevision}
@@ -381,17 +393,15 @@ export default function SettingsPage({
           )}
           {tab === "capabilities" && (
             <Capabilities
-              modelValue={state.settings.capabilities}
-              onUpdateModelValue={(capabilities) =>
-                updateSettings({ ...state.settings, capabilities })
-              }
+              value={state.settings.capabilities}
+              onChange={(capabilities) => updateSettings({ ...state.settings, capabilities })}
               projectCapabilities={state.projectCapabilities}
             />
           )}
           {tab === "execution" && execution && (
             <ExecutionSettings
-              modelValue={execution}
-              onUpdateModelValue={setExecution}
+              value={execution}
+              onChange={(value) => form.setFieldValue("execution", value)}
               approval={state.settings.approval}
               onUpdateApproval={(approval) => updateSettings({ ...state.settings, approval })}
             />
@@ -413,7 +423,7 @@ export default function SettingsPage({
               <button
                 className="primary"
                 disabled={busy || (!dirty && !executionDirty)}
-                onClick={() => void perform(save)}
+                onClick={() => void form.handleSubmit()}
               >
                 {busy ? "Saving…" : "Save settings"}
               </button>

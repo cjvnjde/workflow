@@ -1,102 +1,71 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
-import { taskListSchema, taskSchema, type TaskRequest } from "../../../src/contracts/index.js";
+import { queryOptions, skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useState } from "react";
+import type { taskListSchema, TaskRequest } from "../../../src/contracts/index.js";
 import type { z } from "zod";
-import { request } from "../../shared/api.js";
+import { client } from "../../shared/api.js";
+import { workflowQueryKeys } from "../../shared/query-client.js";
 
-type TasksSnapshot = {
-  tasks: z.infer<typeof taskListSchema>;
-  task: TaskRequest | undefined;
-  selectedId: string | undefined;
-  error: string;
-};
+type TaskList = z.infer<typeof taskListSchema>;
+const emptyTasks: TaskList = [];
 
-function createTasksStore() {
-  let snapshot: TasksSnapshot = { tasks: [], task: undefined, selectedId: undefined, error: "" };
-  const listeners = new Set<() => void>();
-  function update(patch: Partial<TasksSnapshot>) {
-    snapshot = { ...snapshot, ...patch };
-    for (const listener of listeners) listener();
+/** Keep deletion markers and newer revisions when a response races a mutation or SSE refresh. */
+function mergeTasks(previous: TaskList, incoming: TaskList): TaskList {
+  const tasks = new Map(previous.map((task) => [task.id, task]));
+  for (const task of incoming) {
+    if ((tasks.get(task.id)?.revision ?? -1) <= task.revision) tasks.set(task.id, task);
   }
-  function apply(loaded: TaskRequest) {
-    const patch: Partial<TasksSnapshot> = {};
-    if (
-      snapshot.selectedId === loaded.id &&
-      !(snapshot.task?.id === loaded.id && snapshot.task.revision > loaded.revision)
-    ) {
-      patch.task = loaded;
-    }
-    if (!snapshot.tasks.some((item) => item.id === loaded.id && item.revision > loaded.revision)) {
-      patch.tasks = [...snapshot.tasks.filter((item) => item.id !== loaded.id), loaded].sort(
-        (a, b) => b.createdAt.localeCompare(a.createdAt),
-      );
-    }
-    update(patch);
-  }
-  function start(id: string | undefined) {
-    const controller = new AbortController();
-    let timer: number | undefined;
-    update({ selectedId: id, task: undefined });
-    async function refresh() {
-      const [list, detail] = await Promise.allSettled([
-        request("/api/tasks", taskListSchema, { signal: controller.signal }),
-        id
-          ? request(`/api/tasks/${id}`, taskSchema, { signal: controller.signal })
-          : Promise.resolve(undefined),
-      ]);
-      if (controller.signal.aborted) return;
-      if (list.status === "fulfilled") {
-        const merged = new Map(snapshot.tasks.map((item) => [item.id, item]));
-        for (const item of list.value) {
-          if ((merged.get(item.id)?.revision ?? -1) <= item.revision) merged.set(item.id, item);
-        }
-        update({
-          tasks: [...merged.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-          error: "",
-        });
-      } else {
-        update({
-          error: list.reason instanceof Error ? list.reason.message : "Could not load tasks",
-        });
-      }
-      if (detail.status === "fulfilled" && detail.value) apply(detail.value);
-      if (detail.status === "rejected") {
-        update({
-          error:
-            detail.reason instanceof Error ? detail.reason.message : "Could not load this task",
-        });
-      }
-      timer = window.setTimeout(() => void refresh(), 1000);
-    }
-    void refresh();
-    return () => {
-      controller.abort();
-      window.clearTimeout(timer);
-    };
-  }
-  return {
-    getSnapshot: () => snapshot,
-    subscribe: (listener: () => void) => {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
-    start,
-    apply,
-    setError: (error: string) => update({ error }),
-  };
+  return [...tasks.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+function newerTask(previous: TaskRequest | undefined, incoming: TaskRequest) {
+  return previous && previous.revision > incoming.revision ? previous : incoming;
+}
+const tasksOptions = queryOptions({
+  queryKey: workflowQueryKeys.tasks,
+  queryFn: ({ signal }) => client.tasks(signal),
+  structuralSharing: (previous, incoming) =>
+    mergeTasks((previous as TaskList | undefined) ?? emptyTasks, incoming as TaskList),
+  refetchInterval: 1000,
+});
+function taskOptions(id: string | undefined) {
+  return queryOptions({
+    queryKey: workflowQueryKeys.task(id),
+    queryFn: id ? ({ signal }) => client.task(id, signal) : skipToken,
+    structuralSharing: (previous, incoming) =>
+      newerTask(previous as TaskRequest | undefined, incoming as TaskRequest),
+    refetchInterval: 1000,
+  });
 }
 
-/** Poll task history and the selected task without applying superseded requests. */
+/** Query cancels superseded selections and owns both polling and revisioned task history. */
 export function useTasks(selectedId: string | undefined) {
-  const [store] = useState(createTasksStore);
-  const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
-  useEffect(() => store.start(selectedId), [store, selectedId]);
+  const queryClient = useQueryClient();
+  const [actionError, setActionError] = useState("");
+  const tasks = useQuery(tasksOptions);
+  const task = useQuery(taskOptions(selectedId));
+  const apply = useCallback(
+    (loaded: TaskRequest) => {
+      queryClient.setQueryData(taskOptions(loaded.id).queryKey, (current) =>
+        newerTask(current, loaded),
+      );
+      queryClient.setQueryData(tasksOptions.queryKey, (current) =>
+        mergeTasks(current ?? emptyTasks, [loaded]),
+      );
+      void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.tasks });
+    },
+    [queryClient],
+  );
+  useEffect(() => {
+    if (!task.data) return;
+    const loaded = task.data;
+    queryClient.setQueryData(tasksOptions.queryKey, (current) =>
+      mergeTasks(current ?? emptyTasks, [loaded]),
+    );
+  }, [queryClient, task.data]);
   return {
-    tasks: snapshot.tasks,
-    task: snapshot.task?.id === selectedId ? snapshot.task : undefined,
-    error: snapshot.error,
-    apply: store.apply,
-    setError: store.setError,
+    tasks: tasks.data ?? emptyTasks,
+    task: task.data,
+    error: actionError || task.error?.message || tasks.error?.message || "",
+    apply,
+    setError: setActionError,
   };
 }

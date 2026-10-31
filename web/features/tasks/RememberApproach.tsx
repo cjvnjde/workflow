@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { useForm, useStore } from "@tanstack/react-form";
 import { createPortal } from "react-dom";
 import type { StrategyPreview, RememberStrategyResult } from "../../../src/contracts/index.js";
 import { WorkflowApiError } from "../../../src/client/client.js";
@@ -25,9 +26,13 @@ export default function RememberApproach({
   );
   const [preview, setPreview] = useState<StrategyPreview>();
   const [saved, setSaved] = useState<RememberStrategyResult>();
-  const [form, setForm] = useState({ title: "", description: "", details: "", tags: "" });
+  const editor = useForm({
+    defaultValues: { title: "", description: "", details: "", tags: "" },
+    onSubmit: () => save(),
+  });
+  const form = useStore(editor.store, (state) => state.values);
+  const saving = useStore(editor.store, (state) => state.isSubmitting);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [conflict, setConflict] = useState(false);
@@ -69,7 +74,11 @@ export default function RememberApproach({
       setPreview(value);
       setRemembered(!!value.existingEntry);
       setConflict(false);
-      if (!preserve) setForm({ ...value.entry, tags: value.entry.tags.join(", ") });
+      if (!preserve)
+        editor.reset(
+          { ...value.entry, tags: value.entry.tags.join(", ") },
+          { keepDefaultValues: true },
+        );
       else
         setNotice(
           "Latest source facts and memory revision loaded. Your draft is unchanged; review before saving.",
@@ -118,7 +127,6 @@ export default function RememberApproach({
   async function save() {
     if (!preview || savingNow.current || loading || existing || conflict) return;
     savingNow.current = true;
-    setSaving(true);
     setError("");
     setNotice("");
     const controller = new AbortController();
@@ -149,7 +157,6 @@ export default function RememberApproach({
     } finally {
       savingNow.current = false;
       if (write.current === controller) write.current = null;
-      if (!disposed.current) setSaving(false);
     }
   }
   async function copyDraft() {
@@ -225,7 +232,7 @@ export default function RememberApproach({
               <form
                 onSubmit={(event) => {
                   event.preventDefault();
-                  void save();
+                  void editor.handleSubmit();
                 }}
               >
                 {existing && (
@@ -252,10 +259,9 @@ export default function RememberApproach({
                       <input
                         id={id}
                         value={form.title}
-                        onChange={(event) => {
-                          const title = event.currentTarget.value;
-                          setForm((previous) => ({ ...previous, title }));
-                        }}
+                        onChange={(event) =>
+                          editor.setFieldValue("title", event.currentTarget.value)
+                        }
                         required
                         maxLength={100}
                       />
@@ -269,10 +275,9 @@ export default function RememberApproach({
                       <textarea
                         id={id}
                         value={form.description}
-                        onChange={(event) => {
-                          const description = event.currentTarget.value;
-                          setForm((previous) => ({ ...previous, description }));
-                        }}
+                        onChange={(event) =>
+                          editor.setFieldValue("description", event.currentTarget.value)
+                        }
                         required
                         rows={2}
                         maxLength={300}
@@ -287,10 +292,9 @@ export default function RememberApproach({
                       <textarea
                         id={id}
                         value={form.details}
-                        onChange={(event) => {
-                          const details = event.currentTarget.value;
-                          setForm((previous) => ({ ...previous, details }));
-                        }}
+                        onChange={(event) =>
+                          editor.setFieldValue("details", event.currentTarget.value)
+                        }
                         rows={6}
                         maxLength={4000}
                       />
@@ -304,10 +308,9 @@ export default function RememberApproach({
                       <input
                         id={id}
                         value={form.tags}
-                        onChange={(event) => {
-                          const tags = event.currentTarget.value;
-                          setForm((previous) => ({ ...previous, tags }));
-                        }}
+                        onChange={(event) =>
+                          editor.setFieldValue("tags", event.currentTarget.value)
+                        }
                       />
                     )}
                   </Field>

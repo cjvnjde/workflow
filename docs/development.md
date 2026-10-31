@@ -23,7 +23,11 @@ Do not run competing servers against the same project. Use disposable project di
 
 ## Application structure
 
-The browser UI is React 19 throughout: typed components and hooks, React Flow for graphs, and CodeMirror for source editing. Tailwind CSS 4 and shadcn/ui provide neutral composer controls; workspace screens retain the Catppuccin Mocha palette. There is no Vue runtime or compatibility island.
+The browser UI uses React 19 and [TanStack Start SPA mode](https://tanstack.com/start/latest/docs/framework/react/guide/spa-mode), with TanStack Router owning typed URL search state and navigation guards. Canonical session links use `?task=<id>` or `?run=<id>`; settings use `?view=settings`. Existing hash links are converted on entry. Fastify continues to own the API and serve the generated static shell.
+
+TanStack Query owns project, run, task, setup, and usage caches, request cancellation, polling, and SSE-driven invalidation. Revision-aware merging prevents stale responses from overwriting newer mutations. Streaming text and UI state remain local. TanStack Form owns data-entry state and submission lifecycles; TanStack Table v9 renders model usage and execution evidence. Query already covers the server-state requirements, so there is no additional TanStack DB store.
+
+Tailwind CSS 4 and shadcn/ui use the [recommended CSS-variable theming](https://ui.shadcn.com/docs/theming): one `:root`/`.dark` token set, `@theme inline` mappings, and `components.json` with `cssVariables: true`. Workspace layout CSS consumes those tokens without a second palette, scoped theme islands, or hard overrides of shadcn controls. React Flow and CodeMirror use the same semantic tokens.
 
 React Compiler runs through Vite's Babel compiler preset for React 19 in development and production. ESLint enables the official Hooks/Compiler rules, React component rules, and Vite Fast Refresh checks. Do not bypass these checks with compiler opt-outs or blanket rule disables.
 
@@ -33,9 +37,11 @@ The backend, CLI, SDK, and scripts are TypeScript on Bun. `node:*` imports use B
 
 See [Architecture](architecture.md#source-map) for the source map and execution boundaries.
 
-OAuth callback pages use Workflow's branding and palette through the versioned `pi-ai` 1.4.0 patch in `patches/`. Bun reapplies it on install, and the portable build carries it into its runtime. When upgrading `pi-ai`, review and regenerate this patch so provider callback pages keep the project's styling.
+Provider-owned OAuth callback pages retain the upstream library's presentation; Workflow does not patch their branding or theme.
 
-Security overrides in `package.json` keep `glob`, `minimatch`, `qs`, and `undici` on patched releases while upstream dependencies still constrain vulnerable versions. The portable runtime copies these overrides as well as patches. Run `bun audit` after dependency changes; remove an override only when the resolved upstream tree remains patched without it.
+Security overrides in `package.json` keep `glob`, `minimatch`, `qs`, and `undici` on patched releases while upstream dependencies still constrain vulnerable versions. The portable runtime copies these overrides. Run `bun audit` after dependency changes; remove an override only when the resolved upstream tree remains patched without it.
+
+The current shadcn CLI brings the development-only `deepmerge` 4.3.1 advisory [GHSA-gcqx-w48m-w2h4](https://github.com/advisories/GHSA-gcqx-w48m-w2h4) (low severity). No patched `deepmerge` release is available. It is not part of the production runtime; use trusted registries and track an upstream fix rather than substituting an incompatible merge implementation.
 
 ## Build and typechecking
 
@@ -46,9 +52,11 @@ bun run build:engine  # backend artifacts, without invoking Vite
 bun run build:web     # GUI assets only
 ```
 
-TypeScript 7 performs native checking of all TypeScript and React TSX, and emits the SDK declarations. `scripts/typecheck.ts` launches its executable through Bun; JSX, source, and component-prop regressions must fail. The official side-by-side `@typescript/typescript6` package supplies the compiler API required by typescript-eslint and runtime workflow/ownership analysis; it does not replace the native TS7 project checks. See [Microsoft's side-by-side guidance](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-60).
+The application pins TypeScript 7.0.2 for browser/backend checking, SDK declarations, runtime workflow diagnostics, and ownership analysis. Runtime analysis uses TypeScript's asynchronous native API because its synchronous pipe transport requires Node internals unavailable in Bun. Validation remains non-evaluating, including imported-module safety checks and unused-flow diagnostics.
 
-The build typechecks, removes stale `dist` output, runs Vite, emits SDK declarations, bundles the public SDK and program runtime, bundles current and frozen legacy Temporal workflows, and builds the executable CLI.
+The lint toolchain is an explicit exception: current `typescript-eslint` and React lint utilities require the legacy compiler API. `tooling/eslint` isolates their TypeScript 6.0.3 dependency; `bunfig.toml` enables isolated installs so it cannot replace the application's TypeScript 7. No application code imports the legacy compiler. See [Microsoft's compatibility guidance](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-60). Preserve this dependency boundary until the lint libraries support the native API.
+
+The build typechecks, removes stale `dist` output, builds the Start client and temporary server renderer, prerenders `dist/web/index.html`, emits SDK declarations, bundles the public SDK and program runtime, bundles current and frozen legacy Temporal workflows, and builds the executable CLI. The build-only renderer stays in ignored `.tanstack/start-server`; production serves static assets without a second web server.
 
 Main outputs:
 

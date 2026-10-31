@@ -105,9 +105,9 @@ export default function ProgramEditor({
         <CodeEditor
           key={run.id}
           label="Workflow TypeScript"
-          modelValue={draft.text}
-          readonly={locked}
-          onUpdateModelValue={(text) => {
+          value={draft.text}
+          readOnly={locked}
+          onChange={(text) => {
             draft.edit(text);
             setCopied(false);
           }}
@@ -120,9 +120,9 @@ export default function ProgramEditor({
           language="json"
           minLines={3}
           maxLines={12}
-          modelValue={draft.inputText}
-          readonly={locked}
-          onUpdateModelValue={draft.editInput}
+          value={draft.inputText}
+          readOnly={locked}
+          onChange={draft.editInput}
         />
       </div>
       <div className="editor-actions">

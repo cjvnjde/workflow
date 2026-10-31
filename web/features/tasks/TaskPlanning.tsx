@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useForm, useStore } from "@tanstack/react-form";
 import type { TaskRequest } from "../../../src/contracts/index.js";
 import type { TaskStream } from "../../app/use-workflow-data.js";
 import { describeActivity } from "../execution/activity.js";
@@ -31,14 +31,20 @@ function Clarification({
   busy: boolean;
   onAnswer: (answer: string) => void;
 }) {
-  const [answer, setAnswer] = useState("");
+  const form = useForm({
+    defaultValues: { answer: "" },
+    onSubmit: ({ value }) => {
+      if (!busy && value.answer.trim()) onAnswer(value.answer);
+    },
+  });
+  const answer = useStore(form.store, (state) => state.values.answer);
   const answerRef = useAutosize(answer);
   return (
     <form
       className="clarification-card"
       onSubmit={(event) => {
         event.preventDefault();
-        if (answer.trim()) onAnswer(answer);
+        void form.handleSubmit();
       }}
     >
       <label htmlFor="task-answer">{question.question}</label>
@@ -48,21 +54,27 @@ function Clarification({
             key={option}
             type="button"
             className={answer === option ? "selected" : undefined}
-            onClick={() => setAnswer(option)}
+            onClick={() => form.setFieldValue("answer", option)}
           >
             {option}
           </button>
         ))}
       </div>
-      <textarea
-        id="task-answer"
-        ref={answerRef}
-        value={answer}
-        onChange={(event) => setAnswer(event.currentTarget.value)}
-        rows={3}
-        disabled={busy}
-        placeholder="Your answer…"
-      />
+      <form.Field name="answer">
+        {(field) => (
+          <textarea
+            id="task-answer"
+            name={field.name}
+            ref={answerRef}
+            value={field.state.value}
+            onChange={(event) => field.handleChange(event.currentTarget.value)}
+            onBlur={field.handleBlur}
+            rows={3}
+            disabled={busy}
+            placeholder="Your answer…"
+          />
+        )}
+      </form.Field>
       <button className="primary" disabled={busy || !answer.trim()}>
         Continue planning
         <Icon name="arrow" size={16} />

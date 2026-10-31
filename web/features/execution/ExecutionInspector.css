@@ -10,7 +10,7 @@
 }
 .execution-inspector .inspection-controls label {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--muted-foreground);
   min-width: 120px;
 }
 .execution-inspector .inspection-controls select,
@@ -22,24 +22,24 @@
 }
 .execution-inspector .inspection-note,
 .execution-inspector .call-meta {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 11px;
   line-height: 1.6;
 }
 .execution-inspector .inspection-error {
-  color: var(--ctp-red);
+  color: var(--destructive);
 }
 .execution-inspector .inspection-layout {
   display: grid;
   grid-template-columns: minmax(260px, 1fr) minmax(280px, 1fr);
-  border: 1px solid var(--ui-edge);
+  border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
   margin-top: 16px;
 }
 .execution-inspector .call-ledger {
   min-width: 0;
-  border-right: 1px solid var(--ui-edge);
+  border-right: 1px solid var(--border);
 }
 .execution-inspector .ledger-heading {
   display: flex;
@@ -56,7 +56,7 @@
   font-size: 11px;
 }
 .execution-inspector .request-timing dt {
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 .execution-inspector .request-timing dd {
   margin: 0;
@@ -66,7 +66,7 @@
   align-items: center;
   gap: 5px;
   font-size: 10px;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 .execution-inspector .follow-control input {
   width: auto;
@@ -78,11 +78,11 @@
 }
 .execution-inspector .call-row {
   display: flex;
-  border-top: 1px solid var(--ui-edge);
+  border-top: 1px solid var(--border);
   align-items: flex-start;
 }
 .execution-inspector .call-row.chosen {
-  background: var(--ui-raised);
+  background: var(--card);
 }
 .execution-inspector .fold {
   border: 0;
@@ -112,15 +112,15 @@
 }
 .execution-inspector .call-state {
   font-size: 10px;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 .execution-inspector .call-state.failed,
 .execution-inspector .call-state.interrupted {
-  color: var(--ctp-red);
+  color: var(--destructive);
 }
 .execution-inspector .call-state.started,
 .execution-inspector .call-state.progress {
-  color: var(--ctp-yellow);
+  color: var(--warning);
 }
 .execution-inspector .call-meta,
 .execution-inspector .call-summary {
@@ -157,22 +157,22 @@
   max-height: 400px;
   overflow: auto;
   font-size: 11px;
-  background: var(--ctp-mantle);
+  background: var(--card);
   padding: 12px;
   border-radius: 6px;
   line-height: 1.6;
 }
 .execution-inspector .command-card {
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--primary);
   padding-left: 10px;
 }
 .execution-inspector .command-card small {
-  color: var(--muted);
+  color: var(--muted-foreground);
   overflow-wrap: anywhere;
 }
 .execution-inspector .recorded-path {
   font-family: monospace;
-  color: var(--accent);
+  color: var(--primary);
 }
 .execution-inspector .recorded-diff {
   display: grid;
@@ -196,7 +196,7 @@
   }
   .execution-inspector .call-ledger {
     border-right: 0;
-    border-bottom: 1px solid var(--ui-edge);
+    border-bottom: 1px solid var(--border);
   }
   .execution-inspector .recorded-diff {
     grid-template-columns: 1fr;

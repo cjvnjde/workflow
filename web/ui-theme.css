@@ -1,666 +1,461 @@
-@scope (.workflow-workspace) to (.shadcn-theme) {
-  /* Shared visual primitives. Layout and interaction rules live in styles.css. */
-  /* Workspace primitives remain independent of neutral composer controls. */
-  :scope {
-    --ui-edge: color-mix(in srgb, var(--ctp-text) 10%, transparent);
-    --ui-control-edge: color-mix(in srgb, var(--ctp-text) 18%, transparent);
-    --ui-hover: color-mix(in srgb, var(--ctp-text) 5%, transparent);
-    --ui-selected: color-mix(in srgb, var(--accent) 10%, var(--ctp-mantle));
-    --ui-raised: color-mix(in srgb, var(--ctp-base) 65%, var(--ctp-mantle));
-    --ui-radius: 10px;
-    --ui-card-radius: 14px;
-    --border: var(--ui-edge);
-  }
-  :scope {
-    -webkit-font-smoothing: antialiased;
-  }
-  :scope * {
-    scrollbar-width: thin;
-    scrollbar-color: var(--ctp-surface1) transparent;
-  }
-  :scope button {
-    min-height: 36px;
-    padding: 8px 12px;
-    border-color: var(--ui-control-edge);
-    border-radius: var(--ui-radius);
-    font-weight: 500;
-  }
-  :scope button:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--ctp-surface0) 75%, var(--ctp-base));
-    border-color: var(--ctp-overlay0);
-  }
-  :scope button.primary {
-    box-shadow: 0 1px 2px #11111b30;
-  }
-  :scope button.primary:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--accent) 90%, white);
-  }
-  :scope button.icon-button {
-    width: 32px;
-    height: 32px;
-    min-height: 32px;
-    padding: 7px;
-    border-radius: 8px;
-  }
-  :scope button.quiet,
-  :scope button.icon-button {
-    border-color: transparent;
-  }
-  :scope button:focus-visible,
-  :scope a:focus-visible,
-  :scope summary:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 3px;
-  }
-  :scope input,
-  :scope textarea,
-  :scope select {
-    border-color: var(--ui-control-edge);
-    border-radius: var(--ui-radius);
-    background: var(--ctp-mantle);
-    padding: 10px 12px;
-    line-height: 1.5;
-  }
-  :scope input:focus,
-  :scope textarea:focus,
-  :scope select:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
-  }
-  :scope input[type="checkbox"] {
-    width: 15px;
-    height: 15px;
-    flex-shrink: 0;
-  }
-  :scope input:disabled,
-  :scope textarea:disabled,
-  :scope select:disabled {
-    color: var(--ctp-subtext0);
-  }
-  :scope svg {
-    vertical-align: middle;
-  }
-  :scope .eyebrow,
-  :scope .home-eyebrow {
-    letter-spacing: 1.2px;
-  }
-  :scope .task-sidebar {
-    padding: 24px 12px 12px;
-    border-color: var(--ui-edge);
-  }
-  :scope .brand {
-    margin-bottom: 24px;
-  }
-  :scope .brand-mark {
-    border: 0;
-    background: var(--ui-selected);
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-  }
-  :scope .new-task-button {
-    background: var(--ui-selected);
-    border-color: transparent;
-    padding: 10px 12px;
-    margin-bottom: 16px;
-  }
-  :scope .sidebar-search {
-    margin-bottom: 24px;
-  }
-  :scope .task-item {
-    border-color: transparent;
-    padding-top: 10px;
-    padding-bottom: 10px;
-  }
-  :scope .task-item.selected,
-  :scope .settings-button.selected {
-    background: var(--ui-selected);
-    border-color: transparent;
-    box-shadow: inset 2px 0 var(--accent);
-  }
-  :scope .task-item:hover:not(:disabled),
-  :scope .block-catalog button:hover:not(:disabled) {
-    border-color: transparent;
-    background: var(--ui-hover);
-  }
-  :scope .history-heading {
-    font-weight: 600;
-    letter-spacing: 0.8px;
-  }
-  :scope .history-heading span {
-    color: var(--ctp-overlay2);
-  }
-  :scope .sidebar-bottom {
-    border-color: var(--ui-edge);
-  }
-  :scope .workspace-topbar {
-    border-color: var(--ui-edge);
-  }
-  :scope .workspace-breadcrumb {
-    font-size: 12px;
-    gap: 10px;
-  }
-  :scope .topbar-right {
-    gap: 12px;
-  }
-  :scope .ai-button {
-    color: var(--accent);
-    background: var(--ui-selected);
-    border-color: transparent;
-  }
-  :scope .ai-button:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--accent) 16%, var(--ctp-mantle));
-    border-color: transparent;
-  }
-  :scope .settings-main {
-    padding-top: 32px;
-  }
-  :scope .page-heading h1 {
-    font-size: 28px;
-    font-weight: 600;
-    letter-spacing: -0.8px;
-    margin-bottom: 8px;
-  }
-  :scope .page-heading > p,
-  :scope .settings-section-title p,
-  :scope .model-settings > p {
-    font-size: 13px;
-    line-height: 1.6;
-  }
-  :scope .settings-tabs {
-    gap: 24px;
-    margin: 24px 0 28px;
-    border-color: var(--ui-edge);
-  }
-  :scope .settings-tabs button {
-    font-size: 13px;
-    padding: 12px 0;
-  }
-  :scope .settings-tabs button:hover:not(:disabled) {
-    background: transparent;
-    color: var(--ctp-text);
-    border-bottom-color: var(--ctp-overlay0);
-  }
-  :scope .settings-tabs button[aria-current] {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
-  }
-  :scope .settings-section-title {
-    margin: 0 0 24px;
-    gap: 16px;
-    align-items: center;
-  }
-  :scope .settings-section-title h2,
-  :scope .model-settings > h1 {
-    font-size: 20px;
-    font-weight: 600;
-    letter-spacing: -0.4px;
-  }
-  :scope .settings-card,
-  :scope .setup-card {
-    padding: 24px;
-    border-color: var(--ui-edge);
-    border-radius: var(--ui-card-radius);
-    background: var(--ui-raised);
-    box-shadow: 0 2px 6px #11111b12;
-  }
-  :scope .card-title {
-    margin-bottom: 24px;
-  }
-  :scope .card-title > strong {
-    font-size: 14px;
-    font-weight: 600;
-  }
-  :scope .field {
-    margin-bottom: 20px;
-  }
-  :scope .field > label,
-  :scope .setup-card label {
-    font-size: 12px;
-    font-weight: 500;
-    margin-bottom: 8px;
-  }
-  :scope .field > small,
-  :scope .setup-card > small {
-    font-size: 11px;
-    line-height: 1.6;
-  }
-  :scope .field-grid {
-    gap: 16px;
-  }
-  :scope .setup-grid {
-    gap: 24px;
-    margin-top: 24px;
-  }
-  :scope .setup-card h2 {
-    font-weight: 600;
-  }
-  :scope .chatgpt-connected {
-    border-color: transparent;
-    background: color-mix(in srgb, var(--ctp-green) 5%, var(--ctp-mantle));
-    border-radius: var(--ui-radius);
-    padding: 16px;
-  }
-  :scope .chatgpt-login {
-    background: var(--ctp-mantle);
-    border-color: var(--ui-edge);
-    border-radius: var(--ui-radius);
-  }
-  :scope .settings-save {
-    border: 1px solid var(--ui-edge);
-    border-radius: var(--ui-card-radius);
-    background: var(--ctp-mantle);
-    padding: 12px 16px;
-    box-shadow: 0 4px 16px #11111b20;
-  }
-  :scope .block-catalog {
-    gap: 4px;
-    padding-top: 18px;
-  }
-  :scope .block-catalog button {
-    padding: 12px;
-    border-radius: var(--ui-radius);
-  }
-  :scope .block-catalog button.selected {
-    border-color: transparent;
-    background: var(--ui-selected);
-    box-shadow: inset 2px 0 var(--accent);
-  }
-  :scope .block-catalog button.selected svg {
-    color: var(--accent);
-  }
-  :scope .block-catalog strong {
-    font-size: 12px;
-    font-weight: 500;
-    line-height: 1.5;
-  }
-  :scope .block-catalog small {
-    font-size: 10px;
-    margin-top: 2px;
-  }
-  :scope .mcp-tools,
-  :scope .mcp-tools > div,
-  :scope .code-editor {
-    border-color: var(--ui-edge);
-  }
-  :scope .home-symbol {
-    transform: none;
-    background: var(--ui-selected);
-    border: 0;
-    box-shadow: none;
-    border-radius: 18px;
-  }
-  :scope .home-symbol svg {
-    transform: none;
-  }
-  :scope .result-banner,
-  :scope .run-workspace,
-  :scope .progress-step {
-    border-color: var(--ui-edge);
-    border-radius: var(--ui-card-radius);
-  }
-  :scope .result-banner.completed {
-    border-color: color-mix(in srgb, var(--ctp-green) 22%, transparent);
-  }
-  :scope .design-chat {
-    border-color: var(--ui-control-edge);
-    border-radius: 16px;
-    box-shadow:
-      0 16px 48px #11111b70,
-      0 2px 8px #11111b40;
-  }
-  :scope .design-chat-heading {
-    padding: 12px 16px;
-    gap: 12px;
-    background: var(--ctp-mantle);
-    border-color: var(--ui-edge);
-  }
-  :scope .design-chat-heading .icon-button {
-    padding: 7px;
-  }
-  :scope .design-chat-heading strong {
-    font-weight: 600;
-  }
-  :scope .design-avatar {
-    width: 32px;
-    height: 32px;
-    border-radius: 9px;
-    background: var(--ui-selected);
-  }
-  :scope .design-conversation {
-    padding: 20px 16px;
-  }
-  :scope .design-intro {
-    padding: 8px 4px 20px;
-  }
-  :scope .design-intro h3 {
-    text-transform: none;
-    letter-spacing: -0.2px;
-    font-size: 18px;
-    line-height: 1.4;
-  }
-  :scope .design-intro small {
-    font-size: 11px;
-  }
-  :scope .design-message {
-    max-width: 100%;
-    padding: 0;
-    margin: 24px 0;
-    border-radius: 0;
-    background: transparent;
-  }
-  :scope .design-message.user {
-    max-width: 94%;
-    border: 0;
-    background: var(--ui-selected);
-    border-radius: 12px 12px 4px 12px;
-    padding: 12px 16px;
-  }
-  :scope .design-message > span {
-    font-size: 11px;
-    font-weight: 500;
-    margin-bottom: 6px;
-  }
-  :scope .design-message .markdown-body {
-    font-size: 13px;
-    line-height: 1.7;
-  }
-  :scope .design-page-context {
-    margin: -2px 0 8px;
-    font-size: 10px;
-    color: var(--ctp-subtext0);
-  }
-  :scope .design-proposal {
-    border-color: var(--ui-edge);
-    background: var(--ui-raised);
-    border-radius: 12px;
-    padding: 16px;
-  }
-  :scope .design-preview,
-  :scope .design-preview article {
-    border-color: var(--ui-edge);
-  }
-  :scope .design-compose {
-    padding: 12px 16px 20px;
-    background: var(--ctp-mantle);
-    border-color: var(--ui-edge);
-  }
-  :scope .design-compose textarea {
-    font-size: 13px;
-    padding: 12px;
-    background: var(--ui-raised);
-    border-color: var(--ui-control-edge);
-    border-radius: 12px;
-  }
-  :scope .design-compose textarea:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
-  }
-  :scope .design-compose > div {
-    gap: 8px;
-    margin-top: 10px;
-  }
-  :scope .design-compose small {
-    font-size: 10px;
-    flex: 1;
-    min-width: 100px;
-    line-height: 1.5;
-  }
-  :scope .design-compose button[type="submit"] {
-    width: 34px;
-    min-height: 34px;
-    height: 34px;
-    padding: 7px;
-    border-radius: 10px;
-  }
-  :scope .design-launchers button {
-    border-color: var(--ui-edge);
-    border-radius: 12px;
-    box-shadow: 0 4px 12px #11111b30;
-  }
-  :scope .design-launchers button.active {
-    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
-    background: var(--ui-selected);
-  }
-  :scope .design-tool-activity {
-    border-top: 1px solid var(--ui-edge);
-    padding-top: 12px;
-    margin-top: 20px;
-  }
-  :scope .chat-resize-handle {
-    min-height: 22px;
-  }
-  :scope .chat-resize-handle::after {
-    opacity: 0.4;
-  }
-  @media (max-width: 780px) {
-    :scope .settings-main {
-      padding: 24px 16px 80px;
-    }
-    :scope .settings-tabs {
-      gap: 20px;
-      margin: 20px 0 24px;
-    }
-    :scope .settings-tabs button {
-      font-size: 12px;
-    }
-    :scope .settings-section-title {
-      align-items: flex-start;
-      flex-wrap: wrap;
-      gap: 12px;
-    }
-    :scope .settings-card,
-    :scope .setup-card {
-      padding: 20px;
-    }
-    :scope .setup-grid {
-      gap: 16px;
-    }
-    :scope .field-grid {
-      gap: 0;
-    }
-    :scope .block-catalog {
-      padding-top: 0;
-      gap: 8px;
-    }
-    :scope .block-catalog button {
-      flex-basis: 180px;
-    }
-    :scope .workspace-breadcrumb > span {
-      display: none;
-    }
-    :scope .workspace-breadcrumb > svg {
-      display: none;
-    }
-    :scope .workspace-topbar .ai-button {
-      font-size: 12px;
-      padding: 8px 10px;
-    }
-    :scope .design-chat-heading {
-      padding: 12px;
-      gap: 8px;
-    }
-    :scope .design-compose {
-      padding: 12px 12px 20px;
-    }
-    :scope .design-conversation {
-      padding: 16px 12px;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    :scope button {
-      transition: none;
-    }
-  }
-  /* Desktop window geometry is persisted inline; phones use a roomy sheet. */
-  @media (max-width: 600px) {
-    :scope .design-chat {
-      left: 12px !important;
-      top: 12px !important;
-      width: calc(100vw - 24px) !important;
-      height: calc(100dvh - 88px) !important;
-      max-height: calc(100dvh - 88px);
-    }
-    :scope .design-chat .chat-resize-handle {
-      display: none;
-    }
-  }
-  /* Card bounds are part of the graph layout contract. Keep long labels inside them. */
-  :scope .workflow-node .graph-label {
-    height: 100%;
-    padding: 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    overflow: hidden;
-  }
-  :scope .workflow-node .graph-label strong {
-    font-size: 15px;
-    line-height: 1.35;
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    flex-shrink: 0;
-  }
-  :scope .workflow-node .graph-label > span {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    line-height: 1.4;
-  }
-  :scope .workflow-node .graph-label small {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    flex-shrink: 0;
-  }
-  :scope .workflow-node .graph-label b {
-    margin-top: auto;
-    flex-shrink: 0;
-  }
+/* Workspace layout refinements and interaction contracts; colors use the root theme. */
+:where(.workflow-workspace) .eyebrow,
+:where(.workflow-workspace) .home-eyebrow {
+  letter-spacing: 1.2px;
+}
+:where(.workflow-workspace) .task-sidebar {
+  padding: 24px 12px 12px;
+}
+:where(.workflow-workspace) .brand {
+  margin-bottom: 24px;
+}
+:where(.workflow-workspace) .brand-mark {
+  width: 36px;
+  height: 36px;
+}
+:where(.workflow-workspace) .new-task-button {
+  padding: 10px 12px;
+  margin-bottom: 16px;
+}
+:where(.workflow-workspace) .sidebar-search {
+  margin-bottom: 24px;
+}
+:where(.workflow-workspace) .task-item {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
 
-  /* The browser and terminal share durable sessions, including their selected IDs. */
-  :scope .session-open-button {
-    width: 100%;
-    justify-content: flex-start;
-    gap: 10px;
-    color: var(--ctp-subtext1);
-    background: transparent;
-    border-color: transparent;
-    margin: -5px 0 12px;
+:where(.workflow-workspace) .history-heading {
+  font-weight: 600;
+  letter-spacing: 0.8px;
+}
+
+:where(.workflow-workspace) .workspace-breadcrumb {
+  font-size: 12px;
+  gap: 10px;
+}
+:where(.workflow-workspace) .topbar-right {
+  gap: 12px;
+}
+
+:where(.workflow-workspace) .settings-main {
+  padding-top: 32px;
+}
+:where(.workflow-workspace) .page-heading h1 {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.8px;
+  margin-bottom: 8px;
+}
+:where(.workflow-workspace) .page-heading > p,
+:where(.workflow-workspace) .settings-section-title p,
+:where(.workflow-workspace) .model-settings > p {
+  font-size: 13px;
+  line-height: 1.6;
+}
+:where(.workflow-workspace) .settings-tabs {
+  gap: 24px;
+  margin: 24px 0 28px;
+}
+:where(.workflow-workspace) .settings-tabs button {
+  font-size: 13px;
+  padding: 12px 0;
+}
+
+:where(.workflow-workspace) .settings-section-title {
+  margin: 0 0 24px;
+  gap: 16px;
+  align-items: center;
+}
+:where(.workflow-workspace) .settings-section-title h2,
+:where(.workflow-workspace) .model-settings > h1 {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+}
+:where(.workflow-workspace) .settings-card,
+:where(.workflow-workspace) .setup-card {
+  padding: 24px;
+}
+:where(.workflow-workspace) .card-title {
+  margin-bottom: 24px;
+}
+:where(.workflow-workspace) .card-title > strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+:where(.workflow-workspace) .field {
+  margin-bottom: 20px;
+}
+:where(.workflow-workspace) .field > label,
+:where(.workflow-workspace) .setup-card label {
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+:where(.workflow-workspace) .field > small,
+:where(.workflow-workspace) .setup-card > small {
+  font-size: 11px;
+  line-height: 1.6;
+}
+:where(.workflow-workspace) .field-grid {
+  gap: 16px;
+}
+:where(.workflow-workspace) .setup-grid {
+  gap: 24px;
+  margin-top: 24px;
+}
+:where(.workflow-workspace) .setup-card h2 {
+  font-weight: 600;
+}
+:where(.workflow-workspace) .chatgpt-connected {
+  padding: 16px;
+}
+
+:where(.workflow-workspace) .settings-save {
+  padding: 12px 16px;
+}
+:where(.workflow-workspace) .block-catalog {
+  gap: 4px;
+  padding-top: 18px;
+}
+:where(.workflow-workspace) .block-catalog button {
+  padding: 12px;
+}
+
+:where(.workflow-workspace) .block-catalog strong {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+:where(.workflow-workspace) .block-catalog small {
+  font-size: 10px;
+  margin-top: 2px;
+}
+
+:where(.workflow-workspace) .home-symbol {
+  transform: none;
+}
+:where(.workflow-workspace) .home-symbol svg {
+  transform: none;
+}
+
+:where(.workflow-workspace) .design-chat-heading {
+  padding: 12px 16px;
+  gap: 12px;
+}
+:where(.workflow-workspace) .design-chat-heading .icon-button {
+  padding: 7px;
+}
+:where(.workflow-workspace) .design-chat-heading strong {
+  font-weight: 600;
+}
+:where(.workflow-workspace) .design-avatar {
+  width: 32px;
+  height: 32px;
+}
+:where(.workflow-workspace) .design-conversation {
+  padding: 20px 16px;
+}
+:where(.workflow-workspace) .design-intro {
+  padding: 8px 4px 20px;
+}
+:where(.workflow-workspace) .design-intro h3 {
+  text-transform: none;
+  letter-spacing: -0.2px;
+  font-size: 18px;
+  line-height: 1.4;
+}
+:where(.workflow-workspace) .design-intro small {
+  font-size: 11px;
+}
+:where(.workflow-workspace) .design-message {
+  max-width: 100%;
+  padding: 0;
+  margin: 24px 0;
+}
+:where(.workflow-workspace) .design-message.user {
+  max-width: 94%;
+
+  padding: 12px 16px;
+}
+:where(.workflow-workspace) .design-message > span {
+  font-size: 11px;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+:where(.workflow-workspace) .design-message .markdown-body {
+  font-size: 13px;
+  line-height: 1.7;
+}
+:where(.workflow-workspace) .design-page-context {
+  margin: -2px 0 8px;
+  font-size: 10px;
+}
+:where(.workflow-workspace) .design-proposal {
+  padding: 16px;
+}
+
+:where(.workflow-workspace) .design-compose {
+  padding: 12px 16px 20px;
+}
+:where(.workflow-workspace) .design-compose textarea {
+  font-size: 13px;
+  padding: 12px;
+}
+
+:where(.workflow-workspace) .design-compose > div {
+  gap: 8px;
+  margin-top: 10px;
+}
+:where(.workflow-workspace) .design-compose small {
+  font-size: 10px;
+  flex: 1;
+  min-width: 100px;
+  line-height: 1.5;
+}
+:where(.workflow-workspace) .design-compose button[type="submit"] {
+  width: 34px;
+  min-height: 34px;
+  height: 34px;
+  padding: 7px;
+}
+
+:where(.workflow-workspace) .design-tool-activity {
+  padding-top: 12px;
+  margin-top: 20px;
+}
+:where(.workflow-workspace) .chat-resize-handle {
+  min-height: 22px;
+}
+:where(.workflow-workspace) .chat-resize-handle::after {
+  opacity: 0.4;
+}
+@media (max-width: 780px) {
+  :where(.workflow-workspace) .settings-main {
+    padding: 24px 16px 80px;
+  }
+  :where(.workflow-workspace) .settings-tabs {
+    gap: 20px;
+    margin: 20px 0 24px;
+  }
+  :where(.workflow-workspace) .settings-tabs button {
     font-size: 12px;
   }
-  :scope .session-dialog {
-    width: min(480px, calc(100vw - 32px));
-    max-height: calc(100dvh - 40px);
-    padding: 28px;
-    border: 1px solid var(--ui-control-edge);
-    border-radius: 18px;
-    background: var(--ctp-base);
-    color: var(--ctp-text);
-    box-shadow: 0 24px 80px #0008;
-  }
-  :scope .session-dialog::backdrop {
-    background: #11111baa;
-    backdrop-filter: blur(3px);
-  }
-  :scope .session-dialog-heading {
-    display: flex;
-    justify-content: space-between;
+  :where(.workflow-workspace) .settings-section-title {
     align-items: flex-start;
-    margin-bottom: 20px;
-  }
-  :scope .session-dialog-icon {
-    display: grid;
-    place-items: center;
-    width: 44px;
-    height: 44px;
-    color: var(--accent);
-    border-radius: 12px;
-    background: var(--ui-selected);
-  }
-  :scope .session-dialog h2 {
-    font-size: 21px;
-    letter-spacing: -0.5px;
-    margin: 0 0 12px;
-  }
-  :scope .session-dialog p {
-    color: var(--ctp-subtext0);
-    font-size: 13px;
-    line-height: 1.7;
-  }
-  :scope .session-dialog label {
-    display: block;
-    margin: 24px 0 8px;
-    font-size: 12px;
-    font-weight: 500;
-  }
-  :scope .session-dialog input {
-    width: 100%;
-    font-size: 13px;
-  }
-  :scope .session-dialog .session-dialog-hint {
-    font-size: 11px;
-    margin: 10px 0 0;
-  }
-  :scope .session-dialog-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    margin-top: 24px;
-  }
-  :scope .session-access {
-    display: flex;
     flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 18px;
-    margin-top: 16px;
+    gap: 12px;
   }
-  :scope .session-id {
-    display: inline-flex;
-    align-items: center;
+  :where(.workflow-workspace) .settings-card,
+  :where(.workflow-workspace) .setup-card {
+    padding: 20px;
+  }
+  :where(.workflow-workspace) .setup-grid {
+    gap: 16px;
+  }
+  :where(.workflow-workspace) .field-grid {
+    gap: 0;
+  }
+  :where(.workflow-workspace) .block-catalog {
+    padding-top: 0;
     gap: 8px;
-    min-width: 0;
-    color: var(--ctp-subtext0);
-    font-size: 10px;
   }
-  :scope .session-id code {
-    color: var(--ctp-subtext1);
-    font-size: 10px;
-    overflow-wrap: anywhere;
-    user-select: all;
-    background: transparent;
-    padding: 0;
+  :where(.workflow-workspace) .block-catalog button {
+    flex-basis: 180px;
   }
-  :scope .session-access-actions {
-    display: flex;
+  :where(.workflow-workspace) .workspace-breadcrumb > span {
+    display: none;
+  }
+  :where(.workflow-workspace) .workspace-breadcrumb > svg {
+    display: none;
+  }
+  :where(.workflow-workspace) .workspace-topbar .ai-button {
+    font-size: 12px;
+    padding: 8px 10px;
+  }
+  :where(.workflow-workspace) .design-chat-heading {
+    padding: 12px;
+    gap: 8px;
+  }
+  :where(.workflow-workspace) .design-compose {
+    padding: 12px 12px 20px;
+  }
+  :where(.workflow-workspace) .design-conversation {
+    padding: 16px 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(.workflow-workspace) button {
+    transition: none;
+  }
+}
+/* Desktop window geometry is persisted inline; phones use a roomy sheet. */
+@media (max-width: 600px) {
+  :where(.workflow-workspace) .design-chat {
+    left: 12px !important;
+    top: 12px !important;
+    width: calc(100vw - 24px) !important;
+    height: calc(100dvh - 88px) !important;
+    max-height: calc(100dvh - 88px);
+  }
+  :where(.workflow-workspace) .design-chat .chat-resize-handle {
+    display: none;
+  }
+}
+/* Card bounds are part of the graph layout contract. Keep long labels inside them. */
+:where(.workflow-workspace) .workflow-node .graph-label {
+  height: 100%;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+}
+:where(.workflow-workspace) .workflow-node .graph-label strong {
+  font-size: 15px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+:where(.workflow-workspace) .workflow-node .graph-label > span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
+}
+:where(.workflow-workspace) .workflow-node .graph-label small {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+:where(.workflow-workspace) .workflow-node .graph-label b {
+  margin-top: auto;
+  flex-shrink: 0;
+}
+
+/* The browser and terminal share durable sessions, including their selected IDs. */
+:where(.workflow-workspace) .session-open-button {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 10px;
+  color: var(--muted-foreground);
+  background: transparent;
+  border-color: transparent;
+  margin: -5px 0 12px;
+  font-size: 12px;
+}
+:where(.workflow-workspace) .session-dialog {
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  padding: 28px;
+  border: 1px solid var(--input);
+  border-radius: 18px;
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 24px 80px color-mix(in oklch, var(--shadow-color) 53.3%, transparent);
+}
+:where(.workflow-workspace) .session-dialog::backdrop {
+  background: color-mix(in oklch, var(--shadow-color) 66.7%, transparent);
+  backdrop-filter: blur(3px);
+}
+:where(.workflow-workspace) .session-dialog-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+:where(.workflow-workspace) .session-dialog-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  color: var(--primary);
+  border-radius: 12px;
+  background: var(--accent);
+}
+:where(.workflow-workspace) .session-dialog h2 {
+  font-size: 21px;
+  letter-spacing: -0.5px;
+  margin: 0 0 12px;
+}
+:where(.workflow-workspace) .session-dialog p {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.7;
+}
+:where(.workflow-workspace) .session-dialog label {
+  display: block;
+  margin: 24px 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+:where(.workflow-workspace) .session-dialog input {
+  width: 100%;
+  font-size: 13px;
+}
+:where(.workflow-workspace) .session-dialog .session-dialog-hint {
+  font-size: 11px;
+  margin: 10px 0 0;
+}
+:where(.workflow-workspace) .session-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+}
+:where(.workflow-workspace) .session-access {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  margin-top: 16px;
+}
+:where(.workflow-workspace) .session-id {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+:where(.workflow-workspace) .session-id code {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+  user-select: all;
+  background: transparent;
+  padding: 0;
+}
+:where(.workflow-workspace) .session-access-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+:where(.workflow-workspace) .session-access-actions button {
+  min-height: 28px;
+  font-size: 10px;
+  padding: 5px 7px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .session-copy-notice {
+  color: var(--success);
+  font-size: 11px;
+  flex-basis: 100%;
+}
+@media (max-width: 600px) {
+  :where(.workflow-workspace) .session-id {
     flex-wrap: wrap;
-    gap: 4px;
   }
-  :scope .session-access-actions button {
-    min-height: 28px;
-    font-size: 10px;
-    padding: 5px 7px;
-    color: var(--ctp-subtext0);
-  }
-  :scope .session-copy-notice {
-    color: var(--ctp-green);
-    font-size: 11px;
+  :where(.workflow-workspace) .session-id code {
     flex-basis: 100%;
   }
-  @media (max-width: 600px) {
-    :scope .session-id {
-      flex-wrap: wrap;
-    }
-    :scope .session-id code {
-      flex-basis: 100%;
-    }
-    :scope .session-dialog {
-      padding: 22px;
-    }
+  :where(.workflow-workspace) .session-dialog {
+    padding: 22px;
   }
 }

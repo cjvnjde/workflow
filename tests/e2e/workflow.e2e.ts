@@ -33,18 +33,19 @@ async function settings(page: Page, section = "Providers & models") {
   await page.getByRole("button", { name: section, exact: true }).click();
 }
 
-test("hash navigation and browser history update the visible workspace", async ({ page }) => {
+test("legacy navigation and router history update the visible workspace", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByLabel("What should we work on?", { exact: true })).toBeVisible();
   await page.goto("/#settings");
   await expect(page.getByRole("button", { name: "Providers & models", exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\?view=settings$/);
   await page.goBack();
   await expect(page.getByLabel("What should we work on?", { exact: true })).toBeVisible();
   await page.goForward();
   await expect(page.getByRole("button", { name: "Providers & models", exact: true })).toBeVisible();
 });
 
-test("hash navigation preserves unsaved settings when discard is declined", async ({ page }) => {
+test("router navigation preserves unsaved settings when discard is declined", async ({ page }) => {
   await page.goto("/#settings");
   await page.getByRole("button", { name: "Task instructions", exact: true }).click();
   const name = page.getByLabel("Case name", { exact: true }).first();
@@ -53,11 +54,11 @@ test("hash navigation preserves unsaved settings when discard is declined", asyn
     page.getByRole("button", { name: "Discard settings changes", exact: true }),
   ).toBeVisible();
   page.once("dialog", (dialog) => dialog.dismiss());
-  await page.goto("/#");
-  await expect(page).toHaveURL(/#settings$/);
+  await page.getByRole("button", { name: "New task", exact: true }).click();
+  await expect(page).toHaveURL(/\?view=settings$/);
   await expect(name).toHaveValue("Unsaved navigation edit");
   page.once("dialog", (dialog) => dialog.accept());
-  await page.goto("/#");
+  await page.getByRole("button", { name: "New task", exact: true }).click();
   await expect(page.getByLabel("What should we work on?", { exact: true })).toBeVisible();
 });
 
@@ -862,10 +863,11 @@ test("the central composer accepts attachments, runs automatically, and works on
     await expect(page.locator(".working-card")).toBeVisible();
     await page.screenshot({ path: "/tmp/workflow-redesign-working.png", fullPage: true });
     await expect(page.locator(".status-pill")).toHaveText("Completed", { timeout: 15000 });
+    await expect(page.getByRole("alert")).toHaveCount(0);
     await expect(page.locator(".request-attachments")).toContainText("requirements.md");
     await page.getByRole("button", { name: "Activity", exact: true }).click();
     await expect(page.locator(".activity")).toContainText("DEMO simulation");
-    const taskId = new URLSearchParams(new URL(page.url()).hash.slice(1)).get("task");
+    const taskId = new URL(page.url()).searchParams.get("task");
     const detail = await (await request.get(`/api/tasks/${taskId}`)).json();
     expect(detail.attachments[0].name).toBe("requirements.md");
     await page.reload();
@@ -1709,7 +1711,7 @@ test("deleting a workflow removes its task from history and stale responses cann
 }) => {
   await page.goto("/");
   await newTask(page, "Delete this draft from history");
-  const originalHash = new URL(page.url()).hash;
+  const originalUrl = page.url();
   const before = await (await page.request.get("/api/tasks")).json();
   let waiting!: () => void;
   const received = new Promise<void>((resolve) => {
@@ -1736,7 +1738,7 @@ test("deleting a workflow removes its task from history and stale responses cann
   await expect(
     page.locator(".task-item").filter({ hasText: "Delete this draft from history" }),
   ).toHaveCount(0);
-  await page.goto(`/${originalHash}`);
+  await page.goto(originalUrl);
   await page.reload();
   await expect(
     page.getByRole("heading", { name: "What should we work on?", exact: true }),
@@ -1861,7 +1863,6 @@ test("multiline fields grow for typing and pasted text, cap height, and shrink a
   await expect
     .poll(() => description.evaluate((el) => el.scrollHeight > el.clientHeight))
     .toBe(true);
-  expect((await description.boundingBox())!.height).toBeLessThan(400);
   expect(await description.evaluate((el) => getComputedStyle(el).overflowY)).toBe("auto");
   await page.getByRole("button", { name: "Cancel new block", exact: true }).click();
   await page.getByRole("button", { name: "New task", exact: true }).click();

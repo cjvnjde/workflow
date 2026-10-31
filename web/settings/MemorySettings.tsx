@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
+import { useForm, useStore } from "@tanstack/react-form";
+import { Link } from "@tanstack/react-router";
 import type { MemoryEntry, MemoryState, MemoryDescription } from "../../src/contracts/index.js";
 import { WorkflowApiError } from "../../src/client/client.js";
 import { client } from "../shared/api.js";
@@ -7,7 +9,13 @@ import Field from "../shared/Field.js";
 import StrategyFacts from "../features/tasks/StrategyFacts.js";
 import "./MemorySettings.css";
 
-const empty = () => ({ title: "", description: "", details: "", tags: "" });
+interface MemoryForm {
+  title: string;
+  description: string;
+  details: string;
+  tags: string;
+}
+const empty = (): MemoryForm => ({ title: "", description: "", details: "", tags: "" });
 const caption = (kind: string) =>
   kind === "preference"
     ? "Explicit preference"
@@ -34,12 +42,31 @@ export default function MemorySettings({ ref, onDirty, onBusy }: Props) {
   const [selected, setSelected] = useState<MemoryEntry>();
   const [editing, setEditing] = useState(false);
   const [newKind, setNewKind] = useState<"note" | "preference">("note");
-  const [form, setForm] = useState(empty);
-  const [saved, setSaved] = useState(() => JSON.stringify(empty()));
+  const [saved, setSaved] = useState(empty);
+  const lifecycle = useRef<Lifecycle | null>(null);
+  const editor = useForm({
+    defaultValues: saved,
+    onSubmitMeta: {} as { revision?: string },
+    onSubmit: async ({ value, meta }) => {
+      const active = lifecycle.current;
+      if (!active || active.controller.signal.aborted) return;
+      setError("");
+      setNotice("");
+      try {
+        await save(value, meta.revision);
+      } catch (failure) {
+        reportFailure(failure, active);
+        throw failure;
+      }
+    },
+  });
+  const form = useStore(editor.store, (value) => value.values);
+  const submitting = useStore(editor.store, (value) => value.isSubmitting);
   const [formRevision, setFormRevision] = useState("");
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [actionBusy, setActionBusy] = useState(false);
+  const busy = actionBusy || submitting;
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
@@ -47,8 +74,7 @@ export default function MemorySettings({ ref, onDirty, onBusy }: Props) {
   const [notice, setNotice] = useState("");
   const [conflict, setConflict] = useState(false);
   const [latest, setLatest] = useState<{ entry: MemoryEntry; revision: string }>();
-  const lifecycle = useRef<Lifecycle | null>(null);
-  const dirty = editing && JSON.stringify(form) !== saved;
+  const dirty = editing && JSON.stringify(form) !== JSON.stringify(saved);
   const text = query.trim().toLocaleLowerCase();
   const entries = (state?.entries ?? []).filter(
     (entry) =>
@@ -90,17 +116,17 @@ export default function MemorySettings({ ref, onDirty, onBusy }: Props) {
         }
       : empty();
     setSelected(entry);
-    setForm(value);
-    setSaved(JSON.stringify(value));
+    setSaved(value);
+    editor.reset(value);
     setFormRevision(revision);
     setError("");
     setConflict(false);
     setLatest(undefined);
   }
   const discard = useCallback(() => {
-    setForm(JSON.parse(saved));
+    editor.reset(saved);
     setError("");
-  }, [saved]);
+  }, [editor, saved]);
   useImperativeHandle(ref, () => ({ discard }), [discard]);
   function canLeave() {
     return !dirty || window.confirm("Discard unsaved memory edits?");
@@ -174,23 +200,25 @@ export default function MemorySettings({ ref, onDirty, onBusy }: Props) {
         setDetailLoading(false);
     }
   }
+  function reportFailure(failure: unknown, active: Lifecycle) {
+    if (active.controller.signal.aborted) return;
+    setError(failure instanceof Error ? failure.message : String(failure));
+    const conflicted = failure instanceof WorkflowApiError && failure.status === 409;
+    setConflict(conflicted);
+    if (conflicted) setLatest(undefined);
+  }
   async function perform(action: () => Promise<void>) {
     const active = lifecycle.current;
     if (!active) return;
-    setBusy(true);
+    setActionBusy(true);
     setError("");
     setNotice("");
     try {
       await action();
     } catch (failure) {
-      if (!active.controller.signal.aborted) {
-        setError(failure instanceof Error ? failure.message : String(failure));
-        const conflicted = failure instanceof WorkflowApiError && failure.status === 409;
-        setConflict(conflicted);
-        if (conflicted) setLatest(undefined);
-      }
+      reportFailure(failure, active);
     } finally {
-      if (!active.controller.signal.aborted) setBusy(false);
+      if (!active.controller.signal.aborted) setActionBusy(false);
     }
   }
   function applyState(value: MemoryState) {
@@ -216,7 +244,7 @@ export default function MemorySettings({ ref, onDirty, onBusy }: Props) {
         : "Project memory disabled. Saved entries are retained; future collection and memory reads are stopped.",
     );
   }
-  function fields() {
+  function fields(form: MemoryForm) {
     const tags = form.tags
       .split(",")
       .map((tag) => tag.trim())
@@ -230,10 +258,10 @@ export default function MemorySettings({ ref, onDirty, onBusy }: Props) {
       tags,
     };
   }
-  async function save(revision?: string) {
+  async function save(form: MemoryForm, revision?: string) {
     const active = lifecycle.current;
     if (!state || !active) return;
-    const value = fields();
+    const value = fields(form);
     const result = selected
       ? await client.updateMemoryEntry(
           selected.id,
@@ -453,7 +481,7 @@ export default function MemorySettings({ ref, onDirty, onBusy }: Props) {
                   aria-label="Memory entry editor"
                   onSubmit={(event) => {
                     event.preventDefault();
-                    void perform(() => save());
+                    void editor.handleSubmit().catch(() => {});
                   }}
                 >
                   <div className="memory-editor-heading">
@@ -491,7 +519,7 @@ export default function MemorySettings({ ref, onDirty, onBusy }: Props) {
                         <input
                           id={id}
                           value={form.title}
-                          onChange={(event) => setForm({ ...form, title: event.target.value })}
+                          onChange={(event) => editor.setFieldValue("title", event.target.value)}
                           required
                           maxLength={100}
                           placeholder="How we review UI changes"
@@ -507,7 +535,7 @@ export default function MemorySettings({ ref, onDirty, onBusy }: Props) {
                           id={id}
                           value={form.description}
                           onChange={(event) =>
-                            setForm({ ...form, description: event.target.value })
+                            editor.setFieldValue("description", event.target.value)
                           }
                           rows={2}
                           required
@@ -530,7 +558,7 @@ export default function MemorySettings({ ref, onDirty, onBusy }: Props) {
                         <textarea
                           id={id}
                           value={form.details}
-                          onChange={(event) => setForm({ ...form, details: event.target.value })}
+                          onChange={(event) => editor.setFieldValue("details", event.target.value)}
                           rows={7}
                           maxLength={4000}
                           placeholder="Specific guidance worth retaining"
@@ -545,7 +573,7 @@ export default function MemorySettings({ ref, onDirty, onBusy }: Props) {
                         <input
                           id={id}
                           value={form.tags}
-                          onChange={(event) => setForm({ ...form, tags: event.target.value })}
+                          onChange={(event) => editor.setFieldValue("tags", event.target.value)}
                           placeholder="review, frontend"
                         />
                       )}
@@ -599,7 +627,11 @@ export default function MemorySettings({ ref, onDirty, onBusy }: Props) {
                             <button
                               type="button"
                               disabled={busy || !dirty}
-                              onClick={() => void perform(() => save(latest.revision))}
+                              onClick={() =>
+                                void editor
+                                  .handleSubmit({ revision: latest.revision })
+                                  .catch(() => {})
+                              }
                             >
                               Save my edits over this version
                             </button>
@@ -707,9 +739,9 @@ export default function MemorySettings({ ref, onDirty, onBusy }: Props) {
                   <ul className="memory-sources">
                     {observation.sources.map((source) => (
                       <li key={`${source.runId}/${source.nodeId}/${source.visit}`}>
-                        <a href={`#run=${source.runId}`}>
+                        <Link to="/" search={{ run: source.runId }}>
                           {source.nodeId} · visit {source.visit}
-                        </a>
+                        </Link>
                         <small>
                           {date(source.at)} · {source.runId}
                         </small>

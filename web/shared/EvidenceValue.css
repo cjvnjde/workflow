@@ -1,5 +1,5 @@
 .evidence-value {
-  border: 1px solid var(--ui-edge);
+  border: 1px solid var(--border);
   border-radius: 9px;
   padding: 12px;
   min-width: 0;
@@ -16,7 +16,7 @@
 .evidence-value summary > span {
   display: block;
   margin: 5px 0 0 14px;
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 10px;
 }
 .evidence-value p {
@@ -24,7 +24,7 @@
   margin: 12px 0 0;
 }
 .evidence-value .evidence-unavailable {
-  color: var(--ctp-yellow);
+  color: var(--warning);
   font-size: 12px;
 }
 .evidence-value .evidence-actions {
@@ -40,14 +40,14 @@
   padding: 5px;
 }
 .evidence-value .evidence-actions a {
-  color: var(--accent);
+  color: var(--primary);
   text-decoration: none;
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 .evidence-value .evidence-actions > span {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 10px;
 }
 .evidence-value .evidence-search {
@@ -70,7 +70,7 @@
 .evidence-value pre {
   margin: 0;
   padding: 12px;
-  background: var(--ctp-mantle);
+  background: var(--card);
   border-radius: 6px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -80,8 +80,8 @@
   overflow: auto;
 }
 .evidence-value mark {
-  color: var(--ctp-base);
-  background: var(--ctp-yellow);
+  color: var(--background);
+  background: var(--warning);
 }
 .evidence-value .evidence-fields {
   display: grid;
@@ -98,13 +98,13 @@
   overflow-wrap: anywhere;
 }
 .evidence-value h4 small {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 10px;
   font-weight: 400;
   margin-left: 8px;
 }
 .evidence-value .evidence-preview-note {
-  color: var(--muted);
+  color: var(--muted-foreground);
   margin: 5px 0 8px;
 }
 .evidence-value .evidence-image {

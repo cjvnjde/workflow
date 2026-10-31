@@ -23,7 +23,6 @@ import { resolveAgentSettings, type WorkflowRun } from "../../../src/contracts/i
 import { compositionLayout, routedPositions, type LayoutEdge } from "./graph-layout.js";
 import { stepState } from "../execution/workflow-status.js";
 import { executionLabel, isSourceWorkflow } from "../execution/execution-label.js";
-import "@xyflow/react/dist/style.css";
 
 type Point = { x: number; y: number };
 type Positions = Record<string, Point>;
@@ -370,16 +369,16 @@ function GraphCanvas({ run, selected, onSelect, ref }: WorkflowGraphProps) {
       style: {
         stroke:
           outcome === "pass"
-            ? "var(--ctp-green)"
+            ? "var(--success)"
             : outcome === "retry"
-              ? "var(--ctp-yellow)"
-              : "var(--ctp-overlay0)",
+              ? "var(--warning)"
+              : "var(--muted-foreground)",
         strokeWidth: outcome === "fail" ? 1 : 2,
         strokeDasharray: outcome === "retry" ? "6 4" : undefined,
         pointerEvents: "none",
       },
-      labelStyle: { fill: "var(--ctp-subtext1)", fontSize: 10 },
-      labelBgStyle: { fill: "var(--ctp-mantle)" },
+      labelStyle: { fill: "var(--muted-foreground)", fontSize: 10 },
+      labelBgStyle: { fill: "var(--card)" },
     }));
   }, [layout, run, obstacles]);
 
@@ -461,7 +460,7 @@ function GraphCanvas({ run, selected, onSelect, ref }: WorkflowGraphProps) {
       onNodesChange={onNodesChange}
       onNodeDragStop={remember}
     >
-      <Background gap={22} color="var(--ctp-surface1)" />
+      <Background gap={22} color="var(--border)" />
       <Controls showInteractive={false} />
       <div className="graph-toolbar">
         <span>Drag blocks to arrange</span>

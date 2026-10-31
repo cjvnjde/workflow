@@ -1,13 +1,16 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
-import { z } from "zod";
-import { describeActivity } from "../features/execution/activity.js";
 import {
-  eventSchema,
-  runSchema,
-  type RunEvent,
-  type WorkflowRun,
-} from "../../src/contracts/index.js";
-import { client, projectSchema, request, runListSchema } from "../shared/api.js";
+  queryOptions,
+  skipToken,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import type { z } from "zod";
+import { describeActivity } from "../features/execution/activity.js";
+import type { RunEvent, WorkflowRun } from "../../src/contracts/index.js";
+import { client, type projectSchema } from "../shared/api.js";
+import { workflowQueryKeys } from "../shared/query-client.js";
 import { mergeEvents, mergeRuns, newerRun, type RunList } from "../features/execution/run-state.js";
 
 const refreshKinds: Record<string, true> = {
@@ -35,12 +38,8 @@ export type WorkflowNotice = {
 };
 export type TaskStream = { activity: string; text: string; kind: string; time: string };
 
-type WorkflowSnapshot = {
-  project: z.infer<typeof projectSchema> | undefined;
-  runs: RunList;
+type WorkflowLocalState = {
   selectedId: string | undefined;
-  run: WorkflowRun | undefined;
-  events: RunEvent[];
   usageRevision: number;
   setupRevision: number;
   liveText: string;
@@ -52,14 +51,65 @@ type WorkflowSnapshot = {
   taskStreams: Record<string, TaskStream>;
   notices: WorkflowNotice[];
 };
+type WorkflowSnapshot = WorkflowLocalState & {
+  project: z.infer<typeof projectSchema> | undefined;
+  runs: RunList;
+  run: WorkflowRun | undefined;
+  events: RunEvent[];
+};
 
-function createWorkflowStore(initialId?: string) {
-  let snapshot: WorkflowSnapshot = {
-    project: undefined,
-    runs: [],
+const emptyRuns: RunList = [];
+const emptyEvents: RunEvent[] = [];
+const projectOptions = queryOptions({
+  queryKey: workflowQueryKeys.project,
+  queryFn: ({ signal }) => client.project(signal),
+});
+const runsOptions = queryOptions({
+  queryKey: workflowQueryKeys.runs,
+  queryFn: ({ signal }) => client.runs(signal),
+  structuralSharing: (previous, incoming) =>
+    mergeRuns((previous as RunList | undefined) ?? emptyRuns, incoming as RunList),
+});
+function runOptions(id: string | undefined) {
+  return queryOptions({
+    queryKey: workflowQueryKeys.run(id),
+    queryFn: id ? ({ signal }) => client.run(id, signal) : skipToken,
+    structuralSharing: (previous, incoming) =>
+      newerRun(previous as WorkflowRun | undefined, incoming as WorkflowRun, id),
+  });
+}
+function eventsOptions(id: string | undefined) {
+  return queryOptions({
+    queryKey: workflowQueryKeys.events(id),
+    queryFn: id ? ({ signal }) => client.events(id, signal) : skipToken,
+    structuralSharing: (previous, incoming) =>
+      mergeEvents((previous as RunEvent[] | undefined) ?? emptyEvents, incoming as RunEvent[]),
+  });
+}
+function mergeRunSummary(queryClient: QueryClient, loaded: WorkflowRun) {
+  const { id, status, mode, createdAt, updatedAt, revision, cursor, deletedAt } = loaded;
+  queryClient.setQueryData(runsOptions.queryKey, (previous) =>
+    mergeRuns(previous ?? emptyRuns, [
+      {
+        id,
+        status,
+        mode,
+        createdAt,
+        updatedAt,
+        revision,
+        cursor,
+        deletedAt,
+        title: loaded.plan.title,
+        task: loaded.plan.task,
+      },
+    ]),
+  );
+}
+
+/** Only transient stream/UI state lives outside the Query cache. */
+function createWorkflowStore(queryClient: QueryClient, initialId?: string) {
+  let snapshot: WorkflowLocalState = {
     selectedId: initialId,
-    run: undefined,
-    events: [],
     usageRevision: 0,
     setupRevision: 0,
     liveText: "",
@@ -73,101 +123,33 @@ function createWorkflowStore(initialId?: string) {
   };
   const listeners = new Set<() => void>();
   const stepSummaries = new Map<string, string>();
-  let controller: AbortController | undefined;
-  let scheduleRefresh: ((includeEvents: boolean) => void) | undefined;
-  let loadError = "";
-  function update(patch: Partial<WorkflowSnapshot>) {
+  function update(patch: Partial<WorkflowLocalState>) {
     snapshot = { ...snapshot, ...patch };
     for (const listener of listeners) listener();
   }
   function applyRun(loaded: WorkflowRun) {
-    const { id, status, mode, createdAt, updatedAt, revision, cursor, deletedAt } = loaded;
-    update({
-      run: newerRun(snapshot.run, loaded, snapshot.selectedId),
-      runs: mergeRuns(snapshot.runs, [
-        {
-          id,
-          status,
-          mode,
-          createdAt,
-          updatedAt,
-          revision,
-          cursor,
-          deletedAt,
-          title: loaded.plan.title,
-          task: loaded.plan.task,
-        },
-      ]),
-    });
+    queryClient.setQueryData(runOptions(loaded.id).queryKey, (current) =>
+      newerRun(current, loaded, loaded.id),
+    );
+    mergeRunSummary(queryClient, loaded);
   }
   async function refreshRuns() {
-    const signal = controller?.signal;
-    const loaded = await request("/api/runs", runListSchema, { signal });
-    if (!signal?.aborted) update({ runs: mergeRuns(snapshot.runs, loaded) });
+    await queryClient.invalidateQueries({ queryKey: workflowQueryKeys.runs });
   }
   async function refreshProject() {
-    const signal = controller?.signal;
-    const loaded = await request("/api/project", projectSchema, { signal });
-    if (!signal?.aborted) {
-      update({ project: loaded, ...(snapshot.error === loadError ? { error: "" } : {}) });
+    await queryClient.invalidateQueries({ queryKey: workflowQueryKeys.project });
+  }
+  function refreshHistory(includeEvents: boolean) {
+    void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.runs });
+    const id = snapshot.selectedId;
+    if (id) {
+      void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.run(id) });
+      if (includeEvents)
+        void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.events(id) });
     }
   }
   function start() {
     const lifetime = new AbortController();
-    controller = lifetime;
-    const options = { signal: lifetime.signal };
-    let running = false;
-    let pending = false;
-    let pendingEvents = false;
-    let timer: number | undefined;
-    function report(failure: unknown) {
-      if (lifetime.signal.aborted) return;
-      loadError = failure instanceof Error ? failure.message : String(failure);
-      update({ error: loadError });
-    }
-    async function refresh() {
-      timer = undefined;
-      if (lifetime.signal.aborted || running) return;
-      running = true;
-      const id = snapshot.selectedId;
-      const includeEvents = pendingEvents;
-      pending = false;
-      pendingEvents = false;
-      const [list, detail, history] = await Promise.allSettled([
-        request("/api/runs", runListSchema, options),
-        id ? request(`/api/runs/${id}`, runSchema, options) : Promise.resolve(undefined),
-        id && includeEvents
-          ? request(`/api/runs/${id}/events`, z.array(eventSchema), options)
-          : Promise.resolve(undefined),
-      ]);
-      if (!lifetime.signal.aborted) {
-        if (
-          [list, detail, history].every((result) => result.status === "fulfilled") &&
-          snapshot.error === loadError
-        )
-          update({ error: "" });
-        if (list.status === "fulfilled") update({ runs: mergeRuns(snapshot.runs, list.value) });
-        else report(list.reason);
-        if (detail.status === "fulfilled") {
-          if (detail.value) applyRun(detail.value);
-        } else if (id === snapshot.selectedId) report(detail.reason);
-        if (history.status === "fulfilled") {
-          if (history.value && id === snapshot.selectedId) {
-            update({ events: mergeEvents(snapshot.events, history.value) });
-          }
-        } else if (id === snapshot.selectedId) report(history.reason);
-      }
-      running = false;
-      if (!lifetime.signal.aborted && pending) timer = window.setTimeout(() => void refresh(), 80);
-    }
-    function schedule(includeEvents: boolean) {
-      pending = true;
-      pendingEvents ||= includeEvents;
-      if (!running && timer === undefined) timer = window.setTimeout(() => void refresh(), 80);
-    }
-    scheduleRefresh = schedule;
-    void refreshProject().catch(report);
-    void refreshRuns().catch(report);
     const source = client.subscribe(
       (event) => {
         if (lifetime.signal.aborted) return;
@@ -176,10 +158,13 @@ function createWorkflowStore(initialId?: string) {
             setupRevision: snapshot.setupRevision + 1,
             usageRevision: snapshot.usageRevision + 1,
           });
+          void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.setup });
+          void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.usage });
           return;
         }
         if (["usage", "model_session_end", "task_state", "run_end"].includes(event.kind)) {
           update({ usageRevision: snapshot.usageRevision + 1 });
+          void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.usage });
         }
         if (event.kind === "run_deleted") {
           update({ notices: snapshot.notices.filter((item) => item.runId !== event.runId) });
@@ -192,7 +177,8 @@ function createWorkflowStore(initialId?: string) {
           ["run_end", "interrupted", "paused"].includes(event.kind) &&
           !snapshot.notices.some((item) => item.id === event.id)
         ) {
-          const title = snapshot.runs.find((item) => item.id === event.runId)?.title ?? "Workflow";
+          const runs = queryClient.getQueryData(runsOptions.queryKey) ?? emptyRuns;
+          const title = runs.find((item) => item.id === event.runId)?.title ?? "Workflow";
           const summary = stepSummaries.get(event.runId);
           update({
             notices: [
@@ -230,7 +216,11 @@ function createWorkflowStore(initialId?: string) {
               },
             },
           });
-          if (event.kind === "task_state") schedule(false);
+          if (event.kind === "task_state") {
+            void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.tasks });
+            void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.task(id) });
+            refreshHistory(false);
+          }
           return;
         }
         if (event.runId === "coordinator") {
@@ -272,36 +262,43 @@ function createWorkflowStore(initialId?: string) {
               update({ liveTextByNode: next });
             } else update({ liveText: "" });
           }
-          update({ events: mergeEvents(snapshot.events, [event]) });
+          queryClient.setQueryData(eventsOptions(event.runId).queryKey, (previous) =>
+            mergeEvents(previous ?? emptyEvents, [event]),
+          );
         }
-        if (refreshKinds[event.kind]) schedule(false);
+        if (refreshKinds[event.kind]) refreshHistory(false);
       },
       {
         signal: lifetime.signal,
         onOpen: () => {
           if (lifetime.signal.aborted) return;
           update({ connected: true });
-          if (!snapshot.project) void refreshProject().catch(report);
-          schedule(true);
+          void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.project });
+          void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.tasks });
+          void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.taskDetails });
+          void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.setup });
+          void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.usage });
+          refreshHistory(true);
         },
         onError: () => {
           if (!lifetime.signal.aborted) update({ connected: false });
         },
       },
     );
-    if (snapshot.selectedId) schedule(true);
     return () => {
       lifetime.abort();
       source.close();
-      window.clearTimeout(timer);
-      if (controller === lifetime) {
-        controller = undefined;
-        scheduleRefresh = undefined;
-      }
     };
   }
   return {
-    getSnapshot: () => snapshot,
+    getLocalSnapshot: () => snapshot,
+    getSnapshot: (): WorkflowSnapshot => ({
+      ...snapshot,
+      project: queryClient.getQueryData(projectOptions.queryKey),
+      runs: queryClient.getQueryData(runsOptions.queryKey) ?? emptyRuns,
+      run: queryClient.getQueryData(runOptions(snapshot.selectedId).queryKey),
+      events: queryClient.getQueryData(eventsOptions(snapshot.selectedId).queryKey) ?? emptyEvents,
+    }),
     subscribe: (listener: () => void) => {
       listeners.add(listener);
       return () => {
@@ -311,8 +308,7 @@ function createWorkflowStore(initialId?: string) {
     start,
     selectRun: (id?: string) => {
       if (id === snapshot.selectedId) return;
-      update({ selectedId: id, run: undefined, events: [], liveText: "", liveTextByNode: {} });
-      scheduleRefresh?.(true);
+      update({ selectedId: id, liveText: "", liveTextByNode: {} });
     },
     applyRun,
     refreshRuns,
@@ -325,10 +321,32 @@ function createWorkflowStore(initialId?: string) {
   };
 }
 
-/** One reconnecting event stream per mounted application, with revision-guarded refreshes. */
+/** Query owns revisioned server state; one reconnecting stream owns transient text/notices. */
 export function useWorkflowData(initialId?: string) {
-  const [store] = useState(() => createWorkflowStore(initialId));
-  const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  const queryClient = useQueryClient();
+  const [store] = useState(() => createWorkflowStore(queryClient, initialId));
+  const snapshot = useSyncExternalStore(
+    store.subscribe,
+    store.getLocalSnapshot,
+    store.getLocalSnapshot,
+  );
+  const refetchInterval = snapshot.connected ? false : 5000;
+  const project = useQuery(projectOptions);
+  const runs = useQuery({ ...runsOptions, refetchInterval });
+  const run = useQuery({ ...runOptions(snapshot.selectedId), refetchInterval });
+  const events = useQuery({ ...eventsOptions(snapshot.selectedId), refetchInterval });
   useEffect(() => store.start(), [store]);
-  return { ...snapshot, ...store };
+  useEffect(() => {
+    if (run.data) mergeRunSummary(queryClient, run.data);
+  }, [queryClient, run.data]);
+  const loadError = project.error ?? runs.error ?? run.error ?? events.error;
+  return {
+    ...snapshot,
+    project: project.data,
+    runs: runs.data ?? emptyRuns,
+    run: run.data,
+    events: events.data ?? emptyEvents,
+    error: snapshot.error || loadError?.message || "",
+    ...store,
+  };
 }

@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
+import { useForm, useStore } from "@tanstack/react-form";
 import { Input } from "../../components/ui/input.js";
 import { Button } from "../../components/ui/button.js";
 import { programSourceSchema, type ProgramSource } from "../../../src/contracts/index.js";
@@ -36,12 +37,18 @@ const CodeEditor = lazy(() => import("../../shared/CodeEditor.js"));
 
 export function ProgramComposerReact({ onSubmit }: ProgramComposerProps) {
   const editorId = useId();
-  const [title, setTitle] = useState("My workflow");
-  const [filename, setFilename] = useState("workflow.ts");
-  const [source, setSource] = useState(template);
-  const [input, setInput] = useState(initialInput);
+  const form = useForm({
+    defaultValues: {
+      title: "My workflow",
+      filename: "workflow.ts",
+      source: template,
+      input: initialInput,
+    },
+    onSubmit: ({ value }) => submit(value),
+  });
+  const { title, filename, source, input } = useStore(form.store, (state) => state.values);
+  const busy = useStore(form.store, (state) => state.isSubmitting);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const picker = useRef<HTMLInputElement | null>(null);
   const panel = useRef<HTMLDetailsElement | null>(null);
@@ -50,10 +57,7 @@ export function ProgramComposerReact({ onSubmit }: ProgramComposerProps) {
   useEffect(() => () => controller.current?.abort(), []);
 
   function discard() {
-    setSource(template);
-    setTitle("My workflow");
-    setFilename("workflow.ts");
-    setInput(initialInput);
+    form.reset();
     setError("");
     if (panel.current) panel.current.open = false;
     setOpen(false);
@@ -69,8 +73,8 @@ export function ProgramComposerReact({ onSubmit }: ProgramComposerProps) {
       return;
     }
     try {
-      setSource(await file.text());
-      setFilename(file.name);
+      form.setFieldValue("source", await file.text());
+      form.setFieldValue("filename", file.name);
       setError("");
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
@@ -79,8 +83,17 @@ export function ProgramComposerReact({ onSubmit }: ProgramComposerProps) {
     }
   }
 
-  async function submit() {
-    setBusy(true);
+  async function submit({
+    title,
+    filename,
+    source,
+    input,
+  }: {
+    title: string;
+    filename: string;
+    source: string;
+    input: string;
+  }) {
     setError("");
     const current = new AbortController();
     controller.current = current;
@@ -107,7 +120,6 @@ export function ProgramComposerReact({ onSubmit }: ProgramComposerProps) {
             : String(failure),
       );
     } finally {
-      setBusy(false);
       if (controller.current === current) controller.current = null;
     }
   }
@@ -115,7 +127,7 @@ export function ProgramComposerReact({ onSubmit }: ProgramComposerProps) {
   return (
     <details
       ref={panel}
-      className="shadcn-theme dark mt-8 rounded-xl border border-border bg-card p-4 text-left text-card-foreground shadow-sm sm:p-5"
+      className="mt-8 rounded-xl border border-border bg-card p-4 text-left text-card-foreground shadow-sm sm:p-5"
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary className="cursor-pointer text-sm font-medium">Use a TypeScript workflow</summary>
@@ -123,82 +135,89 @@ export function ProgramComposerReact({ onSubmit }: ProgramComposerProps) {
         Paste or import a workflow, then review its source before starting it.
       </p>
       {open && (
-        <fieldset className="mt-5 space-y-4" disabled={busy}>
-          <label className="grid gap-2 text-sm font-medium">
-            Workflow name
-            <Input
-              value={title}
-              maxLength={200}
-              onChange={(event) => setTitle(event.currentTarget.value)}
-            />
-          </label>
-          <div className="flex flex-wrap items-center gap-3">
-            <input
-              ref={picker}
-              type="file"
-              accept=".ts"
-              hidden
-              aria-label="Import TypeScript file"
-              onChange={(event) => void load(event)}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => picker.current?.click()}
-            >
-              Import .ts file
-            </Button>
-            <small className="text-muted-foreground">{filename}</small>
-          </div>
-          <div>
-            <span className="text-sm font-medium">New workflow TypeScript</span>
-            <div className="mt-2">
-              <Suspense
-                fallback={
-                  <div className="h-48 animate-pulse rounded-md border border-input bg-muted" />
-                }
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void form.handleSubmit();
+          }}
+        >
+          <fieldset className="mt-5 space-y-4" disabled={busy}>
+            <label className="grid gap-2 text-sm font-medium">
+              Workflow name
+              <Input
+                value={title}
+                maxLength={200}
+                onChange={(event) => form.setFieldValue("title", event.currentTarget.value)}
+              />
+            </label>
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                ref={picker}
+                type="file"
+                accept=".ts"
+                hidden
+                aria-label="Import TypeScript file"
+                onChange={(event) => void load(event)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => picker.current?.click()}
               >
-                <CodeEditor
-                  modelValue={source}
-                  id={`${editorId}-source`}
-                  label="New workflow TypeScript"
-                  readonly={busy}
-                  onUpdateModelValue={setSource}
-                />
-              </Suspense>
+                Import .ts file
+              </Button>
+              <small className="text-muted-foreground">{filename}</small>
             </div>
-          </div>
-          <div>
-            <span className="text-sm font-medium">New workflow inputs (JSON)</span>
-            <div className="mt-2">
-              <Suspense
-                fallback={
-                  <div className="h-24 animate-pulse rounded-md border border-input bg-muted" />
-                }
-              >
-                <CodeEditor
-                  modelValue={input}
-                  id={`${editorId}-input`}
-                  label="New workflow inputs (JSON)"
-                  language="json"
-                  minLines={3}
-                  maxLines={12}
-                  readonly={busy}
-                  onUpdateModelValue={setInput}
-                />
-              </Suspense>
+            <div>
+              <span className="text-sm font-medium">New workflow TypeScript</span>
+              <div className="mt-2">
+                <Suspense
+                  fallback={
+                    <div className="h-48 animate-pulse rounded-md border border-input bg-muted" />
+                  }
+                >
+                  <CodeEditor
+                    value={source}
+                    id={`${editorId}-source`}
+                    label="New workflow TypeScript"
+                    readOnly={busy}
+                    onChange={(value) => form.setFieldValue("source", value)}
+                  />
+                </Suspense>
+              </div>
             </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" disabled={busy} onClick={() => void submit()}>
-              {busy ? "Checking TypeScript…" : "Create workflow draft"}
-            </Button>
-            <Button type="button" variant="outline" onClick={discard}>
-              Discard TypeScript draft
-            </Button>
-          </div>
-        </fieldset>
+            <div>
+              <span className="text-sm font-medium">New workflow inputs (JSON)</span>
+              <div className="mt-2">
+                <Suspense
+                  fallback={
+                    <div className="h-24 animate-pulse rounded-md border border-input bg-muted" />
+                  }
+                >
+                  <CodeEditor
+                    value={input}
+                    id={`${editorId}-input`}
+                    label="New workflow inputs (JSON)"
+                    language="json"
+                    minLines={3}
+                    maxLines={12}
+                    readOnly={busy}
+                    onChange={(value) => form.setFieldValue("input", value)}
+                  />
+                </Suspense>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" disabled={busy}>
+                {busy ? "Checking TypeScript…" : "Create workflow draft"}
+              </Button>
+              <Button type="button" variant="outline" onClick={discard}>
+                Discard TypeScript draft
+              </Button>
+            </div>
+          </fieldset>
+        </form>
       )}
       {busy && (
         <Button

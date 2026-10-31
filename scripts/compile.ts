@@ -15,8 +15,9 @@ try {
     recursive: true,
     filter: (source) => !["workflow", "workflow.exe"].includes(path.basename(source)),
   });
-  const { name, version, type, dependencies, devDependencies, overrides, patchedDependencies } =
-    JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
+  const { name, version, type, dependencies, devDependencies, overrides } = JSON.parse(
+    await readFile(path.join(root, "package.json"), "utf8"),
+  );
   await writeFile(
     path.join(runtime, "package.json"),
     JSON.stringify({
@@ -26,14 +27,12 @@ try {
       dependencies,
       devDependencies,
       overrides,
-      patchedDependencies,
     }),
   );
-  await cp(path.join(root, "patches"), path.join(runtime, "patches"), { recursive: true });
   await cp(path.join(root, "bun.lock"), path.join(runtime, "bun.lock"));
   await $`${process.execPath} install --production`.cwd(runtime);
   const archive = path.join(directory, "runtime.tgz");
-  await $`tar -czf ${archive} -C ${runtime} package.json patches dist node_modules`;
+  await $`tar -czf ${archive} -C ${runtime} package.json dist node_modules`;
   const id = createHash("sha256")
     .update(await readFile(archive))
     .digest("hex");

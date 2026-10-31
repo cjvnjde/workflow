@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useForm, useStore } from "@tanstack/react-form";
 import {
   ArrowUp,
   Code2,
@@ -118,18 +119,37 @@ export function TaskComposerReact({
   onSettings,
   onDiscard,
 }: TaskComposerProps) {
+  const filesRef = useRef(files);
   const [uploading, setUploading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const form = useForm({
+    defaultValues: { text },
+    onSubmit: async ({ value }) => {
+      if (!value.text.trim() || uploading) return;
+      setError("");
+      try {
+        await onSubmit(
+          value.text.trim(),
+          filesRef.current.map((file) => file.id),
+        );
+      } catch (failure) {
+        setError(failure instanceof Error ? failure.message : String(failure));
+      }
+    },
+  });
+  const prompt = useStore(form.store, (state) => state.values.text);
+  const submitting = useStore(form.store, (state) => state.isSubmitting);
   const [error, setError] = useState("");
   const [dragging, setDragging] = useState(false);
   const picker = useRef<HTMLInputElement | null>(null);
   const input = useRef<HTMLTextAreaElement | null>(null);
   const uploadController = useRef<AbortController | undefined>(undefined);
-  const filesRef = useRef(files);
   useLayoutEffect(() => {
     filesRef.current = files;
   }, [files]);
-  useAutosize(input, text);
+  useEffect(() => {
+    if (form.getFieldValue("text") !== text) form.setFieldValue("text", text);
+  }, [form, text]);
+  useAutosize(input, prompt);
 
   useEffect(
     () => () => {
@@ -178,25 +198,10 @@ export function TaskComposerReact({
     }
   }
 
-  async function submit() {
-    if (!text.trim() || uploading || submitting) return;
-    setSubmitting(true);
-    setError("");
-    try {
-      await onSubmit(
-        text.trim(),
-        filesRef.current.map((file) => file.id),
-      );
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure));
-      setSubmitting(false);
-    }
-  }
-
   function keydown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
-      void submit();
+      void form.handleSubmit();
     }
   }
 
@@ -208,7 +213,13 @@ export function TaskComposerReact({
   }
 
   return (
-    <div className="shadcn-theme dark space-y-3 text-left text-foreground">
+    <form
+      className="space-y-3 text-left text-foreground"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
       <div
         className={`relative overflow-hidden rounded-xl border bg-card shadow-sm transition-colors ${dragging ? "border-ring ring-2 ring-ring/30" : "border-border"}`}
         onDragOver={(event) => {
@@ -266,22 +277,28 @@ export function TaskComposerReact({
             ))}
           </div>
         )}
-        <Textarea
-          ref={input}
-          value={text}
-          aria-label="What should we work on?"
-          placeholder="Describe what you want to build, fix, or explore…"
-          maxLength={32_000}
-          rows={4}
-          disabled={submitting}
-          className="max-h-[50vh] min-h-32 resize-none rounded-none border-0 bg-transparent px-5 pt-5 pb-2 text-sm shadow-none focus-visible:ring-0"
-          onChange={(event) => {
-            const value = event.currentTarget.value;
-            onTextChange(value);
-          }}
-          onKeyDown={keydown}
-          onPaste={paste}
-        />
+        <form.Field name="text">
+          {(field) => (
+            <Textarea
+              ref={input}
+              name={field.name}
+              value={field.state.value}
+              aria-label="What should we work on?"
+              placeholder="Describe what you want to build, fix, or explore…"
+              maxLength={32_000}
+              rows={4}
+              disabled={submitting}
+              className="max-h-[50vh] min-h-32 resize-none rounded-none border-0 bg-transparent px-5 pt-5 pb-2 text-sm shadow-none focus-visible:ring-0"
+              onBlur={field.handleBlur}
+              onChange={(event) => {
+                field.handleChange(event.currentTarget.value);
+                onTextChange(event.currentTarget.value);
+              }}
+              onKeyDown={keydown}
+              onPaste={paste}
+            />
+          )}
+        </form.Field>
         <div className="flex flex-wrap items-center gap-2 px-3 pt-2 pb-3 sm:px-4">
           <input
             ref={picker}
@@ -316,13 +333,12 @@ export function TaskComposerReact({
             </Button>
           )}
           <Button
-            type="button"
+            type="submit"
             size="icon"
             className="ml-auto"
             aria-label="Start task"
             title="Start task"
-            disabled={!text.trim() || uploading || submitting}
-            onClick={() => void submit()}
+            disabled={!prompt.trim() || uploading || submitting}
           >
             <ArrowUp aria-hidden="true" />
           </Button>
@@ -369,6 +385,7 @@ export function TaskComposerReact({
             disabled={uploading || submitting}
             onClick={() => {
               setError("");
+              form.reset({ text: "" });
               onDiscard();
             }}
           >
@@ -385,6 +402,7 @@ export function TaskComposerReact({
               variant="outline"
               className="h-auto min-h-14 justify-start whitespace-normal px-3 py-3 text-left text-xs leading-relaxed"
               onClick={() => {
+                form.setFieldValue("text", prompt);
                 onTextChange(prompt);
                 input.current?.focus();
               }}
@@ -395,6 +413,6 @@ export function TaskComposerReact({
           ))}
         </div>
       )}
-    </div>
+    </form>
   );
 }

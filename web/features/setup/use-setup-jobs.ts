@@ -1,13 +1,13 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import {
   setupJobSchema,
-  setupJobsLatestSchema,
-  setupSchema,
   type Setup,
   type SetupJob,
   type StartSetup,
 } from "../../../src/contracts/index.js";
-import { request } from "../../shared/api.js";
+import { client, request } from "../../shared/api.js";
+import { workflowQueryKeys } from "../../shared/query-client.js";
 
 type SetupJobsState = {
   setup: Setup | undefined;
@@ -16,157 +16,134 @@ type SetupJobsState = {
   pending: boolean;
   error: string;
 };
+type SetupAction = { url: string; body: unknown; observedJob: string };
+const setupMutationKey = ["setup-action"] as const;
+const setupOptions = queryOptions({
+  queryKey: workflowQueryKeys.setup,
+  queryFn: async ({ signal }) => {
+    const [setup, latest] = await Promise.all([
+      client.setupState(signal),
+      client.latestSetup(signal),
+    ]);
+    return { setup, job: latest.job };
+  },
+});
 
-function createSetupJobs() {
-  let state: SetupJobsState = {
-    setup: undefined,
-    job: null,
-    loading: false,
-    pending: false,
-    error: "",
-  };
-  const listeners = new Set<() => void>();
-  const update = (patch: Partial<SetupJobsState>) => {
-    state = { ...state, ...patch };
-    for (const listener of listeners) listener();
-  };
-  let controller: AbortController | undefined;
-  let version = 0;
-  let disposed = false;
-  let initialized = false;
-  let completedGeneration: string | undefined;
-  let actionError = "";
-  let completed: () => Promise<void> = () => Promise.resolve();
-
-  async function refresh() {
-    if (disposed) return;
-    const current = ++version;
-    controller?.abort();
-    const lookup = new AbortController();
-    controller = lookup;
-    update({ loading: true });
-    try {
-      const [setup, latest] = await Promise.all([
-        request("/api/setup", setupSchema, { signal: lookup.signal }),
-        request("/api/setup-jobs/latest", setupJobsLatestSchema, { signal: lookup.signal }),
-      ]);
-      if (current !== version || disposed) return;
-      if (state.job?.id !== latest.job?.id || state.job?.revision !== latest.job?.revision)
-        actionError = "";
-      update({ setup, job: latest.job, error: actionError });
-      const saved = setup.completedSetup;
-      const generation = saved?.generationId ?? saved?.jobId ?? saved?.completedAt;
-      const changed = initialized && generation && generation !== completedGeneration;
-      initialized = true;
-      const previousGeneration = completedGeneration;
-      completedGeneration = generation;
-      if (changed) {
-        try {
-          await completed();
-        } catch (failure) {
-          if (completedGeneration === generation) completedGeneration = previousGeneration;
-          throw failure;
-        }
-      }
-    } catch (failure) {
-      if (current !== version || disposed || lookup.signal.aborted) return;
-      update({ error: failure instanceof Error ? failure.message : String(failure) });
-    } finally {
-      if (current === version && !disposed) update({ loading: false });
+/** The host owns mutations; Query owns cancellable lookups and visible-window polling. */
+export function useSetupJobs(options: {
+  revision: string | number;
+  completed: () => Promise<void>;
+}): SetupJobsController {
+  const queryClient = useQueryClient();
+  const [completionError, setCompletionError] = useState("");
+  const completion = useRef<{
+    initialized: boolean;
+    generation: string | undefined;
+    pending: boolean;
+  }>({ initialized: false, generation: undefined, pending: false });
+  const mounted = useRef(false);
+  const completed = useEffectEvent(options.completed);
+  const action = useMutation({
+    mutationKey: setupMutationKey,
+    onMutate: () => queryClient.cancelQueries({ queryKey: workflowQueryKeys.setup }),
+    mutationFn: ({ url, body }: SetupAction) =>
+      // Unmounting a client must never cancel a project-owned setup operation.
+      request(url, setupJobSchema, { method: "POST", body }),
+    onSuccess: async (job) => {
+      queryClient.setQueryData(setupOptions.queryKey, (current) =>
+        current ? { ...current, job } : undefined,
+      );
+      await queryClient.query({ ...setupOptions, staleTime: 0 });
+    },
+  });
+  const query = useQuery({
+    ...setupOptions,
+    enabled: !action.isPending,
+    refetchInterval: 5000,
+  });
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.setup });
+  }, [queryClient, options.revision]);
+  useEffect(() => {
+    if (!query.data) return;
+    const saved = query.data.setup.completedSetup;
+    const generation = saved?.generationId ?? saved?.jobId ?? saved?.completedAt;
+    const current = completion.current;
+    if (!current.initialized) {
+      current.initialized = true;
+      current.generation = generation;
+      return;
     }
-  }
-
-  async function act(url: string, body: unknown) {
-    if (disposed || state.pending) return;
-    version++;
-    controller?.abort();
-    actionError = "";
-    update({ loading: false, pending: true, error: "" });
-    try {
-      // The host owns this operation. Unmounting a client must never cancel it.
-      const job = await request(url, setupJobSchema, { method: "POST", body });
-      if (disposed) return;
-      update({ job });
-      await refresh();
-    } catch (failure) {
-      if (!disposed) {
-        actionError = failure instanceof Error ? failure.message : String(failure);
-        update({ error: actionError });
+    if (!generation || generation === current.generation || current.pending) return;
+    current.pending = true;
+    void (async () => {
+      try {
+        await completed();
+        current.generation = generation;
+        if (mounted.current) setCompletionError("");
+      } catch (failure) {
+        if (mounted.current)
+          setCompletionError(failure instanceof Error ? failure.message : String(failure));
+      } finally {
+        current.pending = false;
       }
-    } finally {
-      if (!disposed) update({ pending: false });
+    })();
+  }, [query.data, query.dataUpdatedAt]);
+
+  const refresh = useCallback(async () => {
+    if (queryClient.isMutating({ mutationKey: setupMutationKey })) return;
+    try {
+      await queryClient.cancelQueries({ queryKey: workflowQueryKeys.setup });
+      await queryClient.query({ ...setupOptions, staleTime: 0 });
+    } catch {
+      // Query retains the failure for the UI and retries on the next refresh or poll.
     }
-  }
+  }, [queryClient]);
+  const act = async (url: string, body: unknown) => {
+    if (queryClient.isMutating({ mutationKey: setupMutationKey })) return;
+    const job = queryClient.getQueryData(setupOptions.queryKey)?.job;
+    try {
+      await action.mutateAsync({
+        url,
+        body,
+        observedJob: job ? `${job.id}:${job.revision}` : "",
+      });
+    } catch {
+      // The mutation retains its error; server-owned work is not cancelled on unmount.
+    }
+  };
+  const job = query.data?.job ?? null;
+  const observedJob = job ? `${job.id}:${job.revision}` : "";
+  const actionError = action.variables?.observedJob === observedJob ? action.error?.message : "";
   return {
-    subscribe(listener: () => void) {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
-    snapshot: () => state,
-    setCompleted(callback: () => Promise<void>) {
-      completed = callback;
-    },
-    mount() {
-      disposed = false;
-    },
-    dispose() {
-      disposed = true;
-      version++;
-      controller?.abort();
-    },
-    visible() {
-      if (document.visibilityState === "visible" && !state.pending && !state.loading)
-        void refresh();
+    state: {
+      setup: query.data?.setup,
+      job,
+      loading: query.isFetching,
+      pending: action.isPending,
+      error: query.error?.message || actionError || completionError,
     },
     refresh,
-    start: (body: StartSetup) => act("/api/setup-jobs", body),
-    resume: (maxSetupCostUsd?: number) =>
-      state.job
-        ? act(`/api/setup-jobs/${encodeURIComponent(state.job.id)}/resume`, {
-            revision: state.job.revision,
+    start: (body) => act("/api/setup-jobs", body),
+    resume: (maxSetupCostUsd) =>
+      job
+        ? act(`/api/setup-jobs/${encodeURIComponent(job.id)}/resume`, {
+            revision: job.revision,
             ...(maxSetupCostUsd !== undefined ? { maxSetupCostUsd } : {}),
           })
         : Promise.resolve(),
     cancel: () =>
-      state.job
-        ? act(`/api/setup-jobs/${encodeURIComponent(state.job.id)}/cancel`, {
-            revision: state.job.revision,
+      job
+        ? act(`/api/setup-jobs/${encodeURIComponent(job.id)}/cancel`, {
+            revision: job.revision,
           })
         : Promise.resolve(),
-  };
-}
-
-/** One project-owned job survives all client navigation and disconnections. */
-export function useSetupJobs(options: {
-  revision: string | number;
-  completed: () => Promise<void>;
-}) {
-  const [jobs] = useState(createSetupJobs);
-  const state = useSyncExternalStore(jobs.subscribe, jobs.snapshot, jobs.snapshot);
-  useEffect(() => {
-    jobs.setCompleted(options.completed);
-  }, [jobs, options.completed]);
-  useEffect(() => {
-    jobs.mount();
-    const timer = setInterval(jobs.visible, 5000);
-    document.addEventListener("visibilitychange", jobs.visible);
-    return () => {
-      jobs.dispose();
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", jobs.visible);
-    };
-  }, [jobs]);
-  useEffect(() => {
-    if (!jobs.snapshot().pending) void jobs.refresh();
-  }, [jobs, options.revision]);
-  return {
-    state,
-    refresh: jobs.refresh,
-    start: jobs.start,
-    resume: jobs.resume,
-    cancel: jobs.cancel,
   };
 }
 

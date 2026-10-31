@@ -7,6 +7,8 @@ import {
   useState,
   type Ref,
 } from "react";
+import { useForm, useStore } from "@tanstack/react-form";
+import { useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import {
   bundleSchema,
@@ -63,14 +65,52 @@ export default function BlockSettings({
   onSelected,
   ref,
 }: BlockSettingsProps) {
+  const navigate = useNavigate({ from: "/" });
   const [state, setState] = useState<LibraryState>();
   const [selected, setSelected] = useState("");
-  const [bundle, setBundle] = useState<BlockBundle>();
-  const [busy, setBusy] = useState(false);
+  const editor = useForm({
+    defaultValues: { bundle: undefined as BlockBundle | undefined },
+    onSubmit: async ({ value }) => {
+      const active = controller.current;
+      if (!active || active.signal.aborted) return;
+      setError("");
+      setNotice("");
+      try {
+        await save(value.bundle, active.signal);
+      } catch (failure) {
+        if (!active.signal.aborted)
+          setError(failure instanceof Error ? failure.message : String(failure));
+        throw failure;
+      }
+    },
+  });
+  const testForm = useForm({
+    defaultValues: {
+      testInput: "{}",
+      testPrompt: "Test this block with the supplied inputs.",
+    },
+    onSubmit: async ({ value }) => {
+      const active = controller.current;
+      if (!active || active.signal.aborted) return;
+      setError("");
+      setNotice("");
+      try {
+        await playground(active.signal, value);
+      } catch (failure) {
+        if (!active.signal.aborted)
+          setError(failure instanceof Error ? failure.message : String(failure));
+        throw failure;
+      }
+    },
+  });
+  const bundle = useStore(editor.store, (value) => value.values.bundle);
+  const submitting = useStore(editor.store, (value) => value.isSubmitting);
+  const { testInput, testPrompt } = useStore(testForm.store, (value) => value.values);
+  const testing = useStore(testForm.store, (value) => value.isSubmitting);
+  const [actionBusy, setActionBusy] = useState(false);
+  const busy = actionBusy || submitting || testing;
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [testInput, setTestInput] = useState("{}");
-  const [testPrompt, setTestPrompt] = useState("Test this block with the supplied inputs.");
   const controller = useRef<AbortController | null>(null);
   const downloads = useRef<Map<string, number> | null>(null);
   const baseline = state?.codeBlocks[selected];
@@ -106,22 +146,31 @@ export default function BlockSettings({
     notifyDirty(dirty);
   }, [dirty]);
   useEffect(() => {
+    notifyBusy(busy);
+  }, [busy]);
+  useEffect(() => {
     notifySelected(selected);
   }, [selected]);
 
   const discard = useCallback(() => {
     if (busy) return;
-    setBundle(baseline ? structuredClone(baseline) : undefined);
+    editor.reset(
+      { bundle: baseline ? structuredClone(baseline) : undefined },
+      { keepDefaultValues: true },
+    );
     if (!baseline) setSelected("");
     setError("");
     setNotice("");
-  }, [busy, baseline]);
+  }, [busy, baseline, editor]);
   useImperativeHandle(ref, () => ({ discard }), [discard]);
 
   function choose(id: string) {
     if (dirty && !window.confirm("Discard unsaved block changes?")) return;
     setSelected(id);
-    setBundle(state?.codeBlocks[id] ? structuredClone(state.codeBlocks[id]) : undefined);
+    editor.reset(
+      { bundle: state?.codeBlocks[id] ? structuredClone(state.codeBlocks[id]) : undefined },
+      { keepDefaultValues: true },
+    );
     setError("");
     setNotice("");
   }
@@ -133,8 +182,7 @@ export default function BlockSettings({
   async function perform(action: (signal: AbortSignal) => Promise<void>) {
     const active = controller.current;
     if (!active || active.signal.aborted) return;
-    setBusy(true);
-    onBusy?.(true);
+    setActionBusy(true);
     setError("");
     setNotice("");
     try {
@@ -144,12 +192,14 @@ export default function BlockSettings({
         setError(failure instanceof Error ? failure.message : String(failure));
     } finally {
       if (!active.signal.aborted) {
-        setBusy(false);
-        onBusy?.(false);
+        setActionBusy(false);
       }
     }
   }
-  async function playground(signal: AbortSignal) {
+  async function playground(
+    signal: AbortSignal,
+    { testInput, testPrompt }: { testInput: string; testPrompt: string },
+  ) {
     if (!definition) return;
     const inputs = z.record(z.string(), z.json()).parse(JSON.parse(testInput));
     const run = await request("/api/programs", runSchema, {
@@ -161,28 +211,31 @@ export default function BlockSettings({
         source: `import {workflow,step} from "workflow"; export default workflow({name:${JSON.stringify(`Test ${definition.name}`)},flow:step("test-block",${JSON.stringify(selected)},{inputs:${JSON.stringify(inputs)},prompt:${JSON.stringify(testPrompt)}})});`,
       },
     });
-    if (!signal.aborted) window.location.hash = `run=${run.id}`;
+    if (!signal.aborted) await navigate({ to: "/", search: { run: run.id } });
   }
   function add() {
     if (dirty && !window.confirm("Discard unsaved block changes?")) return;
     const id = `block-${crypto.randomUUID().slice(0, 8)}`;
     setSelected(id);
-    setBundle(
-      bundleSchema.parse({
-        definition: {
-          id,
-          name: "New block",
-          description: "Describe when this block should be used",
-          executor: { kind: "code", source: template },
-        },
-        prompt: "Behavior, models, inputs and outputs are defined in TypeScript.",
-        skills: [],
-      }),
+    editor.reset(
+      {
+        bundle: bundleSchema.parse({
+          definition: {
+            id,
+            name: "New block",
+            description: "Describe when this block should be used",
+            executor: { kind: "code", source: template },
+          },
+          prompt: "Behavior, models, inputs and outputs are defined in TypeScript.",
+          skills: [],
+        }),
+      },
+      { keepDefaultValues: true },
     );
     setError("");
     setNotice("");
   }
-  async function save(signal: AbortSignal) {
+  async function save(bundle: BlockBundle | undefined, signal: AbortSignal) {
     if (!bundle) return;
     const proposal = await request("/api/library/proposals", libraryProposalSchema, {
       method: "POST",
@@ -203,9 +256,14 @@ export default function BlockSettings({
     });
     const value = await load(signal);
     if (signal.aborted) return;
+    const savedBundle = structuredClone(value.codeBlocks[bundle.definition.id]!);
     setSelected(bundle.definition.id);
-    setBundle(structuredClone(value.codeBlocks[bundle.definition.id]!));
-    await onSaved();
+    editor.setFieldValue("bundle", savedBundle, { dontUpdateMeta: true });
+    try {
+      await onSaved();
+    } finally {
+      if (!signal.aborted) editor.reset({ bundle: savedBundle }, { keepDefaultValues: true });
+    }
     if (!signal.aborted)
       setNotice(
         "Block saved. New workflows use this definition; existing runs keep their snapshots.",
@@ -228,7 +286,7 @@ export default function BlockSettings({
       });
       await load(signal);
       if (signal.aborted) return;
-      setBundle(undefined);
+      editor.reset({ bundle: undefined }, { keepDefaultValues: true });
       setSelected("");
       await onSaved();
     });
@@ -262,7 +320,7 @@ export default function BlockSettings({
     );
   }
   function updateDefinition(patch: Partial<BlockBundle["definition"]>) {
-    setBundle((current) =>
+    editor.setFieldValue("bundle", (current) =>
       current ? { ...current, definition: { ...current.definition, ...patch } } : current,
     );
   }
@@ -270,7 +328,7 @@ export default function BlockSettings({
     key: keyof NonNullable<BlockBundle["definition"]["contract"]>,
     value: string,
   ) {
-    setBundle((current) =>
+    editor.setFieldValue("bundle", (current) =>
       current?.definition.contract
         ? {
             ...current,
@@ -283,7 +341,7 @@ export default function BlockSettings({
     );
   }
   function updateSource(source: string) {
-    setBundle((current) =>
+    editor.setFieldValue("bundle", (current) =>
       current?.definition.executor?.kind === "code"
         ? {
             ...current,
@@ -452,10 +510,10 @@ export default function BlockSettings({
               </div>
               <CodeEditor
                 key={selected}
-                modelValue={definition.executor.source}
-                onUpdateModelValue={updateSource}
+                value={definition.executor.source}
+                onChange={updateSource}
                 label="Block TypeScript"
-                readonly={busy}
+                readOnly={busy}
                 minLines={12}
                 maxLines={32}
               />
@@ -471,7 +529,7 @@ export default function BlockSettings({
                     <textarea
                       id={id}
                       value={testPrompt}
-                      onChange={(event) => setTestPrompt(event.target.value)}
+                      onChange={(event) => testForm.setFieldValue("testPrompt", event.target.value)}
                     />
                   )}
                 </Field>
@@ -482,13 +540,13 @@ export default function BlockSettings({
                       value={testInput}
                       rows={5}
                       spellCheck={false}
-                      onChange={(event) => setTestInput(event.target.value)}
+                      onChange={(event) => testForm.setFieldValue("testInput", event.target.value)}
                     />
                   )}
                 </Field>
                 <button
                   disabled={busy || dirty || !baseline || !testPrompt.trim()}
-                  onClick={() => void perform(playground)}
+                  onClick={() => void testForm.handleSubmit().catch(() => {})}
                 >
                   Create block test
                 </button>
@@ -538,7 +596,11 @@ export default function BlockSettings({
                 </p>
               </details>
               <div className="button-row">
-                <button className="primary" disabled={!dirty} onClick={() => void perform(save)}>
+                <button
+                  className="primary"
+                  disabled={!dirty}
+                  onClick={() => void editor.handleSubmit().catch(() => {})}
+                >
                   {busy ? "Typechecking…" : "Save block"}
                 </button>
                 {dirty && (

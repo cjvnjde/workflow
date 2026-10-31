@@ -1,16 +1,45 @@
-import ts from "typescript";
+import path from "node:path";
+import * as ts from "typescript/unstable/ast";
+import { createVirtualFileSystem } from "typescript/unstable/fs";
+import { API, type Program } from "typescript/unstable/async";
 import type { FlowStructure } from "../../sdk/composition-sdk.js";
 import type { Library } from "../../contracts/domain.js";
 
 type Access = { step: string; write: boolean };
 /** Reject statically known conflicting guards. Dynamic workspaces are checked at execution. */
-export function validateCompositionOwnership(root: FlowStructure, blocks: Library["blocks"]) {
-  function accesses(node: FlowStructure): Access[] {
-    if (node.kind !== "step") return node.children.flatMap(accesses);
+export async function validateCompositionOwnership(root: FlowStructure, blocks: Library["blocks"]) {
+  let api: API | undefined;
+  let program: Program | undefined;
+  const filenames = new Map<string, string>();
+  async function accesses(node: FlowStructure): Promise<Access[]> {
+    if (node.kind !== "step") {
+      const found: Access[] = [];
+      for (const child of node.children) found.push(...(await accesses(child)));
+      return found;
+    }
     const executor = blocks[node.id]?.definition.executor;
     if (executor?.kind !== "code") return [];
     const found: Access[] = [];
-    const source = ts.createSourceFile("block.ts", executor.source, ts.ScriptTarget.Latest, true);
+    if (!program) {
+      const directory = path.resolve(".workflow", "__ownership__");
+      const config = path.join(directory, "tsconfig.json");
+      const files: Record<string, string> = {};
+      for (const [id, bundle] of Object.entries(blocks)) {
+        if (bundle.definition.executor?.kind !== "code") continue;
+        const filename = path.join(directory, `block-${filenames.size}.ts`);
+        filenames.set(id, filename);
+        files[filename] = bundle.definition.executor.source;
+      }
+      files[config] = JSON.stringify({
+        compilerOptions: { noEmit: true, noResolve: true, noLib: true, types: [] },
+        files: [...filenames.values()],
+      });
+      api = new API({ fs: createVirtualFileSystem(files) });
+      program = (await api.updateSnapshot({ openProjects: [config] })).getProject(config)?.program;
+      if (!program) throw new Error("Could not load the TypeScript ownership project");
+    }
+    const source = await program.getSourceFile(filenames.get(node.id)!);
+    if (!source) throw new Error(`Could not parse ownership guards in block "${node.id}"`);
     function visit(value: ts.Node) {
       if (
         ts.isCallExpression(value) &&
@@ -50,14 +79,15 @@ export function validateCompositionOwnership(root: FlowStructure, blocks: Librar
           }
         }
       }
-      ts.forEachChild(value, visit);
+      value.forEachChild(visit);
     }
     visit(source);
     return found;
   }
-  function check(node: FlowStructure) {
+  async function check(node: FlowStructure) {
     if (node.kind === "parallel" && node.concurrency !== 1) {
-      const branches = node.children.map(accesses);
+      const branches: Access[][] = [];
+      for (const child of node.children) branches.push(await accesses(child));
       for (let i = 0; i < branches.length; i++)
         for (let j = i + 1; j < branches.length; j++) {
           for (const a of branches[i]!)
@@ -69,7 +99,11 @@ export function validateCompositionOwnership(root: FlowStructure, blocks: Librar
               }
         }
     }
-    node.children.forEach(check);
+    for (const child of node.children) await check(child);
   }
-  check(root);
+  try {
+    await check(root);
+  } finally {
+    await api?.close();
+  }
 }

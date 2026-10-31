@@ -118,7 +118,7 @@ test("code input/output validation and thrown errors fail visibly and recover ma
     assert.ok(run.artifacts.work?.summary);
     assert.equal(await readFile(path.join(project, "original.txt"), "utf8"), "original");
   }
-  assert.throws(
+  await assert.rejects(
     () =>
       checkProgram(project, {
         source: wrap(
@@ -146,7 +146,7 @@ test("saved TypeScript blocks are typechecked, frozen with helpers and return ty
     prompt: "Code owns the behavior",
     skills: [],
   });
-  checkCodeBlocks(project, library.blocks);
+  await checkCodeBlocks(project, library.blocks);
   const invalid = structuredClone(library.blocks);
   invalid.custom!.definition.executor = {
     kind: "code",
@@ -154,7 +154,7 @@ test("saved TypeScript blocks are typechecked, frozen with helpers and return ty
     timeoutMs: 1000,
     maxOperations: 10,
   };
-  assert.throws(() => checkCodeBlocks(project, invalid), /CodeBlock/);
+  await assert.rejects(() => checkCodeBlocks(project, invalid), /CodeBlock/);
   const engine = new WorkflowEngine(project, "live", passingRunner);
   cleanup(() => engine.shutdown());
   await engine.initialize();
@@ -241,7 +241,7 @@ test("initialization writes editable TypeScript modules and conversions preserve
       (bundle) => bundle.definition.executor?.kind === "code",
     ),
   );
-  checkCodeBlocks(child, initialized.blocks);
+  await checkCodeBlocks(child, initialized.blocks);
   const file = path.join(child, ".workflow/blocks/review/block.ts");
   await writeFile(
     file,
@@ -274,7 +274,7 @@ writeFileSync(process.env.WORKFLOW_RESULT!,JSON.stringify({outcome:"pass",summar
     skills: [],
   });
   library.blocks.converted = codeBundle(legacy, library.config.commands);
-  checkCodeBlocks(project, library.blocks);
+  await checkCodeBlocks(project, library.blocks);
   const draft = await engine.createProgram(
     "Converted",
     "Read",
@@ -347,7 +347,7 @@ test("a code block awaiting an unresolved promise still honors its timeout and c
 
 test("unsupported module execution is rejected before the planner accepts a workflow", async (t) => {
   const { project } = await fixture(t);
-  assert.throws(
+  await assert.rejects(
     () =>
       checkProgram(project, {
         source: wrap(
@@ -356,14 +356,14 @@ test("unsupported module execution is rejected before the planner accepts a work
       }),
     /Top-level await|static imports/,
   );
-  assert.throws(
+  await assert.rejects(
     () =>
       checkProgram(project, {
         source: wrap('await Promise.resolve(); const work=block({async run(){return "x";}});'),
       }),
     /Top-level await/,
   );
-  assert.throws(
+  await assert.rejects(
     () =>
       checkProgram(project, {
         source: wrap(

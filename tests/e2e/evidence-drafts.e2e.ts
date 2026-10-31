@@ -122,7 +122,7 @@ test("Results show evidence older than 500 events after completion and browser r
   request,
 }) => {
   await completedEvidenceRun(page);
-  const taskId = new URL(page.url()).hash.slice("#task=".length);
+  const taskId = new URL(page.url()).searchParams.get("task");
   const task = await (await request.get(`/api/tasks/${taskId}`)).json();
   const recent = await (await request.get(`/api/runs/${task.runId}/events`)).json();
   expect(recent).toHaveLength(500);

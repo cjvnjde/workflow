@@ -12,7 +12,7 @@
   flex: 1;
   min-width: 180px;
   font-size: 11px;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 .data-inspector .data-toolbar label:nth-child(2) {
   flex: 0 1 220px;
@@ -28,10 +28,10 @@
 }
 .data-inspector .data-explanation {
   margin-top: 12px;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 .data-inspector .data-planned {
-  border-bottom: 1px solid var(--ui-edge);
+  border-bottom: 1px solid var(--border);
   padding-bottom: 16px;
   margin-bottom: 20px;
 }
@@ -48,7 +48,7 @@
 .data-inspector pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  background: var(--ctp-mantle);
+  background: var(--card);
   padding: 14px;
   border-radius: 8px;
   font-size: 11px;
@@ -57,16 +57,16 @@
   overflow: auto;
 }
 .data-inspector .data-tag {
-  color: var(--accent);
+  color: var(--primary);
   font-size: 11px;
 }
 .data-inspector .data-warning {
-  color: var(--ctp-yellow);
+  color: var(--warning);
   overflow-wrap: anywhere;
 }
 .data-inspector .data-empty,
 .data-inspector .data-unavailable {
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 .data-inspector .data-unavailable p {
   margin: 8px 0;
@@ -85,7 +85,7 @@
 }
 .data-inspector .data-visit-heading > span {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 .data-inspector .data-inputs {
   display: grid;
@@ -93,7 +93,7 @@
   gap: 12px;
 }
 .data-inspector .data-dependencies {
-  background: var(--ui-raised);
+  background: var(--card);
   border-radius: 8px;
   padding: 12px;
   margin-top: 14px;
@@ -112,14 +112,14 @@
   font-size: 11px;
 }
 .data-inspector .data-dependencies small {
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 .data-inspector .data-dependencies button {
   padding: 4px 7px;
   font-size: 11px;
 }
 .data-inspector .data-session {
-  border: 1px solid var(--ui-edge);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 15px;
   margin: 12px 0;
@@ -133,11 +133,11 @@
 }
 .data-inspector .data-session > summary span {
   margin-left: 12px;
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 11px;
 }
 .data-inspector .data-session-meta {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 10px;
   overflow-wrap: anywhere;
   margin: 14px 0 8px;
@@ -147,11 +147,11 @@
   margin-top: 14px;
 }
 .data-inspector .data-tools article.focused-call {
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--primary);
   padding-left: 10px;
 }
 .data-inspector .data-tools article {
-  border-top: 1px solid var(--ui-edge);
+  border-top: 1px solid var(--border);
   margin-top: 12px;
   padding-top: 4px;
 }

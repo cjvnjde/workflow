@@ -214,7 +214,7 @@ export async function planTask(
           { source: args.source, input: { ...proposedInput, request: task.prompt } },
           library.blocks,
         );
-        const composed = compositionPlan(structure, args.title, task.prompt, library);
+        const composed = await compositionPlan(structure, args.title, task.prompt, library);
         validatePlanModels(
           composed.plan,
           { config: library.config, blocks: composed.blocks },

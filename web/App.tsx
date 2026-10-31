@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { useBlocker, useNavigate, useRouter, useSearch } from "@tanstack/react-router";
 import {
   libraryProposalSchema,
   orchestrationStateSchema,
@@ -95,25 +96,17 @@ async function resolveSession(value: string, signal?: AbortSignal): Promise<Reso
 }
 
 export default function App() {
-  const [initial] = useState(() => {
-    const location = new URLSearchParams(window.location.hash.slice(1));
-    return {
-      view: location.has("settings") ? ("settings" as const) : ("task" as const),
-      selectedTask: location.get("task") ?? undefined,
-      runId: location.has("task") ? undefined : (location.get("run") ?? undefined),
-      session: new URLSearchParams(window.location.search).get("session"),
-      composerKey: 0,
-    };
-  });
-  const [workspace, setWorkspace] = useState<Workspace>(initial);
-  const workspaceRef = useRef<Workspace>(initial);
-  const updateWorkspace = useCallback((patch: Partial<Workspace>) => {
-    const next = { ...workspaceRef.current, ...patch };
-    workspaceRef.current = next;
-    setWorkspace(next);
-  }, []);
-  const { view, selectedTask, composerKey } = workspace;
-  const data = useWorkflowData(initial.runId);
+  const search = useSearch({ from: "/" });
+  const router = useRouter();
+  const routeNavigate = useNavigate({ from: "/" });
+  const [composerKey, setComposerKey] = useState(0);
+  const view = search.view === "settings" ? "settings" : "task";
+  const selectedTask = search.task;
+  const workspaceRef = useRef<Workspace>({ view, selectedTask, composerKey });
+  useEffect(() => {
+    workspaceRef.current = { view, selectedTask, composerKey };
+  }, [view, selectedTask, composerKey]);
+  const data = useWorkflowData(search.run);
   const {
     project,
     run,
@@ -148,15 +141,22 @@ export default function App() {
   } = useTasks(selectedTask);
   const draft = useDraft(run);
   const [pendingActions, setPendingActions] = useState(0);
-  const [initialSessionLoading, setInitialSessionLoading] = useState(!!initial.session);
-  const busy = pendingActions > 0 || initialSessionLoading;
+  const [resolvedSession, setResolvedSession] = useState<string>();
+  const busy = pendingActions > 0 || (!!search.session && resolvedSession !== search.session);
   const [automatic, setAutomatic] = useState(false);
   const [settingsDirty, setSettingsDirty] = useState(false);
-  const settingsDirtyRef = useRef(false);
   const settingsChanged = useCallback((dirty: boolean) => {
-    settingsDirtyRef.current = dirty;
     setSettingsDirty(dirty);
   }, []);
+  useBlocker({
+    shouldBlockFn: ({ current, next }) => {
+      if (!("view" in current.search) || current.search.view !== "settings" || !settingsDirty)
+        return false;
+      if ("view" in next.search && next.search.view === "settings") return false;
+      return !window.confirm("Discard unsaved settings changes?");
+    },
+    enableBeforeUnload: view === "settings" && settingsDirty,
+  });
   const [designRequest, setDesignRequest] = useState<DesignRequest>();
   const [settingsContext, setSettingsContext] = useState<SettingsContext>({ section: "providers" });
   const [settingsRevision, setSettingsRevision] = useState(0);
@@ -213,24 +213,21 @@ export default function App() {
     ) => {
       if (signal.aborted) return;
       if (session) {
-        navigate("task", () => {
-          updateWorkspace({ selectedTask: session.selectedTask });
-          selectRun(session.runId);
-        });
+        void navigate("task", session, undefined, true);
       }
       if (automaticApproval !== undefined) setAutomatic(automaticApproval);
       for (const failure of failures) {
         setError(failure instanceof Error ? failure.message : String(failure));
       }
-      if (initial.session) setInitialSessionLoading(false);
+      setResolvedSession(search.session);
     },
   );
   useEffect(() => {
     const controller = new AbortController();
     lifetimeController.current = controller;
     void Promise.allSettled([
-      initial.session
-        ? resolveSession(initial.session, controller.signal)
+      search.session
+        ? resolveSession(search.session, controller.signal)
         : Promise.resolve(undefined),
       request("/api/settings/orchestration", orchestrationStateSchema, {
         signal: controller.signal,
@@ -253,81 +250,43 @@ export default function App() {
       refinementController.current?.abort();
       lifetimeController.current = undefined;
     };
-  }, [initial.session]);
+  }, [search.session]);
 
-  function syncLocation() {
-    const location =
-      view === "settings"
-        ? "settings"
-        : selectedTask
-          ? `task=${selectedTask}`
-          : selectedId
-            ? `run=${selectedId}`
-            : "";
-    const query = new URLSearchParams(window.location.search);
-    query.delete("session");
-    window.history.replaceState(
-      null,
-      "",
-      `${window.location.pathname}${query.size ? `?${query}` : ""}${location ? `#${location}` : ""}`,
-    );
-  }
-  const syncCurrentLocation = useEffectEvent(syncLocation);
-  useEffect(() => {
-    syncCurrentLocation();
-  }, [view, selectedTask, selectedId]);
-  function navigate(next: "task" | "settings", action?: () => void) {
-    if (next === workspaceRef.current.view && !action) {
-      setSidebar(false);
-      return true;
-    }
+  async function navigate(
+    next: "task" | "settings",
+    selection?: ResolvedSession,
+    accepted?: () => void,
+    replace = false,
+  ) {
+    const target = {
+      view: next === "settings" ? ("settings" as const) : undefined,
+      task: selection ? selection.selectedTask : search.task,
+      run: selection ? (selection.selectedTask ? undefined : selection.runId) : search.run,
+    };
+    await routeNavigate({ to: "/", search: target, hash: "", replace });
+    const current = router.state.location.search;
     if (
-      workspaceRef.current.view === "settings" &&
-      settingsDirtyRef.current &&
-      !window.confirm("Discard unsaved settings changes?")
+      current.view !== target.view ||
+      current.task !== target.task ||
+      current.run !== target.run
     ) {
       return false;
     }
-    updateWorkspace({ view: next });
     setSidebar(false);
-    action?.();
+    accepted?.();
     return true;
   }
-  const readLocation = useEffectEvent(() => {
-    const location = new URLSearchParams(window.location.hash.slice(1));
-    const next = location.has("settings") ? "settings" : "task";
-    const id = location.get("task") ?? undefined;
-    const runId = id ? undefined : (location.get("run") ?? undefined);
-    if (
-      next === view &&
-      (next === "settings" || (id === selectedTask && (id || runId === selectedId)))
-    )
-      return;
-    if (
-      !navigate(next, () => {
-        updateWorkspace({ selectedTask: id });
-        selectRun(runId);
-      })
-    )
-      syncLocation();
-  });
+
   useEffect(() => {
-    const listener = () => readLocation();
-    window.addEventListener("hashchange", listener);
-    window.addEventListener("popstate", listener);
-    return () => {
-      window.removeEventListener("hashchange", listener);
-      window.removeEventListener("popstate", listener);
-    };
-  }, []);
+    selectRun(selectedTask ? task?.runId : search.run);
+  }, [selectedTask, task?.runId, search.run, selectRun]);
   const reconcileSelection = useEffectEvent(() => {
     if (
       (selectedTask && tasks.some((item) => item.id === selectedTask && item.deletedAt)) ||
       (selectedId && runs.some((item) => item.id === selectedId && item.deletedAt))
     ) {
-      updateWorkspace({ selectedTask: undefined });
-      selectRun(undefined);
-    } else if (task?.runId) selectRun(task.runId);
+      void navigate("task", { selectedTask: undefined, runId: undefined }, undefined, true);
+    }
   });
   useEffect(() => {
     reconcileSelection();
@@ -340,12 +299,8 @@ export default function App() {
       !window.confirm("Replace the unsent task draft with this request?")
     )
       return;
-    navigate("task", () => {
-      updateWorkspace({
-        selectedTask: undefined,
-        composerKey: workspaceRef.current.composerKey + 1,
-      });
-      selectRun(undefined);
+    void navigate("task", { selectedTask: undefined, runId: undefined }, () => {
+      setComposerKey((key) => key + 1);
       if (text !== undefined) {
         clearTaskDraft();
         setTaskDraftText(text);
@@ -449,18 +404,14 @@ export default function App() {
         workspaceRef.current.selectedTask ??
         (data.getSnapshot().selectedId ? `run:${data.getSnapshot().selectedId}` : "");
       if (current === item.id) {
-        updateWorkspace({ selectedTask: undefined });
-        selectRun(undefined);
+        await navigate("task", { selectedTask: undefined, runId: undefined }, undefined, true);
       }
       await refreshRuns();
     });
   }
   async function openSession(value: string, signal?: AbortSignal) {
     const session = await resolveSession(value, actionSignal(signal));
-    navigate("task", () => {
-      updateWorkspace({ selectedTask: session.selectedTask });
-      selectRun(session.runId);
-    });
+    await navigate("task", session);
   }
   async function copySession(kind: "link" | "terminal" | "id") {
     if (!sessionId) return;
@@ -492,17 +443,14 @@ export default function App() {
     }
   }
   function selectEntry(item: HistoryEntry) {
-    navigate("task", () => {
-      updateWorkspace({ selectedTask: item.id.startsWith("run:") ? undefined : item.id });
-      selectRun(item.runId);
+    void navigate("task", {
+      selectedTask: item.id.startsWith("run:") ? undefined : item.id,
+      runId: item.runId,
     });
   }
   function openNotice(id: string) {
     const linkedTask = tasks.find((item) => item.runId === id);
-    navigate("task", () => {
-      updateWorkspace({ selectedTask: linkedTask?.id });
-      selectRun(id);
-    });
+    void navigate("task", { selectedTask: linkedTask?.id, runId: id });
     markNoticesRead();
     setNotificationsOpen(false);
   }
@@ -524,8 +472,7 @@ export default function App() {
       !data.getSnapshot().selectedId &&
       current.composerKey === submittedComposer
     ) {
-      updateWorkspace({ selectedTask: created.id });
-      selectRun(undefined);
+      await navigate("task", { selectedTask: created.id, runId: undefined });
     }
     applyTask(created);
   }
@@ -540,8 +487,7 @@ export default function App() {
       signal: combined,
     });
     combined?.throwIfAborted();
-    updateWorkspace({ selectedTask: undefined });
-    selectRun(created.id);
+    await navigate("task", { selectedTask: undefined, runId: created.id });
     applyRun(created);
     await refreshRuns();
   }
@@ -569,8 +515,7 @@ export default function App() {
           signal: actionSignal(),
         });
         if (workspaceRef.current.view === "task" && data.getSnapshot().selectedId === current.id) {
-          updateWorkspace({ selectedTask: created.id });
-          selectRun(undefined);
+          await navigate("task", { selectedTask: created.id, runId: undefined });
         }
         applyTask(created);
       } else {

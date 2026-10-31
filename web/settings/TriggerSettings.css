@@ -13,11 +13,11 @@
   overflow-wrap: anywhere;
 }
 .trigger-settings .trigger-list button[aria-pressed="true"] {
-  border-color: var(--ctp-blue);
+  border-color: var(--info);
 }
 .trigger-settings .trigger-list span,
 .trigger-settings .trigger-list small {
-  color: var(--ctp-subtext0);
+  color: var(--muted-foreground);
 }
 .trigger-settings .trigger-job .card-title {
   flex-wrap: wrap;

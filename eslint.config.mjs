@@ -3,14 +3,15 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import prettier from "eslint-config-prettier/flat";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
-import reactX from "eslint-plugin-react-x";
+import { reactX, tseslint } from "@workflow/eslint";
 import globals from "globals";
-import tseslint from "typescript-eslint";
 
 export default defineConfig(
   globalIgnores([
     "dist/**",
     "node_modules/**",
+    ".tanstack/**",
+    "web/routeTree.gen.ts",
     "coverage/**",
     ".stryker-tmp/**",
     "reports/mutation/**",
@@ -50,6 +51,12 @@ export default defineConfig(
       reactX.configs.recommended,
       reactRefresh.configs.vite,
     ],
+  },
+  {
+    files: ["web/routes/**/*.tsx"],
+    rules: {
+      "react-refresh/only-export-components": ["error", { allowExportNames: ["Route"] }],
+    },
   },
   {
     files: ["web/**/*.{ts,tsx}", "src/{contracts,sdk,client}/**/*.ts"],

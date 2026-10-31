@@ -1,7 +1,7 @@
 .usage-summary {
-  border: 1px solid var(--ui-edge);
-  border-radius: var(--ui-card-radius);
-  background: var(--ui-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--card);
   padding: 16px 20px;
   margin: 0 0 20px;
   min-width: 0;
@@ -20,7 +20,7 @@
   font-weight: 600;
 }
 .usage-summary .usage-title svg {
-  color: var(--accent);
+  color: var(--primary);
 }
 .usage-summary .usage-total {
   font-size: 20px;
@@ -29,7 +29,7 @@
   margin-left: auto;
 }
 .usage-summary .usage-total.partial {
-  color: var(--ctp-yellow);
+  color: var(--warning);
 }
 .usage-summary .usage-heading > button {
   font-size: 11px;
@@ -37,13 +37,13 @@
 }
 .usage-summary .usage-loading {
   margin-left: auto;
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 12px;
 }
 .usage-summary .usage-scope-note {
   font-size: 11px;
   margin: 5px 0 12px;
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 .usage-summary .usage-phases {
   display: flex;
@@ -57,7 +57,7 @@
   font-size: 12px;
 }
 .usage-summary .usage-phases > span > span {
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 .usage-summary .usage-phases strong,
 .usage-summary .usage-limits strong {
@@ -69,15 +69,15 @@
   flex-wrap: wrap;
   gap: 6px 20px;
   font-size: 11px;
-  color: var(--muted);
+  color: var(--muted-foreground);
   margin-top: 10px;
 }
 .usage-summary .usage-limits strong {
-  color: var(--ctp-text);
+  color: var(--foreground);
   margin-left: 4px;
 }
 .usage-summary .usage-warning {
-  color: var(--ctp-yellow);
+  color: var(--warning);
   font-size: 11px;
   margin: 10px 0 0;
   display: flex;
@@ -88,14 +88,14 @@
   flex-shrink: 0;
 }
 .usage-summary .usage-breakdown {
-  border-top: 1px solid var(--ui-edge);
+  border-top: 1px solid var(--border);
   padding-top: 10px;
   margin-top: 12px;
 }
 .usage-summary .usage-breakdown > summary,
 .usage-summary .usage-sessions > summary {
   cursor: pointer;
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 11px;
 }
 .usage-summary .usage-breakdown > p,
@@ -105,7 +105,7 @@
   margin: 12px 0;
 }
 .usage-summary .usage-warnings {
-  color: var(--ctp-yellow);
+  color: var(--warning);
   padding-left: 20px;
   line-height: 1.7;
 }
@@ -127,7 +127,7 @@
 .usage-summary .usage-table td {
   padding: 10px 8px;
   text-align: right;
-  border-bottom: 1px solid var(--ui-edge);
+  border-bottom: 1px solid var(--border);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -139,7 +139,7 @@
   overflow-wrap: anywhere;
 }
 .usage-summary .usage-table thead th {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 10px;
   font-weight: 500;
 }
@@ -148,19 +148,19 @@
 }
 .usage-summary .usage-table small {
   display: block;
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 10px;
   margin-top: 4px;
 }
 .usage-summary .usage-legacy {
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 .usage-summary .usage-sessions {
   margin-top: 16px;
 }
 .usage-summary .usage-session {
   padding: 14px 0;
-  border-bottom: 1px solid var(--ui-edge);
+  border-bottom: 1px solid var(--border);
 }
 .usage-summary .usage-session:last-child {
   border-bottom: 0;
@@ -184,13 +184,13 @@
 .usage-summary .usage-session small {
   display: block;
   font-size: 10px;
-  color: var(--muted);
+  color: var(--muted-foreground);
   line-height: 1.8;
   overflow-wrap: anywhere;
 }
 .usage-summary .usage-session-error,
 .usage-summary .usage-fetch-error {
-  color: var(--ctp-peach);
+  color: var(--warning);
   overflow-wrap: anywhere;
 }
 .usage-summary .usage-fetch-error {

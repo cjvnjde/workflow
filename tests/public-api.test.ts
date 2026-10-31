@@ -36,7 +36,7 @@ test("published package entry points retain runtime exports and resolvable decla
       .join("\n"),
   );
   const nativeTsc = fileURLToPath(
-    new URL("./bin/tsc", import.meta.resolve("@typescript/native/package.json")),
+    new URL("./bin/tsc", import.meta.resolve("typescript/package.json")),
   );
   const compiler = Bun.spawn(
     [
