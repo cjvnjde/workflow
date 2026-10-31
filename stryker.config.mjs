@@ -2,9 +2,9 @@
 export default {
   testRunner: "command",
   commandRunner: {
-    // Bun is the application runtime; Vitest owns these unit tests.
+    // Approval tests import the Bun application runtime; retain both unit projects.
     command:
-      "bun run test:unit --bail 1 tests/budget.test.ts tests/engine-approval.test.ts tests/usage-presentation.test.ts",
+      "bun node_modules/vitest/vitest.mjs run --project unit --project runtime-unit --bail 1 tests/budget.test.ts tests/engine-approval.test.ts tests/usage-presentation.test.ts",
   },
   coverageAnalysis: "off",
   // Match the source scope to the focused tests above. These tests need no build,

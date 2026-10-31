@@ -23,24 +23,35 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2.2.0
         with:
           bun-version-file: package.json
 
-      - name: Install dependencies
-        run: bun install
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
 
       - name: Lint and check formatting
         run: |
-          bun run lint
-          bun run format:check
+          npm run lint
+          npm run format:check
 
-      - name: Run quick unit tests
-        run: bun run test:unit
+      - name: Run portable unit tests
+        run: npm run test:unit
+
+      - name: Run build-free Bun runtime unit tests
+        run: bun run test:runtime:unit
 
       - name: Typecheck and build
-        run: bun run build
+        run: |
+          npm run typecheck
+          npm run build
 
   build:
     name: Build ${{ matrix.platform }}
@@ -70,24 +81,30 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2.2.0
         with:
           bun-version-file: package.json
 
-      - name: Install dependencies
-        run: bun install
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
 
       # Compile on the target platform so the runtime archive contains the
       # matching native dependencies as well as the embedded Bun interpreter.
       - name: Build standalone executable
         run: |
-          bun run compile
+          npm run compile
           test -s dist/workflow
           file dist/workflow
 
       - name: Test relocated executable
-        run: bun run test:standalone:run
+        run: npm run test:standalone:run
 
       - name: Package executable and write checksum
         env:

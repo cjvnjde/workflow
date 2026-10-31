@@ -5,7 +5,7 @@ export default {
   ...config,
   commandRunner: {
     command:
-      "bun run test:unit --bail 1 tests/usage-presentation.test.ts tests/engine-approval.test.ts",
+      "bun node_modules/vitest/vitest.mjs run --project unit --project runtime-unit --bail 1 tests/usage-presentation.test.ts tests/engine-approval.test.ts",
   },
   mutate: [
     "web/features/usage/usage-presentation.ts:13-30",

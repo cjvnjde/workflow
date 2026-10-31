@@ -11,6 +11,7 @@ playwright-report/
 .agents/
 .codex/
 .aws/
+.review/
 .tanstack/
 web/routeTree.gen.ts
 *.lock

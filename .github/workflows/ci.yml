@@ -15,15 +15,64 @@ concurrency:
 
 jobs:
   unit:
-    name: Quick Vitest unit tests
+    name: Portable unit tests (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [24, 26]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.4"
       - name: Install locked dependencies
         run: bun install --frozen-lockfile --ignore-scripts
-      - name: Run quick Vitest unit tests
-        run: bun run test:unit
+      - name: Run portable Vitest unit tests
+        run: npm run test:unit
+
+  node-tooling:
+    name: Node-only development toolchain
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Install isolated lint dependencies with npm
+        run: npm install --prefix tooling/eslint --package-lock=false
+      - name: Install tooling dependencies with npm
+        run: npm install --install-links=false --package-lock=false
+      - name: Lint with Node
+        run: npm run lint
+      - name: Typecheck and build without Bun
+        run: npm run build
+      - name: Run portable Vitest unit tests without Bun
+        run: npm run test:unit
+
+  runtime-unit:
+    name: Bun runtime unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Run build-free Bun runtime unit tests
+        run: bun run test:runtime:unit

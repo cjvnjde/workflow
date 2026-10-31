@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { test } from "vitest";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 
-test("Bun typechecking rejects React source, JSX and component prop errors", async (t) => {
+test("Node typechecking rejects React source, JSX and component prop errors", async (t) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "workflow-react-types-"));
   t.onTestFinished(() => rm(directory, { recursive: true, force: true }));
   const config = path.join(directory, "tsconfig.json");
@@ -36,18 +37,28 @@ test("Bun typechecking rejects React source, JSX and component prop errors", asy
     "export default function Child({ count }: { count: number }) { return <p>{count}</p>; }",
   );
   const parent = path.join(directory, "Parent.tsx");
+  const manifestPath = fileURLToPath(import.meta.resolve("typescript/package.json"));
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+    bin: { tsc: string };
+  };
+  const compiler = path.resolve(path.dirname(manifestPath), manifest.bin.tsc);
   const check = async () => {
-    const child = Bun.spawn([process.execPath, path.join(root, "scripts/typecheck.ts"), config], {
+    const child = spawn("node", [compiler, "--project", config], {
       cwd: root,
-      stdout: "pipe",
-      stderr: "pipe",
+      stdio: ["ignore", "pipe", "pipe"],
     });
-    const [code, stdout, stderr] = await Promise.all([
-      child.exited,
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ]);
-    return { code, output: `${stdout}${stderr}` };
+    let output = "";
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+      output += chunk;
+    });
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
+      output += chunk;
+    });
+    const { promise, resolve, reject } = Promise.withResolvers<number | null>();
+    child.once("error", reject);
+    child.once("close", resolve);
+    const code = await promise;
+    return { code, output };
   };
   await writeFile(
     parent,

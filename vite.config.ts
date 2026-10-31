@@ -5,6 +5,8 @@ import babel from "@rolldown/plugin-babel";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import { fileURLToPath } from "node:url";
 
+const apiTarget = process.env.WORKFLOW_API_URL ?? "http://127.0.0.1:4310";
+
 export default defineConfig({
   plugins: [
     tanstackStart({
@@ -23,6 +25,26 @@ export default defineConfig({
   ],
   root: "web",
   resolve: { alias: { "@": fileURLToPath(new URL("./web", import.meta.url)) } },
+  server: {
+    host: "127.0.0.1",
+    port: 5173,
+    strictPort: true,
+    proxy: {
+      "/api": {
+        target: apiTarget,
+        changeOrigin: true,
+        configure(proxy) {
+          proxy.on("proxyReq", (proxyRequest, request) => {
+            // Translate only same-origin dev requests; preserve foreign origins
+            // so the backend's cross-origin mutation protection still rejects them.
+            if (request.headers.origin === `http://${request.headers.host}`) {
+              proxyRequest.setHeader("origin", new URL(apiTarget).origin);
+            }
+          });
+        },
+      },
+    },
+  },
   build: { outDir: fileURLToPath(new URL("./dist", import.meta.url)), emptyOutDir: true },
   environments: {
     client: {

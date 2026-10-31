@@ -10,7 +10,7 @@ export async function registerDevelopmentWebGui(server: FastifyInstance) {
   const vite = await createServer({
     configFile: path.join(root, "vite.config.ts"),
     root: path.join(root, "web"),
-    server: { middlewareMode: true, hmr: { server: server.server } },
+    server: { middlewareMode: true, ws: { server: server.server } },
   });
   server.addHook("preClose", () => vite.close());
   server.get("/*", (request, reply) => {

@@ -24,6 +24,7 @@ export default defineConfig(
     ".codex/**",
     ".aws/**",
     "src/legacy/**",
+    ".review/**",
   ]),
   {
     files: ["**/*.{js,mjs,ts,tsx}"],

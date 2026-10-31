@@ -6,7 +6,7 @@ Workflow is an AI development engine with a browser workspace and terminal clien
 
 ## Get started
 
-Requires **Bun 1.4.2+** and Bash to build. Your project's build and test tools must also be installed.
+Contributing requires **Node.js 24 LTS (or 26+)** and **Bun 1.4.2+**. Bun remains the application runtime and preferred package manager; Vite, Rolldown, TypeScript, portable Vitest suites, ESLint, and Playwright run on Node. Standalone compilation also needs `tar`; the resulting executable embeds Bun. Your project's build and test tools must also be installed.
 
 1. **Build and install the executable once:**
 
@@ -222,3 +222,5 @@ Source hosts use Vite HMR and React Fast Refresh on the API's port. No separate 
 `dev` and `start` use real AI. Paid/subscription integration testing is a separate opt-in command, `bun run test:live`. See [Development](docs/development.md) for prerequisites, focused checks, and live-test scenarios.
 
 Code organization and contributor checks are documented in [architecture](docs/architecture.md#module-ownership) and [development](docs/development.md#code-quality). Run `bun run check` for lint, formatting, build and tests; use `bun run lint:fix` and `bun run format` to apply the shared code style.
+
+For frontend-only development, `bun run dev:web` or `npm run dev:web` starts Vite on **http://127.0.0.1:5173** with React Fast Refresh and CSS HMR, proxying `/api` to the backend on port 4310. `WORKFLOW_API_URL` selects another backend. `bun run dev` retains the integrated Bun host with same-port HMR. See [development tooling and runtime boundaries](docs/development.md#tooling-and-runtime-boundaries) for the Node-only tooling path and remaining Bun requirements.

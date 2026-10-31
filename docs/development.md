@@ -4,6 +4,8 @@
 
 ## Local setup
 
+Install Node.js **24 LTS** (recommended) or **26+**, plus Bun **1.4.2+** for the application runtime. Keep Node's `node` and `npm` on `PATH` even when using Bun to install dependencies and run package scripts.
+
 From the repository root:
 
 ```sh
@@ -21,13 +23,54 @@ Source hosts embed Vite's development middleware and HMR WebSocket in the existi
 
 While editing `web/`, Vite updates CSS in place and React Fast Refresh preserves local state for compatible component edits. Changes outside a Fast Refresh boundary may reload the page. `--no-web` skips Vite entirely. The host closes Vite and its watchers when stopped.
 
-`bun run dev` and `bun run dev:live` also invoke the source CLI with `--web`. `bun run start` and installed executables serve built production assets without Vite or hot reload. Backend source changes still require a backend restart.
+`bun run dev` invokes the source CLI with `--web`. `bun run start` and installed executables serve built production assets without Vite or hot reload. Backend source changes still require a backend restart; an automatic watcher must not compete with the stateful host's project lease.
 
 Use `bun run workflow --help` for the source CLI. `bun run start` serves the built distribution. Run `bun run compile` to rebuild a portable executable after changing the tool, then replace your installed copy.
 
 An existing background host keeps the code it started with. If a host was already running before these changes, use `bun run workflow stop`, then `bun run workflow` to start the source host with HMR. Reusing a built host does not turn it into a development host. After rebuilding or upgrading an installed executable, use `workflow stop` and `workflow start --background` when ready to restart it; saved tasks remain available. Refresh the browser after the host restarts.
 
 Do not run competing servers against the same project. Use disposable project directories for integration checks.
+
+### Tooling and runtime boundaries
+
+Bun remains the preferred package manager; `bun.lock` is the canonical dependency lock. Ordinary tool commands are runtime-neutral package scripts, not Bun shell or build APIs:
+
+| Task                                        | Command                                              | Runtime                                |
+| ------------------------------------------- | ---------------------------------------------------- | -------------------------------------- |
+| Frontend development / HMR                  | `npm run dev:web`                                    | Node + Vite                            |
+| Typecheck                                   | `npm run typecheck`                                  | TypeScript CLI                         |
+| Build all artifacts / backend only          | `npm run build` / `npm run build:engine`             | Node + tsx + Vite/Rolldown             |
+| Portable unit tests / watch mode            | `npm run test:unit` / `npm run test:watch`           | Node + Vitest                          |
+| Lint / format                               | `npm run lint` / `npm run format:check`              | Node + ESLint/Prettier                 |
+| Browser journeys                            | `npm run test:e2e:run`                               | Node + Playwright; Bun fixture backend |
+| Integrated development host                 | `bun run dev`                                        | Bun + embedded Vite HMR                |
+| Runtime approval tests / all runtime suites | `bun run test:runtime:unit` / `bun run test:runtime` | Bun + Vitest                           |
+| Full test suite, without rebuilding         | `bun run test:run`                                   | Bun + Vitest, all three projects       |
+| Standalone executable compilation           | `bun run compile`                                    | Node build, then Bun compiler          |
+
+The Node tooling commands also work through `bun run`; the tool CLIs use Node rather than `bun --bun`. Builds do not require Bun's bundler. Portable tests do not load the backend. The backend, CLI, OpenTUI renderer, real runtime tests, live-model/screenshot helpers, and standalone compiler still require Bun. Remaining runtime dependencies include `bun:sqlite`, `bun:ffi`, `Bun.Transpiler`, `Bun.build` for authored workflow compilation, and Bun archive/process APIs. Running `node dist/cli.js` is **not supported**; this is a tooling separation, not a completed runtime migration.
+
+For an npm-installed tooling checkout instead of Bun's isolated install:
+
+```sh
+npm install --prefix tooling/eslint --package-lock=false
+npm install --install-links=false --package-lock=false
+npm run typecheck
+npm run test:unit
+npm run build
+```
+
+Install the local lint package separately and retain its file link: it must resolve TypeScript 6 from its own `node_modules`, while the application resolves TypeScript 7. Do not use a fully nested root install: duplicate Temporal protobuf packages share a process-global registry and cannot coexist. Do not use `--force` or `--legacy-peer-deps`. npm resolves manifest ranges rather than `bun.lock`; use `bun install --frozen-lockfile` for reproducible repository/CI installs, and do not maintain a second lockfile.
+
+### Separate Node frontend
+
+`npm run dev:web` starts Vite at **http://127.0.0.1:5173** independently of Bun. Start the backend separately, for example `bun run workflow serve --no-web`, after initializing the project and building its Temporal bundles. Vite proxies `/api` requests, mutations, and SSE streams to **http://127.0.0.1:4310**. To use another backend:
+
+```sh
+WORKFLOW_API_URL=http://127.0.0.1:4320 npm run dev:web
+```
+
+This environment variable belongs to the dev server, not browser assets. The frontend binds to loopback and fails if port 5173 is occupied. Same-origin proxy requests are translated to the backend origin; foreign origins remain subject to backend rejection. React Fast Refresh and CSS HMR work in this mode as well as the integrated host. No backend or fake data is automatically started when the API is unavailable.
 
 ## Application structure
 
@@ -41,7 +84,7 @@ React Compiler runs through Vite's Babel compiler preset for React 19 in develop
 
 Composer validation errors wrap within the available width, including long filenames and multiline diagnostics. Editors use React `useId` for document-unique identities.
 
-The backend, CLI, SDK, and scripts are TypeScript on Bun. `node:*` imports use Bun's compatible APIs rather than requiring a separate Node process. Temporal's workflow bundle executes in its replayable environment; host effects belong in activities.
+The backend, CLI, and SDK runtime remain TypeScript on Bun. Development/build tooling uses Node-compatible APIs and standard tool CLIs. Temporal's workflow bundle executes in its replayable environment; host effects belong in activities.
 
 See [Architecture](architecture.md#source-map) for the source map and execution boundaries.
 
@@ -64,7 +107,7 @@ The application pins TypeScript 7.0.2 for browser/backend checking, SDK declarat
 
 The lint toolchain is an explicit exception: current `typescript-eslint` and React lint utilities require the legacy compiler API. `tooling/eslint` isolates their TypeScript 6.0.3 dependency; `bunfig.toml` enables isolated installs so it cannot replace the application's TypeScript 7. No application code imports the legacy compiler. See [Microsoft's compatibility guidance](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-60). Preserve this dependency boundary until the lint libraries support the native API.
 
-The build typechecks, removes stale `dist` output, builds the Start client and temporary server renderer, prerenders `dist/web/index.html`, emits SDK declarations, bundles the public SDK and program runtime, bundles current and frozen legacy Temporal workflows, and builds the executable CLI. The build-only renderer stays in ignored `.tanstack/start-server`; production serves static assets without a second web server.
+The Node/tsx build typechecks with the standard TypeScript CLI, removes stale `dist` output, builds the Start client and temporary server renderer with Vite, prerenders `dist/web/index.html`, emits SDK declarations, bundles public modules and the program runtime with Rolldown (the bundler used by Vite 8), bundles current and frozen legacy Temporal workflows, and builds the executable Bun CLI. Server dependencies remain external and flat bundle paths remain stable. The build-only renderer stays in ignored `.tanstack/start-server`; production serves static assets without a second web server.
 
 Main outputs:
 
@@ -88,19 +131,21 @@ Do not rebuild or remove `dist` while tests or live runs are loading it. Build o
 ## Automated checks
 
 ```sh
-bun run test:unit             # quick Vitest source-level tests; no build or services
-bun run test                  # build, then Vitest backend and integration tests
-bun run typecheck             # native TypeScript 7 and React TSX checks without rebuilding dist
+bun run test:unit             # portable Node/Vitest tests; no build or services
+bun run test:watch            # watch portable tests while editing
+bun run test:runtime:unit     # Bun-only approval boundary tests; no build or services
+bun run test                 # Node build, then all Vitest projects on Bun
+bun run typecheck            # native TypeScript 7 and React TSX checks without rebuilding dist
 
 # After a build, run a focused suite without rebuilding:
 bun run test:run tests/composition.test.ts
 ```
 
-Vitest owns backend, unit, and integration tests in `tests/*.test.ts`; `@playwright/test` owns all browser journeys and screenshot visual tests. Runtime suites execute on Bun because the application uses Bun APIs. Their launcher invokes Vitest's entry point directly with Bun: `bun --bun` would shadow `node` on `PATH` and break fixtures that deliberately exercise Node.js. `bun run test` builds before running the runtime suites; `bun run test:run` runs the same suites without rebuilding. `bun run test:unit` is also build-free. Both build-free commands accept file filters and Vitest options, for example `bun run test:unit tests/budget.test.ts --bail 1`. Use these package scripts, not `bun test`, which invokes Bun's separate test runner.
+Vitest owns unit and integration tests in `tests/*.test.ts`; `@playwright/test` owns browser journeys and screenshot visual tests. The `unit` project runs on Node and supports watch mode. The build-free `runtime-unit` project retains engine approval tests that import Bun-native dependencies; `integration` covers the remaining runtime suites. `test:run` selects all three projects under Bun, while `test:runtime` selects only the two Bun-required projects. Their launcher invokes Vitest's entry point directly with Bun: `bun --bun` would shadow `node` on `PATH` and break fixtures that deliberately exercise Node.js. All build-free run commands accept file filters and Vitest options, for example `bun run test:unit tests/budget.test.ts --bail 1` or `bun run test:run tests/engine-approval.test.ts`. Use these package scripts, not `bun test`, which invokes Bun's separate test runner.
 
 Tests use disposable projects. They cover SDK behavior, API validation, approval, commands/files, parallel execution, spending, worker loss, restart/recovery, CLI packaging, and terminal setup. Model integration fixtures use local fake providers or mocks; ordinary test suites do not need paid model credentials. Engine tests use real local Temporal services.
 
-The regular CI workflow runs `bun run test:unit` on pushes to `main`, every pull request, and manual dispatch. The fast suites are listed in the `unit` project in `vitest.config.ts`; they use source imports, in-memory doubles and disposable files without a build, Temporal service, HTTP listener or browser. Keep new CI suites within those limits. Dependencies are installed from `bun.lock` without building the application, and superseded runs are cancelled. Full integration, browser and mutation suites remain explicit local commands.
+Regular CI runs portable unit tests on Node 24 and 26 and build-free Bun approval suites on pushes to `main`, every pull request, and manual dispatch. A separate Node 24 job installs with npm, lints, builds/typechecks, and runs portable tests without setting up Bun. Projects in `vitest.config.ts` keep portable and Bun-native suites separate without dropping approval coverage. The Bun-installed jobs use the canonical lockfile; the npm-only job exercises the alternate manifest-based install. Superseded runs are cancelled. Full integration, browser and mutation suites remain explicit local commands.
 
 The terminal tests render through OpenTUI's native test renderer and exercise typing, command completion, graph layout, resizing, and masked secret input. Controller tests use the real HTTP adapter, and a Bun pseudo-terminal test runs the packaged `tui` command through planning, approval, execution, and clean shutdown. Run them after building with `bun run test:run tests/tui --testTimeout 45000`. Markdown parser caches and credentials use isolated test directories. Source development uses `bun run workflow tui`.
 
@@ -129,7 +174,7 @@ The pinned Temporal SDK may print `v8.promiseHooks.createHook is not available` 
 
 ## Mutation testing
 
-Stryker requires Node.js 22.12+ for its coordinator; tests run through Vitest on Bun using Stryker's built-in command runner. See the [Stryker configuration reference](https://stryker-mutator.io/docs/stryker-js/configuration/).
+Stryker runs its coordinator on Node; its command runner explicitly selects portable and Bun-native Vitest projects under Bun for focused mutation tests. See the [Stryker configuration reference](https://stryker-mutator.io/docs/stryker-js/configuration/).
 
 The current Stryker 10.1.1 coordinator still expects the legacy TypeScript compiler API (`parseConfigFileTextToJson`), which TypeScript 7 no longer exports. Mutation startup is blocked by that incompatibility before Vitest runs; it needs an upstream-compatible coordinator. The normal Vitest runtime and Playwright browser commands do not use that API.
 
