@@ -1,4 +1,9 @@
 import { projectOperations, operationKey } from "../contracts/execution-history.js";
+import {
+  chatEventVisible,
+  defaultChatVisibility,
+  type ChatVisibility,
+} from "../client/chat-visibility.js";
 import type {
   FlowStructure,
   RunEvent,
@@ -286,6 +291,7 @@ export function transcript(
   run?: WorkflowRun,
   events: RunEvent[] = [],
   live: Record<string, string> = {},
+  visibility: Readonly<ChatVisibility> = defaultChatVisibility,
 ): Card[] {
   const cards: Card[] = [];
   const prompt = task?.prompt ?? run?.plan.task;
@@ -296,7 +302,7 @@ export function transcript(
       { id: `answer-${i}`, title: "You", body: plain(answer.answer), tone: "lavender" },
     );
   }
-  const recent = events.slice(-150);
+  const recent = events.filter((event) => chatEventVisible(event, visibility)).slice(-150);
   const operations = projectOperations(recent);
   const merged = new Map(operations.map((op) => [op.lastCursor, op]));
   cards.push(
@@ -380,6 +386,8 @@ export const commands = [
   ["/settings", "Project settings and connections"],
   ["/models", "Choose the project model"],
   ["/thinking", "Choose model thinking level"],
+  ["/tools", "Show or hide tool activity: [on|off], omit to toggle (default off)"],
+  ["/progress", "Show or hide thinking / progress: [on|off], omit to toggle (default off)"],
   ["/setup", "Project setup: status, start, resume, cancel, regenerate"],
   ["/data", "Inspect a step visit's inputs, outputs and AI context"],
   ["/memory", "Inspect project memory or turn it on / off"],

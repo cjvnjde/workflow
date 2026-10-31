@@ -20,6 +20,8 @@ The web GUI and [OpenTUI terminal workspace](terminal.md) use these boundaries t
 
 `workflow` (also `workflow start` or `workflow tui`) opens the interactive terminal workspace and attaches to the project's existing server when available, otherwise starting a detached background host. Use `workflow tui --server URL` to select a remote engine. The terminal guide explains ownership, session controls, approval, and login.
 
+Both clients hide routine tool and thinking/progress blocks by default without discarding history. Terminal `/tools` and `/progress` and the web activity feed's **Tools** and **Thinking / progress** buttons reveal those blocks independently. Messages, questions, results and failure diagnostics remain visible. These are client-local display choices, not model settings; see [terminal visibility controls](terminal.md#work-through-a-task).
+
 ## Run without a GUI
 
 From an initialized project:

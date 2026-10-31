@@ -45,7 +45,7 @@ Use `/data` to choose a step visit and inspect its stored inputs, outputs and AI
 2. Watch planning activity. If the planner needs information, type your answer or an option number.
 3. Review the graph in the sidebar, or open `/graph` for a full-width view. `/source` shows the proposed code; `/step` opens step details.
 4. Type another message to refine a draft. Use `/cancel` to stop an unfinished refinement. Choose **Approve & start** or `/approve` when ready, or `/reject` to decline it.
-5. Follow live responses, command/tool results, active steps, checks, and the final result. Click long tool cards to expand them. Use `/pause`, `/resume`, or `/cancel` to control execution.
+5. Follow live responses and the final result. Routine tool and thinking/progress blocks start hidden; `/tools` and `/progress` reveal them independently. Click long tool cards to expand them. Use `/pause`, `/resume`, or `/cancel` to control execution.
 
 Sequences, parallel groups, branches, and loop limits appear in the graph. Step colors distinguish running, completed, and failed attempts. At 110 columns or wider, the graph sits beside the conversation. Smaller terminals use `/graph` or **Ctrl+G** to switch views.
 
@@ -53,24 +53,29 @@ Sequences, parallel groups, branches, and loop limits appear in the graph. Step 
 
 `/new` opens an empty composer without cancelling work already started. `/sessions` reopens saved tasks and standalone runs, including their graph, persisted activity, questions, answers, and results. Refinement messages and coordinator streaming are retained only while this workspace remains open; the updated draft is saved by the engine. The conversation displays the latest 150 activity cards, with individual tool bodies limited to 16,000 characters; `/step` exposes saved attempt evidence.
 
+`/tools [on|off]` controls tool calls, commands, functions and checks. `/progress [on|off]` controls routine planning, model-session and step-start activity. Omit the argument to toggle. Both start off; the footer shows their current state and `/settings` offers the same controls. Messages, questions, results, failure diagnostics and retry warnings remain visible. These are display-only choices: hidden events stay in history, and filtering happens before the 150-event display limit. Preferences last for this terminal workspace, including when you switch sessions; they do not change model behavior. `/thinking` still configures the model's thinking level.
+
+The web UI's planning and execution activity feeds have matching **Tools** and **Thinking / progress** buttons, also off by default. These choices are local to each mounted feed and are independent of the terminal. Search and category filters further narrow visible events; enable the relevant visibility button to search routine hidden activity.
+
 ## Commands and navigation
 
 Type `/` to see commands, use **↑/↓** to select, and **Tab** to complete. Session, model, and settings pickers support typing to filter and **Enter** to select.
 
-| Command                           | Action                                                                                  |
-| --------------------------------- | --------------------------------------------------------------------------------------- |
-| `/new`, `/sessions`               | Start another conversation or reopen task/run history.                                  |
-| `/open <id>`, `/id`, `/web`       | Open a saved task/run, show its ID, or show its browser link.                           |
-| `/graph`, `/source`, `/step [id]` | Inspect composition, code, or a step's instructions and results.                        |
-| `/approve`, `/reject`             | Accept the current draft revision or decline it.                                        |
-| `/auto [on\|off]`                 | Set approval for new tasks in this workspace; omit the argument to toggle.              |
-| `/pause`, `/resume`, `/cancel`    | Pause after active steps, resume/retry interrupted execution, or stop work.             |
-| `/retry`                          | Retry failed or cancelled task planning.                                                |
-| `/recover`                        | Retry managed-file recovery after resolving conflicts.                                  |
-| `/settings`                       | Open model, thinking, approval, and connection settings; inspect project configuration. |
-| `/models [search]`, `/thinking`   | Set the project's default model or its supported thinking level.                        |
-| `/login [provider]`, `/logout`    | Connect or disconnect a model provider.                                                 |
-| `/help`, `/quit`                  | Show help or close the workspace.                                                       |
+| Command                                   | Action                                                                                  |
+| ----------------------------------------- | --------------------------------------------------------------------------------------- |
+| `/new`, `/sessions`                       | Start another conversation or reopen task/run history.                                  |
+| `/open <id>`, `/id`, `/web`               | Open a saved task/run, show its ID, or show its browser link.                           |
+| `/graph`, `/source`, `/step [id]`         | Inspect composition, code, or a step's instructions and results.                        |
+| `/approve`, `/reject`                     | Accept the current draft revision or decline it.                                        |
+| `/auto [on\|off]`                         | Set approval for new tasks in this workspace; omit the argument to toggle.              |
+| `/tools [on\|off]`, `/progress [on\|off]` | Show or hide routine tool activity and thinking/progress independently; omit to toggle. |
+| `/pause`, `/resume`, `/cancel`            | Pause after active steps, resume/retry interrupted execution, or stop work.             |
+| `/retry`                                  | Retry failed or cancelled task planning.                                                |
+| `/recover`                                | Retry managed-file recovery after resolving conflicts.                                  |
+| `/settings`                               | Open model, thinking, approval, and connection settings; inspect project configuration. |
+| `/models [search]`, `/thinking`           | Set the project's default model or its supported thinking level.                        |
+| `/login [provider]`, `/logout`            | Connect or disconnect a model provider.                                                 |
+| `/help`, `/quit`                          | Show help or close the workspace.                                                       |
 
 | Shortcut        | Action                                                      |
 | --------------- | ----------------------------------------------------------- |

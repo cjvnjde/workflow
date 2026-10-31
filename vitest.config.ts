@@ -4,6 +4,7 @@ import { defineConfig } from "vitest/config";
 const unitSuites = [
   "activity",
   "budget",
+  "chat-visibility",
   "composition-ownership",
   "decision-evidence",
   "domain",

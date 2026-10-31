@@ -2,6 +2,11 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { client } from "../../shared/api.js";
 import type { RunEvent } from "../../../src/contracts/index.js";
 import {
+  chatEventVisible,
+  defaultChatVisibility,
+  type ChatVisibility,
+} from "../../../src/client/chat-visibility.js";
+import {
   activityCategories,
   describeActivity,
   matchesActivity,
@@ -22,7 +27,15 @@ type Props = {
   onSelect?: (id: string | undefined) => void;
 };
 export default function ActivityFeed(props: Props) {
-  return <ActivityHistory key={props.runId ?? "live"} {...props} />;
+  const [visibility, setVisibility] = useState<ChatVisibility>({ ...defaultChatVisibility });
+  return (
+    <ActivityHistory
+      key={props.runId ?? "live"}
+      {...props}
+      visibility={visibility}
+      onVisibilityChange={setVisibility}
+    />
+  );
 }
 function ActivityHistory({
   events,
@@ -34,7 +47,12 @@ function ActivityHistory({
   selected,
   title = "Workflow activity",
   onSelect,
-}: Props) {
+  visibility,
+  onVisibilityChange,
+}: Props & {
+  visibility: ChatVisibility;
+  onVisibilityChange: (visibility: ChatVisibility) => void;
+}) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<ActivityCategory>("all");
   const [history, setHistory] = useState<{ cursor: number; event: RunEvent }[]>([]);
@@ -118,11 +136,12 @@ function ActivityHistory({
   }, [lastId]);
   const labels = Object.fromEntries((nodes ?? []).map((node) => [node.id, node.label]));
   const allEvents = runId ? history.map((item) => item.event) : events;
-  const scoped = allEvents
-    .filter((event) => !selected || event.nodeId === selected)
+  const scoped = allEvents.filter((event) => !selected || event.nodeId === selected);
+  const presented = scoped
+    .filter((event) => chatEventVisible(event, visibility))
     .map(describeActivity)
     .toReversed();
-  const matches = scoped.filter((item) =>
+  const matches = presented.filter((item) =>
     matchesActivity(item, query, labels[item.event.nodeId ?? ""]),
   );
   const visible = matches.filter((item) => category === "all" || item.category === category);
@@ -138,6 +157,7 @@ function ActivityHistory({
     setQuery("");
     setCategory("all");
     setEventPage(0);
+    onVisibilityChange({ ...defaultChatVisibility });
   }
   return (
     <section className="activity" aria-label={title}>
@@ -192,6 +212,26 @@ function ActivityHistory({
               ))}
             </select>
           )}
+        </div>
+        <div className="activity-filters" role="group" aria-label="Activity visibility">
+          <button
+            aria-pressed={visibility.tools}
+            onClick={() => {
+              onVisibilityChange({ ...visibility, tools: !visibility.tools });
+              setEventPage(0);
+            }}
+          >
+            Tools
+          </button>
+          <button
+            aria-pressed={visibility.thinking}
+            onClick={() => {
+              onVisibilityChange({ ...visibility, thinking: !visibility.thinking });
+              setEventPage(0);
+            }}
+          >
+            Thinking / progress
+          </button>
         </div>
         <div className="activity-filters" role="group" aria-label="Activity filters">
           {activityCategories.map(([id, label]) => (
@@ -303,7 +343,9 @@ function ActivityHistory({
                 ? "No activity matches these filters."
                 : "Activity will appear here as work progresses."}
             </p>
-            {(query || category !== "all") && <button onClick={reset}>Clear filters</button>}
+            {(query || category !== "all" || visibility.tools || visibility.thinking) && (
+              <button onClick={reset}>Clear filters</button>
+            )}
           </div>
         )}
       </div>

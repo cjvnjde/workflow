@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { z } from "zod";
 import { type WorkflowClient } from "../client/client.js";
+import { defaultChatVisibility, type ChatVisibility } from "../client/chat-visibility.js";
 import {
   authOptionsSchema,
   authSessionSchema,
@@ -57,6 +58,7 @@ export interface TuiState {
   run?: WorkflowRun;
   events: RunEvent[];
   live: Record<string, string>;
+  chatVisibility: ChatVisibility;
   screen: Screen;
   panelTitle: string;
   panelDescription: string;
@@ -76,6 +78,7 @@ export class TerminalController extends EventEmitter {
     sessions: [],
     events: [],
     live: {},
+    chatVisibility: { ...defaultChatVisibility },
     screen: "chat",
     panelTitle: "",
     panelDescription: "",
@@ -704,6 +707,16 @@ export class TerminalController extends EventEmitter {
       await this.models(argument);
       return;
     }
+    if (command === "/tools" || command === "/progress") {
+      if (rest.length > 1 || (argument && argument !== "on" && argument !== "off"))
+        throw new Error(`Use ${command} [on|off].`);
+      const key = command === "/tools" ? "tools" : "thinking";
+      this.state.chatVisibility[key] = argument
+        ? argument === "on"
+        : !this.state.chatVisibility[key];
+      this.state.notice = `${command === "/tools" ? "Tools" : "Thinking / progress"} ${this.state.chatVisibility[key] ? "shown" : "hidden"}. Stored events are unchanged.`;
+      return;
+    }
     if (command === "/thinking") {
       await this.thinking();
       return;
@@ -762,6 +775,17 @@ export class TerminalController extends EventEmitter {
           detail: agent.thinking ?? "default",
           action: () => this.thinking(),
         },
+        ...(["tools", "progress"] as const).map((command) => ({
+          id: `visibility-${command}`,
+          label: command === "tools" ? "Show tools in chat" : "Show thinking / progress in chat",
+          detail: this.state.chatVisibility[command === "tools" ? "tools" : "thinking"]
+            ? "On — select to hide"
+            : "Off — select to show",
+          action: async () => {
+            await this.command(`/${command}`);
+            await this.settings();
+          },
+        })),
         {
           id: "setup",
           label: "Project setup",

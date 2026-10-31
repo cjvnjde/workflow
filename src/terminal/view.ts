@@ -295,7 +295,7 @@ export class TerminalWorkspace {
     this.secretDisplay = this.text("secret-input", "", colors.mint, 2);
     this.secretDisplay.visible = false;
     this.inputBox.add(this.secretDisplay);
-    this.footer = this.text("footer", "", colors.faint, 2);
+    this.footer = this.text("footer", "", colors.faint, 3);
     this.root.add(this.footer);
     renderer.root.add(this.root);
     renderer.keyInput.on("keypress", this.onKey);
@@ -637,7 +637,10 @@ export class TerminalWorkspace {
       state.screen === "picker"
         ? Math.min(compact ? 4 : 7, state.panelDescription.split("\n").length + 3)
         : "auto";
-    if (chatting) this.syncCards(transcript(state.task, state.run, state.events, state.live));
+    if (chatting)
+      this.syncCards(
+        transcript(state.task, state.run, state.events, state.live, state.chatVisibility),
+      );
     if (state.run) {
       const lines = graphLines(state.run);
       this.graphText.content = new StyledText(
@@ -763,6 +766,9 @@ export class TerminalWorkspace {
       ),
       fg(colors.muted)(
         `  ·  ${short(agent.model ?? "No model · /login to connect", Math.max(15, width - 50))}`,
+      ),
+      fg(colors.muted)(
+        `\n/tools ${state.chatVisibility.tools ? "on" : "off"}  ·  /progress ${state.chatVisibility.thinking ? "on" : "off"}  ·  /thinking model`,
       ),
       fg(colors.faint)(
         `\n${width >= 75 ? "Enter send  ·  Shift+Enter newline  ·  Ctrl+G graph  ·  " : ""}/web browser  ·  / commands  ·  Ctrl+C quit`,
