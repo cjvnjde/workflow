@@ -853,7 +853,9 @@ test("the central composer accepts attachments, runs automatically, and works on
       mimeType: "text/markdown",
       buffer: Buffer.from("Keep the task interface simple."),
     });
-    await expect(page.locator(".attachment-tray")).toContainText("requirements.md");
+    await expect(page.getByRole("list", { name: "Attached files", exact: true })).toContainText(
+      "requirements.md",
+    );
     const composer = page.getByLabel("What should we work on?", { exact: true });
     await composer.fill("Implement the attached requirements");
     await composer.press("Enter");
@@ -2030,7 +2032,9 @@ test("uploads and MCP discovery can be cancelled without late results or clearin
   await page.getByRole("button", { name: "Cancel upload", exact: true }).click();
   await expect(page.getByRole("button", { name: "Attach files", exact: true })).toBeEnabled();
   await upload!.abort().catch(() => {});
-  await expect(page.locator(".attachment-chip")).toHaveCount(0);
+  await expect(
+    page.getByRole("list", { name: "Attached files", exact: true }).getByRole("listitem"),
+  ).toHaveCount(0);
   await expect(task).toHaveValue("Keep this task while cancelling its attachment");
   await expect(page.getByRole("alert")).toHaveCount(0);
   await task.fill("");

@@ -1,0 +1,51 @@
+/* Tailwind's control and box defaults, limited to React islands so the
+   remaining Vue screens keep their existing browser defaults. */
+@scope (.shadcn-theme) to (.legacy-vue-app) {
+  *,
+  ::before,
+  ::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0 solid;
+  }
+
+  :scope {
+    font-family: var(--font-sans);
+    line-height: 1.5;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+    background-color: transparent;
+    border-radius: 0;
+  }
+
+  button {
+    appearance: button;
+    cursor: pointer;
+  }
+
+  fieldset {
+    min-width: 0;
+  }
+
+  img,
+  svg {
+    display: block;
+    vertical-align: middle;
+  }
+
+  img {
+    max-width: 100%;
+    height: auto;
+  }
+
+  [hidden] {
+    display: none !important;
+  }
+}

@@ -1,6 +1,7 @@
 @layer theme, base, legacy, components, utilities;
 
 @import "tailwindcss/theme.css" layer(theme);
+@import "./react-reset.css" layer(base);
 @import "./styles.css" layer(legacy);
 @import "./ui-theme.css" layer(legacy);
 @import "tailwindcss/utilities.css" layer(utilities);

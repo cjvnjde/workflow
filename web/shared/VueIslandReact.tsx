@@ -40,5 +40,5 @@ export function VueIslandReact({ component, componentProps, className }: VueIsla
     Object.assign(current.props, componentProps);
   }, [componentProps]);
 
-  return <div ref={host} className={className} />;
+  return <div ref={host} className={["legacy-vue-app", className].filter(Boolean).join(" ")} />;
 }

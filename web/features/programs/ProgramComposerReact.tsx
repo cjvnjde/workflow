@@ -71,17 +71,23 @@ export function ProgramComposerReact({ onSubmit }: ProgramComposerProps) {
   }
 
   async function load(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.currentTarget.files?.[0];
+    const element = event.currentTarget;
+    const file = element.files?.[0];
     if (!file) return;
     if (!file.name.endsWith(".ts") || file.size > 256_000) {
       setError("Choose a TypeScript file below 256 KB.");
-      event.currentTarget.value = "";
+      element.value = "";
       return;
     }
-    setSource(await file.text());
-    setFilename(file.name);
-    setError("");
-    event.currentTarget.value = "";
+    try {
+      setSource(await file.text());
+      setFilename(file.name);
+      setError("");
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      element.value = "";
+    }
   }
 
   async function submit() {

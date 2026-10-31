@@ -109,7 +109,7 @@ function readFile(file: File, signal: AbortSignal) {
 }
 
 export function TaskComposerReact({
-  text,
+  text: externalText,
   files,
   automatic,
   onTextChange,
@@ -118,6 +118,10 @@ export function TaskComposerReact({
   onSettings,
   onDiscard,
 }: TaskComposerProps) {
+  // React must update its controlled value during the input event. The Vue
+  // bridge delivers persisted props later, which otherwise resets the caret.
+  const [text, setText] = useState(externalText);
+  useLayoutEffect(() => setText(externalText), [externalText]);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -225,10 +229,11 @@ export function TaskComposerReact({
         }}
       >
         {files.length > 0 && (
-          <div className="flex flex-wrap gap-2 px-4 pt-4">
+          <div role="list" aria-label="Attached files" className="flex flex-wrap gap-2 px-4 pt-4">
             {files.map((file) => (
               <div
                 key={file.id}
+                role="listitem"
                 className="flex max-w-full items-center gap-2 rounded-lg border border-border bg-muted px-2 py-1.5 text-xs"
               >
                 {file.kind === "image" ? (
@@ -274,7 +279,12 @@ export function TaskComposerReact({
           rows={4}
           disabled={submitting}
           className="max-h-[50vh] min-h-32 resize-none rounded-none border-0 bg-transparent px-5 pt-5 pb-2 text-sm shadow-none focus-visible:ring-0"
-          onChange={(event) => onTextChange(event.currentTarget.value)}
+          onChange={(event) => {
+            const value = event.currentTarget.value;
+            textRef.current = value;
+            setText(value);
+            onTextChange(value);
+          }}
           onKeyDown={keydown}
           onPaste={paste}
         />
@@ -381,6 +391,8 @@ export function TaskComposerReact({
               variant="outline"
               className="h-auto min-h-14 justify-start whitespace-normal px-3 py-3 text-left text-xs leading-relaxed"
               onClick={() => {
+                setText(prompt);
+                textRef.current = prompt;
                 onTextChange(prompt);
                 input.current?.focus();
               }}

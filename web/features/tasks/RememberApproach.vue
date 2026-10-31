@@ -143,7 +143,7 @@ onScopeDispose(() => {
       remembered ? "Approach remembered" : "Remember this approach"
     }}
   </button>
-  <Teleport to="body">
+  <Teleport to=".legacy-vue-app">
     <dialog
       ref="dialog"
       class="remember-dialog"
