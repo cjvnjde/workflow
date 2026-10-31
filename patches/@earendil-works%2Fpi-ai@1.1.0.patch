@@ -1,0 +1,181 @@
+diff --git a/dist/utils/oauth-page.js b/dist/utils/oauth-page.js
+index e88fef3637b295d03261445908e10e08f5749c2a..1fdd5ba1cba972a1b2eab0a41dfb505f4faf1be1 100644
+--- a/dist/utils/oauth-page.js
++++ b/dist/utils/oauth-page.js
+@@ -1,4 +1,5 @@
+-const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" aria-hidden="true"><path fill="#F09082" d="M165.29 165.29H517.36V400H400V282.65H165.29Z"/><path fill="#4D9ABF" d="M165.29 282.65H282.65V400H400V517.36H282.65V634.72H165.29Z"/><path fill="#F1BE58" d="M517.36 400H634.72V634.72H517.36Z"/></svg>`;
++// Workflow owns the callback presentation; the provider retains the OAuth flow.
++const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5h8M8 19h8M5 8v8M19 8v8M3 3h4v4H3zM17 3h4v4h-4zM3 17h4v4H3zM17 17h4v4h-4z"/></svg>`;
+ function escapeHtml(value) {
+     return value
+         .replaceAll("&", "&amp;")
+@@ -20,84 +21,130 @@ function renderPage(options) {
+   <title>${title}</title>
+   <style>
+     :root {
+-      --text: #fafafa;
+-      --text-dim: #a1a1aa;
+-      --page-bg: #09090b;
+-      --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+-      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
++      color-scheme: dark;
++      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
++      color: #cdd6f4;
++      background: #1e1e2e;
++      font-synthesis: none;
+     }
+     * { box-sizing: border-box; }
+-    html { color-scheme: dark; }
+     body {
+       margin: 0;
+       min-height: 100vh;
+-      display: flex;
+-      align-items: center;
+-      justify-content: center;
++      min-height: 100dvh;
++      display: grid;
++      place-items: center;
+       padding: 24px;
+-      background: var(--page-bg);
+-      color: var(--text);
+-      font-family: var(--font-sans);
+-      text-align: center;
++      -webkit-font-smoothing: antialiased;
+     }
+     main {
+-      width: 100%;
+-      max-width: 560px;
++      width: min(100%, 460px);
++    }
++    .brand {
+       display: flex;
+-      flex-direction: column;
+       align-items: center;
+-      justify-content: center;
++      gap: 12px;
++      margin-bottom: 28px;
+     }
+     .logo {
+-      width: 72px;
+-      height: 72px;
++      display: grid;
++      place-items: center;
++      width: 40px;
++      height: 40px;
++      border-radius: 10px;
++      color: #cba6f7;
++      background: #2a263a;
++    }
++    .logo svg { width: 24px; height: 24px; }
++    .brand strong { font-size: 18px; font-weight: 600; letter-spacing: -0.4px; }
++    .brand small {
+       display: block;
++      margin-top: 3px;
++      color: #a6adc8;
++      font-size: 11px;
++    }
++    .card {
++      padding: 32px;
++      border: 1px solid #353548;
++      border-radius: 16px;
++      background: #181825;
++      box-shadow: 0 8px 32px #11111b25;
++    }
++    .status {
++      display: grid;
++      place-items: center;
++      width: 48px;
++      height: 48px;
+       margin-bottom: 24px;
++      border-radius: 14px;
++      color: #a6e3a1;
++      background: #222c2b;
+     }
++    .status.error { color: #f38ba8; background: #302331; }
++    .status svg { width: 24px; height: 24px; }
+     h1 {
+-      margin: 0 0 10px;
+-      font-size: 28px;
+-      line-height: 1.15;
+-      font-weight: 650;
+-      color: var(--text);
++      margin: 0 0 12px;
++      font-size: 26px;
++      line-height: 1.25;
++      font-weight: 600;
++      letter-spacing: -0.7px;
+     }
+     p {
+       margin: 0;
+       line-height: 1.7;
+-      color: var(--text-dim);
+-      font-size: 15px;
++      color: #a6adc8;
++      font-size: 14px;
+     }
+     .details {
+-      margin-top: 16px;
+-      font-family: var(--font-mono);
+-      font-size: 13px;
+-      color: var(--text-dim);
++      margin-top: 20px;
++      padding: 12px;
++      border-radius: 8px;
++      background: #1e1e2e;
++      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
++      font-size: 12px;
++      line-height: 1.6;
++      color: #bac2de;
+       white-space: pre-wrap;
+-      word-break: break-word;
++      overflow-wrap: anywhere;
++    }
++    .next { margin-top: 24px; padding-top: 20px; border-top: 1px solid #353548; font-size: 12px; }
++    @media (max-width: 480px) {
++      body { padding: 20px; }
++      .card { padding: 24px; }
+     }
+   </style>
+ </head>
+ <body>
+   <main>
+-    <div class="logo">${LOGO_SVG}</div>
+-    <h1>${heading}</h1>
+-    <p>${message}</p>
+-    ${details ? `<div class="details">${details}</div>` : ""}
++    <header class="brand">
++      <span class="logo">${LOGO_SVG}</span>
++      <div><strong>workflow</strong><small>from intent to done</small></div>
++    </header>
++    <section class="card" aria-labelledby="result-heading">
++      <div class="status${options.error ? " error" : ""}">
++        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${options.error ? '<path d="m6 6 12 12M6 18 18 6"/>' : '<path d="m5 12 4 4L19 6"/>'}</svg>
++      </div>
++      <h1 id="result-heading">${heading}</h1>
++      <p>${message}</p>
++      ${details ? `<div class="details">${details}</div>` : ""}
++      <p class="next">${options.error ? "Return to Workflow and try signing in again." : "Return to Workflow to continue. You can close this tab."}</p>
++    </section>
+   </main>
+ </body>
+ </html>`;
+ }
+ export function oauthSuccessHtml(message) {
+     return renderPage({
+-        title: "Authentication successful",
+-        heading: "Authentication successful",
++        title: "Sign-in complete · Workflow",
++        heading: "Sign-in complete",
+         message,
+     });
+ }
+ export function oauthErrorHtml(message, details) {
+     return renderPage({
+-        title: "Authentication failed",
+-        heading: "Authentication failed",
++        title: "Sign-in failed · Workflow",
++        heading: "Sign-in failed",
++        error: true,
+         message,
+         details,
+     });

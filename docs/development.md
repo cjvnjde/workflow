@@ -29,6 +29,8 @@ The backend, CLI, SDK, and scripts are TypeScript on Bun. `node:*` imports use B
 
 See [Architecture](architecture.md#source-map) for the source map and execution boundaries.
 
+OAuth callback pages use Workflow's branding and palette through the versioned `pi-ai` patch in `patches/`. Bun reapplies it on install, and the portable build carries it into its runtime. When upgrading `pi-ai`, review and regenerate this patch so provider callback pages keep the project's styling.
+
 ## Build and typechecking
 
 ```sh

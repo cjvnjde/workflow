@@ -43,6 +43,7 @@
   },
   "files": [
     "dist/",
+    "patches/",
     "examples/",
     "README.md",
     "docs/"
@@ -142,5 +143,8 @@
     "typescript-eslint": "^8.72.1",
     "vite": "^7.3.0",
     "vue-eslint-parser": "^10.4.1"
+  },
+  "patchedDependencies": {
+    "@earendil-works/pi-ai@1.1.0": "patches/@earendil-works%2Fpi-ai@1.1.0.patch"
   }
 }
