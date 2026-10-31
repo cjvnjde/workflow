@@ -1,0 +1,210 @@
+.execution-inspector {
+  padding: 20px;
+  min-width: 0;
+}
+.execution-inspector .inspection-controls {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.execution-inspector .inspection-controls label {
+  font-size: 11px;
+  color: var(--muted);
+  min-width: 120px;
+}
+.execution-inspector .inspection-controls select,
+.execution-inspector .inspection-controls input {
+  margin-top: 6px;
+}
+.execution-inspector .search {
+  flex: 1;
+}
+.execution-inspector .inspection-note,
+.execution-inspector .call-meta {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.execution-inspector .inspection-error {
+  color: var(--ctp-red);
+}
+.execution-inspector .inspection-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(280px, 1fr);
+  border: 1px solid var(--ui-edge);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-top: 16px;
+}
+.execution-inspector .call-ledger {
+  min-width: 0;
+  border-right: 1px solid var(--ui-edge);
+}
+.execution-inspector .ledger-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  font-size: 12px;
+}
+.execution-inspector .request-timing {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  font-size: 11px;
+}
+.execution-inspector .request-timing dt {
+  color: var(--muted);
+}
+.execution-inspector .request-timing dd {
+  margin: 0;
+}
+.execution-inspector .follow-control {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.execution-inspector .follow-control input {
+  width: auto;
+}
+.execution-inspector .ledger-heading h3 {
+  margin: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.execution-inspector .call-row {
+  display: flex;
+  border-top: 1px solid var(--ui-edge);
+  align-items: flex-start;
+}
+.execution-inspector .call-row.chosen {
+  background: var(--ui-raised);
+}
+.execution-inspector .fold {
+  border: 0;
+  background: none;
+  padding: 12px 4px;
+}
+.execution-inspector .fold-placeholder {
+  width: 20px;
+  flex-shrink: 0;
+}
+.execution-inspector .call-select {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  padding: 12px 8px;
+}
+.execution-inspector .call-title {
+  overflow-wrap: anywhere;
+  flex: 1;
+  font-size: 12px;
+}
+.execution-inspector .call-state {
+  font-size: 10px;
+  color: var(--muted);
+}
+.execution-inspector .call-state.failed,
+.execution-inspector .call-state.interrupted {
+  color: var(--ctp-red);
+}
+.execution-inspector .call-state.started,
+.execution-inspector .call-state.progress {
+  color: var(--ctp-yellow);
+}
+.execution-inspector .call-meta,
+.execution-inspector .call-summary {
+  width: 100%;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.execution-inspector .call-summary {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.execution-inspector .call-detail {
+  padding: 12px;
+  min-width: 0;
+}
+.execution-inspector .call-detail p {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.execution-inspector .call-detail details {
+  margin: 12px 0;
+}
+.execution-inspector .call-detail summary {
+  font-size: 12px;
+  cursor: pointer;
+}
+.execution-inspector .call-detail h4 {
+  font-size: 12px;
+}
+.execution-inspector .call-detail pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 400px;
+  overflow: auto;
+  font-size: 11px;
+  background: var(--ctp-mantle);
+  padding: 12px;
+  border-radius: 6px;
+  line-height: 1.6;
+}
+.execution-inspector .command-card {
+  border-left: 3px solid var(--accent);
+  padding-left: 10px;
+}
+.execution-inspector .command-card small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.execution-inspector .recorded-path {
+  font-family: monospace;
+  color: var(--accent);
+}
+.execution-inspector .recorded-diff {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.execution-inspector .recorded-diff section {
+  min-width: 0;
+}
+.execution-inspector .ledger-pages {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  font-size: 11px;
+  gap: 8px;
+}
+@media (max-width: 800px) {
+  .inspection-layout {
+    grid-template-columns: 1fr;
+  }
+  .execution-inspector .call-ledger {
+    border-right: 0;
+    border-bottom: 1px solid var(--ui-edge);
+  }
+  .execution-inspector .recorded-diff {
+    grid-template-columns: 1fr;
+  }
+  .execution-inspector {
+    padding: 12px;
+  }
+  .execution-inspector .inspection-controls label {
+    min-width: 100px;
+  }
+}

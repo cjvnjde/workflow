@@ -582,7 +582,7 @@ test("case, capability and execution proposals apply only their section and pres
   for (const scope of ["cases", "capabilities", "execution"] as const) {
     const created = await chats.create({ scope });
     const draft = await turn(chats, created.id, `Configure ${scope}`);
-    assert.equal(draft.status, "ready", draft.error);
+    assert.equal(draft.status, "ready", draft.error ?? "");
     await chats.apply(draft.id, { revision: draft.revision });
   }
   const saved = (await loadOrchestration(project)).settings;
@@ -726,7 +726,7 @@ test("design API enforces mutation headers and revision checks with real persist
       await server.inject({ method: "GET", url: `/api/design/${created.id}`, headers })
     ).json();
   }
-  assert.equal(ready.status, "ready", ready.error);
+  assert.equal(ready.status, "ready", ready.error ?? "");
   assert.equal(
     (
       await server.inject({

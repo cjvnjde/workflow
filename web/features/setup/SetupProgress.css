@@ -1,0 +1,245 @@
+.setup-progress {
+  border: 1px solid var(--ui-edge);
+  border-radius: var(--ui-card-radius);
+  background: var(--ui-raised);
+  padding: 20px;
+  margin: 24px 0;
+  min-width: 0;
+}
+.setup-progress .setup-progress-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.setup-progress .setup-progress-heading > svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.setup-progress .setup-progress-heading > div {
+  flex: 1;
+  min-width: 0;
+}
+.setup-progress .setup-progress-heading strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.setup-progress .setup-progress-heading p {
+  font-size: 11px;
+  margin: 4px 0 0;
+}
+.setup-progress .setup-description {
+  margin: 14px 0;
+  font-size: 12px;
+}
+.setup-progress .setup-saved-note {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--ctp-green);
+  font-size: 11px;
+  line-height: 1.7;
+  margin: 12px 0;
+}
+.setup-progress .setup-saved-note svg {
+  flex-shrink: 0;
+}
+.setup-progress .setup-readiness {
+  font-size: 12px;
+  color: var(--ctp-yellow);
+  margin: 12px 0;
+}
+.setup-progress .setup-job-details {
+  border-top: 1px solid var(--ui-edge);
+  padding-top: 14px;
+  margin-top: 16px;
+}
+.setup-progress .setup-job-details > summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+}
+.setup-progress .setup-job-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-top: 16px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.setup-progress .setup-job-identity code {
+  user-select: all;
+  overflow-wrap: anywhere;
+  color: var(--ctp-text);
+  margin-left: 5px;
+}
+.setup-progress .setup-job-identity button {
+  font-size: 10px;
+  padding: 5px;
+}
+.setup-progress .setup-model {
+  font-size: 11px;
+  margin: 5px 0 16px;
+  overflow-wrap: anywhere;
+}
+.setup-progress .setup-stage-list {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0;
+  display: grid;
+  gap: 12px;
+}
+.setup-progress .setup-stage-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.setup-progress .setup-stage-icon {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--ui-edge);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.setup-progress .setup-stage-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.setup-progress .setup-stage-list .completed .setup-stage-icon {
+  color: var(--ctp-green);
+  background: color-mix(in srgb, var(--ctp-green) 8%, transparent);
+}
+.setup-progress .setup-stage-list .running .setup-stage-icon {
+  color: var(--accent);
+}
+.setup-progress .setup-stage-list .failed .setup-stage-icon,
+.setup-progress .setup-stage-list .interrupted .setup-stage-icon {
+  color: var(--ctp-yellow);
+}
+.setup-progress .setup-stage-list strong {
+  display: inline;
+  font-size: 12px;
+  font-weight: 500;
+}
+.setup-progress .setup-stage-list small {
+  display: inline;
+  margin-left: 10px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.setup-progress .setup-stage-list p {
+  margin: 3px 0 0;
+  font-size: 11px;
+}
+.setup-progress .setup-activity {
+  font-size: 12px;
+  border-left: 2px solid var(--accent);
+  padding-left: 12px;
+}
+.setup-progress .setup-job-error {
+  color: var(--ctp-peach);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.setup-progress .setup-job-error p {
+  color: inherit;
+}
+.setup-progress .setup-job-details > p {
+  font-size: 12px;
+}
+.setup-progress .setup-job-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0;
+}
+.setup-progress .setup-job-actions > span {
+  font-size: 11px;
+  color: var(--muted);
+  flex: 1;
+  min-width: 180px;
+}
+.setup-progress .setup-start-form {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--ui-edge);
+}
+.setup-progress .setup-start-form label {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.setup-progress .setup-start-form label span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.setup-progress .setup-start-form p {
+  font-size: 11px;
+  margin: 10px 0;
+}
+.setup-progress .setup-start-form > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.setup-progress .setup-resume-limit {
+  max-width: 420px;
+  margin-top: 14px;
+}
+.setup-progress .setup-resume-limit label {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 7px;
+}
+.setup-progress .setup-resume-limit label span,
+.setup-progress .setup-resume-limit small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.setup-progress .setup-resume-limit small {
+  display: block;
+  margin-top: 7px;
+  line-height: 1.7;
+}
+.setup-progress .setup-restart {
+  margin-top: 12px;
+}
+.setup-progress .setup-loading {
+  font-size: 12px;
+  margin: 12px 0 0;
+}
+.setup-progress.compact {
+  padding: 16px;
+  margin: 0 0 20px;
+  text-align: left;
+}
+.setup-progress.compact .setup-saved-note {
+  margin-bottom: 0;
+}
+@media (max-width: 600px) {
+  .setup-progress {
+    padding: 16px;
+  }
+  .setup-progress .setup-progress-heading {
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .setup-progress .setup-progress-heading strong {
+    font-size: 13px;
+  }
+  .setup-progress .setup-stage-list small {
+    display: block;
+    margin-left: 0;
+    margin-top: 2px;
+  }
+  .setup-progress .setup-job-identity code {
+    display: block;
+    margin-left: 0;
+  }
+}

@@ -53,7 +53,7 @@ export function executionEvidence(
       label: labelFor(attempt.nodeId),
     };
   });
-  const overlaps: { first: string; second: string; seconds: number }[] = [];
+  const overlaps: { id: string; first: string; second: string; seconds: number }[] = [];
   for (let i = 0; i < intervals.length; i++)
     for (let j = i + 1; j < intervals.length; j++) {
       const a = intervals[i]!,
@@ -62,6 +62,7 @@ export function executionEvidence(
       const ms = Math.min(a.end, b.end) - Math.max(a.start, b.start);
       if (ms > 0)
         overlaps.push({
+          id: `${a.nodeId}/${a.visit}/${b.nodeId}/${b.visit}`,
           first: `${a.label} (visit ${a.visit})`,
           second: `${b.label} (visit ${b.visit})`,
           seconds: ms / 1000,

@@ -9,14 +9,10 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "skipLibCheck": true,
-    "esModuleInterop": true,
     "resolveJsonModule": true,
     "types": ["bun", "node", "vite/client"],
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  "include": ["src", "web", "tests", "scripts", "vite.config.ts", "playwright.config.ts"],
-  "vueCompilerOptions": {
-    "strictTemplates": true
-  }
+  "include": ["src", "web", "tests", "scripts", "vite.config.ts", "playwright.config.ts"]
 }

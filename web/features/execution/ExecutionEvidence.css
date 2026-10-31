@@ -1,0 +1,25 @@
+.result-checks table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.result-checks th,
+.result-checks td {
+  padding: 0.65rem 0.85rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+}
+.result-checks th:first-child,
+.result-checks td:first-child {
+  padding-left: 0;
+}
+.result-checks td:nth-child(2),
+.result-checks td:nth-child(3) {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.result-checks li {
+  overflow-wrap: anywhere;
+  margin-block: 0.4rem;
+}

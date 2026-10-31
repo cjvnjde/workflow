@@ -1,6 +1,6 @@
-/* Tailwind's control and box defaults, limited to React islands so the
-   remaining Vue screens keep their existing browser defaults. */
-@scope (.shadcn-theme) to (.legacy-vue-app) {
+/* Tailwind's control and box defaults apply to neutral composer controls;
+   workspace screens retain their established defaults and palette. */
+@scope (.shadcn-theme) to (.workflow-workspace) {
   *,
   ::before,
   ::after {

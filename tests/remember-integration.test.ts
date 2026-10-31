@@ -45,7 +45,7 @@ test("remember previews and explicit terminal/CLI saves share compact guidance w
     i++
   )
     await Bun.sleep(20);
-  assert.equal(app.getRun(draft.id).status, "completed", app.getRun(draft.id).error);
+  assert.equal(app.getRun(draft.id).status, "completed", app.getRun(draft.id).error ?? "");
   const cli = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
   const command = async (args: string[], expectedCode = 0) => {
     const child = Bun.spawn(

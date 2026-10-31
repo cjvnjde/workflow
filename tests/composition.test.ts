@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFile, writeFile, symlink } from "node:fs/promises";
+import { readFile, realpath, writeFile, symlink } from "node:fs/promises";
 import path from "node:path";
 import { WorkflowEngine } from "../src/core/engine.js";
 import { fixture } from "./helpers.js";
@@ -121,7 +121,7 @@ test("structured workflows preview before approval, execute typed feedback loops
   await engine.approve(draft.id);
   await engine.waitForIdle();
   const run = engine.get(draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.deepEqual(run.visits, { implement: 2, review: 2, publish: 1 });
   assert.equal(run.groups?.revision?.iteration, 2);
   assert.equal(await readFile(path.join(project, "published.txt"), "utf8"), "yes");
@@ -177,7 +177,7 @@ test("parallel calls overlap, retain identities and merge outputs only after the
   gates.a.release();
   await engine.waitForIdle();
   const run = engine.get(draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.equal(run.output, "ab");
   assert.equal(run.usage?.inputTokens, 30);
   assert.deepEqual(run.activeNodes, []);
@@ -223,29 +223,38 @@ test("pause drains active parallel steps and keeps queued branches waiting until
 
 test("managed parallel writes reject overlapping physical paths and retain claims after restart", async (t) => {
   const { project } = await fixture(t);
+  const physicalProject = await realpath(project);
+  const aliasedProject = path.join(physicalProject, "project-alias");
+  await symlink(".", aliasedProject, "dir");
   await writeFile(path.join(project, "shared.txt"), "original");
   await symlink("shared.txt", path.join(project, "alias.txt"));
   const first = path.join(project, "journal-a"),
     second = path.join(project, "journal-b");
-  let claims = new FileClaims(project);
+  let claims = new FileClaims(aliasedProject);
   const a = await FileJournal.open(first, claims),
     b = await FileJournal.open(second, claims);
-  const wa = await Workspace.create(project, { journal: a }),
-    wb = await Workspace.create(project, { journal: b });
+  const wa = await Workspace.create(aliasedProject, { journal: a }),
+    wb = await Workspace.create(physicalProject, { journal: b });
   await wa.write("shared.txt", "identical");
   await assert.rejects(wb.write("alias.txt", "identical"), /Parallel file conflict/);
   await assert.rejects(wb.edit("shared.txt", "identical", "other"), /Parallel file conflict/);
-  claims = new FileClaims(project);
+  claims = new FileClaims(aliasedProject);
   const recovered = await FileJournal.open(first, claims);
   const later = await FileJournal.open(second, claims);
-  await assert.rejects(
-    (await Workspace.create(project, { journal: later })).write("shared.txt", "identical"),
-    /Parallel file conflict/,
+  const resumed = await Workspace.create(physicalProject, { journal: later });
+  await assert.rejects(resumed.write("shared.txt", "identical"), /Parallel file conflict/);
+  await assert.rejects(resumed.write("alias.txt", "identical"), /Parallel file conflict/);
+  await assert.rejects(resumed.edit("shared.txt", "identical", "other"), /Parallel file conflict/);
+  assert.equal(
+    (await recovered.settle(await Workspace.create(aliasedProject), true)).status,
+    "committed",
   );
-  await recovered.settle(await Workspace.create(project), true);
-  const resumed = await Workspace.create(project, { journal: later });
   await resumed.edit("shared.txt", "identical", "next");
-  await later.settle(resumed, false);
+  assert.equal((await later.settle(resumed, false)).status, "restored");
+  const next = await FileJournal.open(path.join(project, "journal-c"), claims);
+  const following = await Workspace.create(aliasedProject, { journal: next });
+  await following.write("alias.txt", "after rollback");
+  assert.equal((await next.settle(following, false)).status, "restored");
   assert.equal(await readFile(path.join(project, "shared.txt"), "utf8"), "identical");
 });
 
@@ -288,7 +297,7 @@ test("parallel AI sessions share the dollar budget without double-counting faile
   gate.release();
   await engine.waitForIdle();
   const run = engine.get(draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.deepEqual(amounts, [1, 0.8]);
   assert.equal(run.usage?.costUsd, 0.4);
   const waits = (await engine.execution(draft.id)).operations.filter(
@@ -557,7 +566,7 @@ test("failure diagnosis routes test repairs and production repairs to different 
     await engine.approve(draft.id);
     await engine.waitForIdle();
     const run = engine.get(draft.id);
-    assert.equal(run.status, "completed", run.error);
+    assert.equal(run.status, "completed", run.error ?? "");
     assert.deepEqual(
       run.attempts.map((a) => a.nodeId),
       [

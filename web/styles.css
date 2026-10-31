@@ -1,6 +1,6 @@
-@scope (.legacy-vue-app) to (.shadcn-theme) {
+@scope (.workflow-workspace) to (.shadcn-theme) {
   /* Catppuccin Mocha — https://catppuccin.com/palette/ */
-  /* Keep legacy screen styles inside Vue islands during the React migration. */
+  /* Workspace controls keep their established palette beside neutral composers. */
   :scope {
     --ctp-rosewater: #f5e0dc;
     --ctp-flamingo: #f2cdcd;
@@ -900,12 +900,12 @@
     min-width: 0;
     background: var(--ctp-base);
   }
-  :scope .graph-panel > .vue-flow {
+  :scope .graph-panel > .react-flow {
     height: calc(100% - 32px);
-    --vf-node-bg: var(--ctp-surface0);
-    --vf-node-text: var(--ctp-text);
-    --vf-handle: var(--ctp-subtext1);
-    --vf-connection-path: var(--ctp-overlay0);
+    --xy-node-background-color: var(--ctp-surface0);
+    --xy-node-color: var(--ctp-text);
+    --xy-handle-background-color: var(--ctp-subtext1);
+    --xy-connectionline-stroke: var(--ctp-overlay0);
   }
   :scope .graph-legend {
     display: flex;
@@ -926,7 +926,7 @@
   :scope .graph-legend span:nth-of-type(2) {
     color: var(--ctp-yellow);
   }
-  :scope .vue-flow__node.workflow-node {
+  :scope .react-flow__node.workflow-node {
     padding: 0;
     border: 1px solid var(--ctp-surface1);
     border-radius: 11px;
@@ -935,7 +935,7 @@
     box-shadow: 0 5px 15px color-mix(in srgb, var(--ctp-crust) 18.8%, transparent);
     text-align: left;
   }
-  :scope .vue-flow__node.workflow-node.selected {
+  :scope .react-flow__node.workflow-node.selected {
     border-color: var(--ctp-mauve);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--ctp-mauve) 12.2%, transparent);
   }
@@ -989,7 +989,7 @@
   :scope .workflow-node.retry {
     border-color: var(--ctp-overlay1);
   }
-  :scope .vue-flow__node.terminal {
+  :scope .react-flow__node.terminal {
     border-radius: 24px;
     border-color: var(--ctp-overlay1);
     background: var(--ctp-surface0);
@@ -997,22 +997,22 @@
     padding: 10px;
     font-size: 11px;
   }
-  :scope .vue-flow__node.terminal.failed {
+  :scope .react-flow__node.terminal.failed {
     border-color: var(--ctp-surface2);
     background: var(--ctp-surface0);
     color: var(--ctp-mauve);
   }
-  :scope .vue-flow__handle {
+  :scope .react-flow__handle {
     background: var(--ctp-subtext1);
     border-color: var(--ctp-base);
   }
-  :scope .vue-flow__controls {
+  :scope .react-flow__controls {
     box-shadow: none;
     border: 1px solid var(--ctp-surface1);
     border-radius: 6px;
     overflow: hidden;
   }
-  :scope .vue-flow__controls-button {
+  :scope .react-flow__controls-button {
     background: var(--ctp-surface0) !important;
     fill: var(--ctp-text) !important;
     border-bottom: 1px solid var(--ctp-surface1) !important;
@@ -1021,11 +1021,11 @@
     padding: 5px;
     border-radius: 0;
   }
-  :scope .vue-flow__attribution {
+  :scope .react-flow__attribution {
     background: color-mix(in srgb, var(--ctp-base) 75.3%, transparent) !important;
     font-size: 8px;
   }
-  :scope .vue-flow__attribution a {
+  :scope .react-flow__attribution a {
     color: var(--ctp-subtext0);
   }
   :scope .step-inspector {
@@ -2653,12 +2653,12 @@
   :scope .workflow-node.active b {
     color: var(--ctp-mauve);
   }
-  :scope .vue-flow__node.terminal.complete {
+  :scope .react-flow__node.terminal.complete {
     border-color: var(--ctp-green);
     color: var(--ctp-green);
     background: var(--ctp-mantle);
   }
-  :scope .vue-flow__node.terminal.failed {
+  :scope .react-flow__node.terminal.failed {
     border-color: var(--ctp-red);
     color: var(--ctp-red);
     background: var(--ctp-mantle);
@@ -3205,19 +3205,19 @@
       display: none;
     }
   }
-  :scope .vue-flow__node.workflow-node {
+  :scope .react-flow__node.workflow-node {
     cursor: grab;
   }
-  :scope .vue-flow__node.workflow-node.dragging {
+  :scope .react-flow__node.workflow-node.dragging {
     cursor: grabbing;
   }
-  :scope .vue-flow__node.workflow-node.active {
+  :scope .react-flow__node.workflow-node.active {
     border: 2px solid var(--ctp-mauve);
     background: color-mix(in srgb, var(--ctp-mauve) 12%, var(--ctp-base));
     box-shadow: 0 0 0 5px #cba6f722;
     animation: active-block 2s ease-in-out infinite;
   }
-  :scope .vue-flow__node.workflow-node.fail {
+  :scope .react-flow__node.workflow-node.fail {
     border-color: var(--ctp-red);
   }
   :scope .workflow-node.fail b {
@@ -3614,7 +3614,7 @@
     }
   }
   @media (prefers-reduced-motion: reduce) {
-    :scope .vue-flow__node.workflow-node.active {
+    :scope .react-flow__node.workflow-node.active {
       animation: none;
     }
   }
@@ -3702,7 +3702,7 @@
     flex-basis: auto;
     margin-left: auto;
   }
-  :scope .vue-flow__node.composition-group {
+  :scope .react-flow__node.composition-group {
     background: color-mix(in srgb, var(--ctp-surface0) 18%, transparent);
     border: 1px solid var(--ctp-surface1);
     border-radius: 16px;
@@ -3722,13 +3722,13 @@
   :scope .composition-heading small {
     margin-left: auto;
   }
-  :scope .vue-flow__node.composition-junction {
+  :scope .react-flow__node.composition-junction {
     background: var(--ctp-surface1);
     border: 1px solid var(--ctp-overlay0);
     border-radius: 50%;
   }
-  :scope .workflow-graph .vue-flow__edge,
-  :scope .workflow-graph .vue-flow__edge-interaction {
+  :scope .workflow-graph .react-flow__edge,
+  :scope .workflow-graph .react-flow__edge-interaction {
     pointer-events: none !important;
   }
   :scope .composition-heading {
@@ -3761,7 +3761,7 @@
     font-size: 10px;
     margin-top: 8px;
   }
-  :scope .composition-junction .vue-flow__handle {
+  :scope .composition-junction .react-flow__handle {
     opacity: 0;
   }
 

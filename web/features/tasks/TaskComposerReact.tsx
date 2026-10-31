@@ -109,7 +109,7 @@ function readFile(file: File, signal: AbortSignal) {
 }
 
 export function TaskComposerReact({
-  text: externalText,
+  text,
   files,
   automatic,
   onTextChange,
@@ -118,10 +118,6 @@ export function TaskComposerReact({
   onSettings,
   onDiscard,
 }: TaskComposerProps) {
-  // React must update its controlled value during the input event. The Vue
-  // bridge delivers persisted props later, which otherwise resets the caret.
-  const [text, setText] = useState(externalText);
-  useLayoutEffect(() => setText(externalText), [externalText]);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -130,9 +126,9 @@ export function TaskComposerReact({
   const input = useRef<HTMLTextAreaElement | null>(null);
   const uploadController = useRef<AbortController | undefined>(undefined);
   const filesRef = useRef(files);
-  const textRef = useRef(text);
-  filesRef.current = files;
-  textRef.current = text;
+  useLayoutEffect(() => {
+    filesRef.current = files;
+  }, [files]);
   useAutosize(input, text);
 
   useEffect(
@@ -183,12 +179,12 @@ export function TaskComposerReact({
   }
 
   async function submit() {
-    if (!textRef.current.trim() || uploading || submitting) return;
+    if (!text.trim() || uploading || submitting) return;
     setSubmitting(true);
     setError("");
     try {
       await onSubmit(
-        textRef.current.trim(),
+        text.trim(),
         filesRef.current.map((file) => file.id),
       );
     } catch (failure) {
@@ -281,8 +277,6 @@ export function TaskComposerReact({
           className="max-h-[50vh] min-h-32 resize-none rounded-none border-0 bg-transparent px-5 pt-5 pb-2 text-sm shadow-none focus-visible:ring-0"
           onChange={(event) => {
             const value = event.currentTarget.value;
-            textRef.current = value;
-            setText(value);
             onTextChange(value);
           }}
           onKeyDown={keydown}
@@ -342,7 +336,7 @@ export function TaskComposerReact({
       </div>
       {error && (
         <p
-          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm wrap-anywhere text-destructive"
           role="alert"
         >
           {error}
@@ -391,8 +385,6 @@ export function TaskComposerReact({
               variant="outline"
               className="h-auto min-h-14 justify-start whitespace-normal px-3 py-3 text-left text-xs leading-relaxed"
               onClick={() => {
-                setText(prompt);
-                textRef.current = prompt;
                 onTextChange(prompt);
                 input.current?.focus();
               }}

@@ -1,4 +1,4 @@
-import { computed, ref, shallowRef, watch } from "vue";
+import { useEffect, useState } from "react";
 import {
   isReportEvidenceEvent,
   type ReportEvidence,
@@ -8,50 +8,54 @@ import {
 import { client } from "../../shared/api.js";
 
 /** Full saved evidence is separate from the lossy live activity window. */
-export function useReportEvidence(run: () => WorkflowRun, liveEvents: () => RunEvent[]) {
-  const snapshot = shallowRef<ReportEvidence>();
-  const loading = ref(true);
-  const error = ref("");
-  const retry = ref(0);
-  watch(
-    [
-      () => run().id,
-      () => run().revision,
-      () => liveEvents().filter(isReportEvidenceEvent).at(-1)?.id,
-      retry,
-    ],
-    ([id], previous, cleanup) => {
-      const controller = new AbortController();
-      if (id !== previous?.[0]) snapshot.value = undefined;
-      loading.value = true;
-      error.value = "";
-      // Coalesce projection updates while active steps are saving checkpoints.
-      const timer = setTimeout(async () => {
-        try {
-          const value = await client.reportEvidence(id, controller.signal);
-          if (!controller.signal.aborted) snapshot.value = value;
-        } catch (failure) {
-          if (!controller.signal.aborted)
-            error.value = failure instanceof Error ? failure.message : String(failure);
-        } finally {
-          if (!controller.signal.aborted) loading.value = false;
-        }
-      }, 80);
-      cleanup(() => {
-        clearTimeout(timer);
-        controller.abort();
-      });
-    },
-    { immediate: true },
-  );
+export function useReportEvidence(run: WorkflowRun, liveEvents: RunEvent[]) {
+  const [retry, setRetry] = useState(0);
+  const lastEvidenceId = liveEvents.filter(isReportEvidenceEvent).at(-1)?.id;
+  const requestKey = `${run.id}/${run.revision}/${lastEvidenceId ?? ""}/${retry}`;
+  const [result, setResult] = useState<{
+    runId: string;
+    requestKey: string;
+    snapshot?: ReportEvidence;
+    loading: boolean;
+    error: string;
+  }>({ runId: run.id, requestKey, loading: true, error: "" });
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setResult((previous) => ({
+        runId: run.id,
+        requestKey,
+        snapshot: previous.runId === run.id ? previous.snapshot : undefined,
+        loading: true,
+        error: "",
+      }));
+      try {
+        const snapshot = await client.reportEvidence(run.id, controller.signal);
+        if (!controller.signal.aborted)
+          setResult({ runId: run.id, requestKey, snapshot, loading: false, error: "" });
+      } catch (failure) {
+        if (!controller.signal.aborted)
+          setResult((previous) => ({
+            ...previous,
+            loading: false,
+            error: failure instanceof Error ? failure.message : String(failure),
+          }));
+      }
+    }, 80);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [run.id, requestKey]);
+  const snapshot = result.runId === run.id ? result.snapshot : undefined;
+  const loading = result.requestKey !== requestKey || result.loading;
+  const error = result.requestKey === requestKey ? result.error : "";
   return {
-    events: computed(() => snapshot.value?.events ?? []),
-    complete: computed(() => !!snapshot.value?.available && !loading.value && !error.value),
-    available: computed(() => !!snapshot.value?.available),
+    events: snapshot?.events ?? [],
+    complete: !!snapshot?.available && !loading && !error,
+    available: !!snapshot?.available,
     loading,
     error,
-    refresh: () => {
-      retry.value++;
-    },
+    refresh: () => setRetry((value) => value + 1),
   };
 }

@@ -15,12 +15,19 @@ try {
     recursive: true,
     filter: (source) => !["workflow", "workflow.exe"].includes(path.basename(source)),
   });
-  const { name, version, type, dependencies, devDependencies, patchedDependencies } = JSON.parse(
-    await readFile(path.join(root, "package.json"), "utf8"),
-  );
+  const { name, version, type, dependencies, devDependencies, overrides, patchedDependencies } =
+    JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
   await writeFile(
     path.join(runtime, "package.json"),
-    JSON.stringify({ name, version, type, dependencies, devDependencies, patchedDependencies }),
+    JSON.stringify({
+      name,
+      version,
+      type,
+      dependencies,
+      devDependencies,
+      overrides,
+      patchedDependencies,
+    }),
   );
   await cp(path.join(root, "patches"), path.join(runtime, "patches"), { recursive: true });
   await cp(path.join(root, "bun.lock"), path.join(runtime, "bun.lock"));

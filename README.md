@@ -86,7 +86,7 @@ The coordinator uses the supplied request, context, task instructions, blocks, a
 | **Workflow**                             | Steps composed into sequences, branches, parallel groups, and bounded loops.          |
 | **Task instructions and model profiles** | Guidance the orchestrator uses to choose blocks and models for a particular request.  |
 
-The web UI is moving to React, Tailwind CSS, and shadcn/ui; the existing Vue feature screens remain available in an isolated compatibility layer during migration. The terminal workspace uses OpenTUI. Pi provides embedded model sessions and authentication integration; Temporal provides durable execution. Workflow owns the task workspace, configuration, approval flow, and results. [Read the design rationale](docs/concepts.md) or [explore the architecture](docs/architecture.md).
+The web UI uses React, React Flow, Tailwind CSS, and shadcn/ui, with no Vue runtime. React Compiler optimizes components and hooks. The terminal workspace uses OpenTUI. Pi provides embedded model sessions and authentication integration; Temporal provides durable execution. Workflow owns the task workspace, configuration, approval flow, and results. [Read the design rationale](docs/concepts.md) or [explore the architecture](docs/architecture.md).
 
 ## Inspect execution
 

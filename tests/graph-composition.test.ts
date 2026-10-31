@@ -151,7 +151,7 @@ test("generated code graphs preview all routes, preserve edited model defaults a
   await engine.approve(draft.id, saved.revision);
   await engine.waitForIdle();
   const run = engine.get(draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.deepEqual(run.plan, edited, "Execution must preserve all reviewed connections and goals");
   assert.equal(run.output, "Reviewed and passed");
   assert.deepEqual(
@@ -219,7 +219,7 @@ test("a code graph follows its fail route after a block throws instead of discar
   await engine.approve(draft.id);
   await engine.waitForIdle();
   const run = engine.get(draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.equal(run.output, "Handled: Invalid input");
   assert.deepEqual(run.plan, plan);
 });

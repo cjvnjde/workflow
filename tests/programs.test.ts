@@ -91,7 +91,7 @@ test("TypeScript script workflows execute only after approval and freeze importe
   await engine.approve(draft.id);
   await engine.waitForIdle();
   const run = engine.get(draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.equal(run.output, "frozen helper");
   assert.equal(await readFile(path.join(project, "effect.txt"), "utf8"), "ran\n");
   assert.equal(run.attempts.length, 1);
@@ -189,7 +189,7 @@ export default workflow({name:"Reviewed implementation",input:z.object({request:
   await engine.approve(draft.id);
   await engine.waitForIdle();
   const run = engine.get(draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.equal(run.output, "Approved");
   assert.deepEqual(
     calls.map((step) => step.node.id),
@@ -331,7 +331,7 @@ test("profile models retain pricing and frozen settings when workflow code custo
     await engine.approve(draft.id);
     await engine.waitForIdle();
     const completed = engine.get(draft.id);
-    assert.equal(completed.status, "completed", completed.error);
+    assert.equal(completed.status, "completed", completed.error ?? "");
     assert.deepEqual(completed.program?.input, {});
     assert.equal(completed.program?.models.shared?.timeoutMs, undefined);
     assert.equal(completed.blocks.review?.definition.agent?.timeoutMs, 10000);
@@ -370,7 +370,7 @@ test("TypeScript workflow pauses and resumes on its archived version without rep
   await resumed.resume(draft.id);
   await resumed.waitForIdle();
   const run = resumed.get(draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.equal(await readFile(path.join(project, "effect.txt"), "utf8"), "ran\n");
   assert.equal(await readFile(path.join(project, "second.txt"), "utf8"), "second");
   assert.equal(run.attempts.length, 2);

@@ -86,7 +86,7 @@ test("independent writers overlap in real worktrees, join, and integrate with co
   await engine.approve(draft.id);
   await engine.waitForIdle();
   const run = engine.get(draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.equal(peak, 2);
   assert.equal(await readFile(path.join(project, "a.txt"), "utf8"), "a result");
   assert.equal(await readFile(path.join(project, "b.txt"), "utf8"), "b result");

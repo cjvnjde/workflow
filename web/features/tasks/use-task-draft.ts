@@ -1,4 +1,4 @@
-import { shallowRef, watch } from "vue";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { z } from "zod";
 import { attachmentSchema, type Attachment } from "../../../src/contracts/index.js";
 
@@ -7,50 +7,83 @@ const taskDraftSchema = z.object({
   files: z.array(attachmentSchema).max(8),
 });
 export type TaskDraft = z.infer<typeof taskDraftSchema>;
+type DraftStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 const emptyDraft = (): TaskDraft => ({ text: "", files: [] });
+const browserStorage = () => localStorage;
+const draftKey = (project: string | undefined) =>
+  project ? `workflow:task-draft:${encodeURIComponent(project)}` : undefined;
 
-/** Keep uploaded attachment references, never file bytes, in the browser draft. */
-export function useTaskDraft(
-  project: () => string | undefined,
-  storage: () => Pick<Storage, "getItem" | "setItem" | "removeItem"> = () => localStorage,
-) {
-  const draft = shallowRef<TaskDraft>(emptyDraft());
-  let key: string | undefined;
-  watch(
-    project,
-    (id) => {
-      key = id ? `workflow:task-draft:${encodeURIComponent(id)}` : undefined;
-      draft.value = emptyDraft();
-      if (!key) return;
+export function createDraftStore(project: string | undefined, storage: () => DraftStorage) {
+  let key = draftKey(project);
+  function readSaved(): TaskDraft {
+    if (key) {
       try {
         const saved = storage().getItem(key);
-        if (saved) draft.value = taskDraftSchema.parse(JSON.parse(saved));
+        if (saved) return taskDraftSchema.parse(JSON.parse(saved));
       } catch {
         // Storage can be disabled or contain an obsolete/malformed draft.
       }
-    },
-    { immediate: true, flush: "sync" },
-  );
-  function set(value: TaskDraft) {
-    draft.value = value;
-    if (!key) return;
-    try {
-      if (!value.text && !value.files.length) storage().removeItem(key);
-      else storage().setItem(key, JSON.stringify(value));
-    } catch {
-      // In-memory drafts still survive navigation when browser storage is unavailable.
     }
+    return emptyDraft();
+  }
+  let draft = readSaved();
+  const listeners = new Set<() => void>();
+  function emit() {
+    for (const listener of listeners) listener();
+  }
+  function set(value: TaskDraft) {
+    draft = value;
+    if (key) {
+      try {
+        if (!value.text && !value.files.length) storage().removeItem(key);
+        else storage().setItem(key, JSON.stringify(value));
+      } catch {
+        // In-memory drafts still survive navigation when storage is unavailable.
+      }
+    }
+    emit();
   }
   return {
-    draft,
-    text: (text: string) => {
-      if (text !== draft.value.text) set({ ...draft.value, text });
+    getSnapshot: () => draft,
+    getKey: () => key,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
     },
-    files: (files: Attachment[]) => set({ ...draft.value, files }),
+    selectProject: (project: string | undefined) => {
+      const nextKey = draftKey(project);
+      if (nextKey === key) return;
+      key = nextKey;
+      draft = readSaved();
+      emit();
+    },
+    text: (text: string) => {
+      if (text !== draft.text) set({ ...draft, text });
+    },
+    files: (files: Attachment[]) => set({ ...draft, files }),
     clear: () => set(emptyDraft()),
     clearSubmitted: (submitted: TaskDraft) => {
       // A delayed response must not erase edits made after submission.
-      if (draft.value === submitted) set(emptyDraft());
+      if (draft === submitted) set(emptyDraft());
     },
+  };
+}
+
+/** Persist attachment references, never file bytes, in each project's browser draft. */
+export function useTaskDraft(
+  project: string | undefined,
+  storage: () => DraftStorage = browserStorage,
+) {
+  const [store] = useState(() => createDraftStore(project, storage));
+  const draft = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  useEffect(() => store.selectProject(project), [store, project]);
+  return {
+    draft,
+    text: store.text,
+    files: store.files,
+    clear: store.clear,
+    clearSubmitted: store.clearSubmitted,
   };
 }

@@ -1,0 +1,89 @@
+.remember-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  padding: 26px;
+  border: 1px solid var(--ctp-surface1);
+  border-radius: 16px;
+  background: var(--ctp-base);
+  color: var(--ctp-text);
+  box-shadow: 0 24px 80px #0008;
+}
+.remember-dialog::backdrop {
+  background: #11111baa;
+  backdrop-filter: blur(3px);
+}
+.remember-dialog .remember-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.remember-dialog .remember-heading h2 {
+  margin: 7px 0 16px;
+  font-size: 22px;
+}
+.remember-dialog .remember-heading .icon-button {
+  flex-shrink: 0;
+}
+.remember-dialog .remember-intro,
+.remember-dialog .remember-boundary,
+.remember-dialog .remember-mode {
+  line-height: 1.6;
+  color: var(--ctp-subtext0);
+}
+.remember-dialog .remember-boundary {
+  font-size: 11px;
+}
+.remember-dialog .remember-mode {
+  padding: 12px;
+  border: 1px solid var(--ctp-surface1);
+  border-radius: 8px;
+}
+.remember-dialog textarea {
+  resize: vertical;
+}
+.remember-dialog .remember-evidence,
+.remember-dialog .remember-existing {
+  margin: 18px 0;
+  border-top: 1px solid var(--ctp-surface1);
+  padding-top: 16px;
+}
+.remember-dialog .remember-evidence > summary,
+.remember-dialog .remember-existing > summary {
+  cursor: pointer;
+  margin-bottom: 18px;
+}
+.remember-dialog .remember-existing pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 12px;
+  background: var(--ctp-mantle);
+  border-radius: 8px;
+}
+.remember-dialog .remember-conflict {
+  padding: 14px;
+  border: 1px solid var(--ctp-yellow);
+  border-radius: 8px;
+}
+.remember-dialog .remember-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+.remember-dialog .setup-notice {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.remember-dialog .setup-notice p {
+  line-height: 1.6;
+}
+@media (max-width: 640px) {
+  .remember-dialog {
+    padding: 18px;
+  }
+  .remember-dialog .remember-actions button {
+    flex: 1 1 auto;
+  }
+}

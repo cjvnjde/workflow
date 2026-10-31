@@ -1,8 +1,12 @@
-import { computed, onScopeDispose, shallowRef, watch, type MaybeRefOrGetter, toValue } from "vue";
-import type { WorkflowRun } from "../../../src/contracts/index.js";
+import { useEffect, useMemo, useState } from "react";
+import {
+  programSourceSchema,
+  type ProgramSource,
+  type WorkflowPlan,
+  type WorkflowRun,
+} from "../../../src/contracts/index.js";
 import { isSourceWorkflow } from "../execution/execution-label.js";
 import { readPlanDraft } from "./plan-draft.js";
-import { programSourceSchema, type ProgramSource } from "../../../src/contracts/index.js";
 
 type Draft = {
   text: string;
@@ -25,82 +29,90 @@ const fromRun = (run: WorkflowRun): Draft => {
   };
 };
 
-/** Keep local edits and their base revision when switching between runs. */
-export function useDraft(source: MaybeRefOrGetter<WorkflowRun | undefined>) {
-  const drafts = shallowRef<Record<string, Draft>>({});
-  const run = computed(() => toValue(source));
-  const draft = computed(() => {
-    if (!run.value) {
-      return undefined;
-    }
-    const cached = drafts.value[run.value.id];
-    return cached && changed(cached) ? cached : fromRun(run.value);
-  });
-  const hasUnsaved = computed(() => Object.values(drafts.value).some(changed));
-  const parsed = computed<ReturnType<typeof readPlanDraft> & { validProgram?: ProgramSource }>(
-    () => {
-      if (!run.value || !draft.value) return {};
-      if (!isSourceWorkflow(run.value)) return readPlanDraft(draft.value.text, run.value);
-      try {
-        return {
-          validProgram: programSourceSchema.parse({
-            source: draft.value.text,
-            filename: run.value.program!.filename,
-            input: JSON.parse(draft.value.inputText),
-          }),
-        };
-      } catch {
-        return {
-          error:
-            "Enter TypeScript source and a valid JSON object for inputs. Saving checks TypeScript before publication.",
-        };
-      }
-    },
-  );
-  const warn = (event: BeforeUnloadEvent) => {
-    event.preventDefault();
-    event.returnValue = "";
-  };
-  watch(hasUnsaved, (dirty) => {
-    window.removeEventListener("beforeunload", warn);
-    if (dirty) {
-      window.addEventListener("beforeunload", warn);
-    }
-  });
-  onScopeDispose(() => window.removeEventListener("beforeunload", warn));
+type ParsedDraft = {
+  plan?: WorkflowPlan;
+  validPlan?: WorkflowPlan;
+  validProgram?: ProgramSource;
+  error?: string;
+};
 
-  // A computed snapshot is convenient to pass to the editor and execution controls.
-  return computed(() => ({
-    ...parsed.value,
-    text: draft.value?.text ?? "",
-    inputText: draft.value?.inputText ?? "{}",
-    revision: draft.value?.revision,
-    dirty: !!draft.value && changed(draft.value),
-    stale: !!run.value && !!draft.value && draft.value.revision !== run.value.revision,
+export type PlanDraft = ParsedDraft & {
+  text: string;
+  inputText: string;
+  revision: number | undefined;
+  dirty: boolean;
+  stale: boolean;
+  edit: (text: string) => void;
+  editInput: (inputText: string) => void;
+  saved: (updated: WorkflowRun) => void;
+  reset: () => void;
+};
+
+/** Keep local edits and their base revision when switching between runs. */
+export function useDraft(run: WorkflowRun | undefined): PlanDraft {
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const draft = useMemo(() => {
+    if (!run) return undefined;
+    const cached = drafts[run.id];
+    return cached && changed(cached) ? cached : fromRun(run);
+  }, [drafts, run]);
+  const hasUnsaved = Object.values(drafts).some(changed);
+  const parsed = useMemo<ParsedDraft>(() => {
+    if (!run || !draft) return {};
+    if (!isSourceWorkflow(run)) return readPlanDraft(draft.text, run);
+    try {
+      return {
+        validProgram: programSourceSchema.parse({
+          source: draft.text,
+          filename: run.program!.filename,
+          input: JSON.parse(draft.inputText),
+        }),
+      };
+    } catch {
+      return {
+        error:
+          "Enter TypeScript source and a valid JSON object for inputs. Saving checks TypeScript before publication.",
+      };
+    }
+  }, [draft, run]);
+
+  useEffect(() => {
+    if (!hasUnsaved) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [hasUnsaved]);
+
+  function editFields(patch: Partial<Pick<Draft, "text" | "inputText">>) {
+    if (!run) return;
+    setDrafts((previous) => {
+      const cached = previous[run.id];
+      const current = cached && changed(cached) ? cached : fromRun(run);
+      return { ...previous, [run.id]: { ...current, ...patch } };
+    });
+  }
+
+  return {
+    ...parsed,
+    text: draft?.text ?? "",
+    inputText: draft?.inputText ?? "{}",
+    revision: draft?.revision,
+    dirty: !!draft && changed(draft),
+    stale: !!run && !!draft && draft.revision !== run.revision,
     edit(text: string) {
-      if (run.value && draft.value) {
-        drafts.value = {
-          ...drafts.value,
-          [run.value.id]: { ...draft.value, text },
-        };
-      }
+      editFields({ text });
     },
     editInput(inputText: string) {
-      if (run.value && draft.value)
-        drafts.value = {
-          ...drafts.value,
-          [run.value.id]: { ...draft.value, inputText },
-        };
+      editFields({ inputText });
     },
     saved(updated: WorkflowRun) {
-      drafts.value = { ...drafts.value, [updated.id]: fromRun(updated) };
+      setDrafts((previous) => ({ ...previous, [updated.id]: fromRun(updated) }));
     },
     reset() {
-      if (run.value) {
-        drafts.value = { ...drafts.value, [run.value.id]: fromRun(run.value) };
-      }
+      if (run) setDrafts((previous) => ({ ...previous, [run.id]: fromRun(run) }));
     },
-  }));
+  };
 }
-
-export type PlanDraft = ReturnType<typeof useDraft>["value"];

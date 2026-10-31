@@ -75,7 +75,7 @@ The current library stays usable during generation. Setup publishes the complete
 
 Managed writes through `ctx.writeFile` and AI file tools journal the original content before publishing a change. With recovery enabled, failed, retried, cancelled, or interrupted attempts restore their own managed writes and remove files they created. Passing attempts retain their changes. A recovery status of `committed` means the journal accepted those writes; it does not mean a Git commit was created.
 
-Recovery compares hashes before restoring. If manual edits or command effects changed a tracked file, it reports a conflict rather than overwriting it. Parallel managed writes also retain ownership claims so one attempt cannot roll back another's work.
+Recovery compares hashes before restoring. If manual edits or command effects changed a tracked file, it reports a conflict rather than overwriting it. Parallel managed writes also retain ownership claims so one attempt cannot roll back another's work. Claims use physical project paths across restarts, so opening a project through a symbolic-link alias does not bypass ownership; successful commit or rollback releases the attempt's claims.
 
 To resolve a conflict:
 
@@ -127,6 +127,8 @@ New drafts archive their compiled code and SDK manifest by content hash. Active 
 
 Archive integrity and SDK compatibility are checked before a worker starts. Missing/corrupt bundles or an incompatible SDK require restoring the archive or running a compatible application version. Arbitrary SDK/activity migrations are not automatic.
 
+Temporal SDK upgrades require a clean bundle rebuild: SDK 1.25.0 checks the generated bundle's version annotation and requires the bundle and worker to use the exact same SDK version. Do not reuse an older `dist/` directory or edit archived manifests to bypass this check. Before upgrading a project with active, paused, or interrupted runs, finish or cancel them using the compatible application version; otherwise retain that runtime to settle those runs. Back up the project before switching versions.
+
 Approval first persists a pending start receipt. If a crash occurs before Temporal accepts the start and no execution exists, startup can restore the unstarted draft for review. A confirmed execution with missing history is different and requires restoring its history.
 
 ## Troubleshooting
@@ -155,4 +157,4 @@ The web server and managed Temporal development service bind locally. They are s
 
 AI and command tools have the server user's access. Role instructions do not impose an OS sandbox. Explicit parallel composition exists, but automatic worktree/container isolation, remote sandbox workers, and full rollback of shell/external effects do not.
 
-On Linux, a verified managed Temporal process left after SIGKILL can be adopted on restart. On macOS, a still-running orphan may require reconnecting to the printed address or stopping it before restarting. External Temporal address/namespace selection is supported; Temporal Cloud TLS/API-key onboarding is not implemented.
+On Linux and macOS, a verified managed Temporal process left after SIGKILL is adopted on restart. Recovery checks the executable and exact project database, loopback address, and port arguments before reusing or stopping a saved PID; a live PID whose ownership cannot be verified still blocks startup. External Temporal address/namespace selection is supported; Temporal Cloud TLS/API-key onboarding is not implemented.

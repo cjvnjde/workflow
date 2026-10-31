@@ -94,7 +94,7 @@ test("cancelling parallel attempts restores every active managed edit and preser
   await engine.cancel(draft.id);
   await engine.waitForIdle();
   const run = engine.get(draft.id);
-  assert.equal(run.status, "cancelled", run.error);
+  assert.equal(run.status, "cancelled", run.error ?? "");
   assert.deepEqual(aborted, new Set(["a", "b"]));
   assert.deepEqual(run.activeNodes, []);
   assert.equal(await readFile(path.join(project, "a.txt"), "utf8"), "original-a");
@@ -165,12 +165,9 @@ test("restart resumes only the interrupted parallel sibling and retains every at
   assert.equal(restarted.get(draft.id).usage?.requests, 2);
 
   await restarted.resume(draft.id);
-  await until(
-    () => restarted.get(draft.id).status === "completed",
-    "Retry should finish without replaying its sibling",
-  );
   await restarted.waitForIdle();
   const run = restarted.get(draft.id);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.deepEqual(calls.toSorted(), ["a:1", "b:1", "b:2"]);
   assert.deepEqual(run.visits, { a: 1, b: 2 });
   assert.equal(run.usage?.requests, 3);

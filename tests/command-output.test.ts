@@ -210,7 +210,7 @@ test("durable direct file and command effects use the injected environment", asy
   await engine.approve(draft.id);
   await waitForRun(() => engine.get(draft.id), { signal: AbortSignal.timeout(20000) });
   const run = engine.get(draft.id);
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   assert.deepEqual(JSON.parse(run.artifacts.work!.data!), {
     text: "retained remotely",
     output: "virtual output",

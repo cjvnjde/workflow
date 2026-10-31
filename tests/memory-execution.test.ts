@@ -35,7 +35,7 @@ test("ordinary execution collects only when enabled and deletion stays effective
     for (let i = 0; i < 750; i++) {
       const run = app.getRun(draft.id);
       if (["completed", "failed", "cancelled", "interrupted"].includes(run.status)) {
-        assert.equal(run.status, "completed", run.error);
+        assert.equal(run.status, "completed", run.error ?? "");
         return run;
       }
       await Bun.sleep(20);

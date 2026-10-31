@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { atomicWrite } from "../../infrastructure/atomic-file.js";
@@ -28,7 +28,13 @@ export type FileSnapshot = { content: Buffer | null; mode: number };
 export class FileClaims {
   private owners = new Map<string, Set<string>>();
   private queue = Promise.resolve();
+  private canonicalProject?: string;
   constructor(private readonly project: string) {}
+  private async projectRoot() {
+    // Live writes use absolute physical paths; restored journal entries can be
+    // relative. Resolve both against the same physical root, even through aliases.
+    return (this.canonicalProject ??= await realpath(this.project));
+  }
   private serial<T>(action: () => Promise<T>): Promise<T> {
     const pending = this.queue.then(action);
     this.queue = pending.then(
@@ -39,8 +45,9 @@ export class FileClaims {
   }
   restore(owner: string, paths: string[]) {
     return this.serial(async () => {
+      const project = await this.projectRoot();
       for (const filename of paths) {
-        const key = path.resolve(this.project, filename);
+        const key = path.resolve(project, filename);
         const existing = this.owners.get(key) ?? new Set<string>();
         // Historical conflicts must not prevent the whole project from loading.
         // Keep all claims so new writes remain blocked until recovery resolves them.
@@ -51,7 +58,7 @@ export class FileClaims {
   }
   write<T>(owner: string, filename: string, action: () => Promise<T>) {
     return this.serial(async () => {
-      const key = path.resolve(this.project, filename);
+      const key = path.resolve(await this.projectRoot(), filename);
       const existing = this.owners.get(key);
       if (existing && [...existing].some((held) => held !== owner))
         throw new Error(
@@ -66,14 +73,13 @@ export class FileClaims {
     action: (contested: (filename: string) => boolean) => Promise<RecoveryResult>,
   ) {
     return this.serial(async () => {
+      const project = await this.projectRoot();
       const contested = new Set(
         [...this.owners]
           .filter(([, held]) => held.has(owner) && held.size > 1)
           .map(([filename]) => filename),
       );
-      const result = await action((filename) =>
-        contested.has(path.resolve(this.project, filename)),
-      );
+      const result = await action((filename) => contested.has(path.resolve(project, filename)));
       if (result.status !== "conflict")
         for (const [filename, held] of this.owners) {
           held.delete(owner);

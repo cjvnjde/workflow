@@ -133,7 +133,7 @@ test("a failed stage resumes after host restart without repeating accepted stage
   fail = false;
   await restored.resume(started.id, { revision: restored.get(started.id).revision });
   const done = await restored.wait(started.id);
-  assert.equal(done.status, "completed", done.error);
+  assert.equal(done.status, "completed", done.error ?? "");
   assert.equal(done.usageScopeId, started.usageScopeId);
   assert.deepEqual(calls, ["profiles", "cases", "cases", "blocks"]);
   assert.equal((await restored.completed())?.jobId, started.id);

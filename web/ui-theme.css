@@ -1,6 +1,6 @@
-@scope (.legacy-vue-app) to (.shadcn-theme) {
+@scope (.workflow-workspace) to (.shadcn-theme) {
   /* Shared visual primitives. Layout and interaction rules live in styles.css. */
-  /* Keep legacy primitives inside Vue islands during the React migration. */
+  /* Workspace primitives remain independent of neutral composer controls. */
   :scope {
     --ui-edge: color-mix(in srgb, var(--ctp-text) 10%, transparent);
     --ui-control-edge: color-mix(in srgb, var(--ctp-text) 18%, transparent);

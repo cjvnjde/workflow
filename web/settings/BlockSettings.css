@@ -1,0 +1,10 @@
+.block-settings .block-code-help {
+  margin-top: 18px;
+}
+.block-settings .block-code-card .editor-actions > strong {
+  margin-right: auto;
+  font-size: 12px;
+}
+.block-settings .block-code-help code {
+  overflow-wrap: anywhere;
+}

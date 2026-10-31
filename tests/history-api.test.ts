@@ -22,7 +22,7 @@ test("history and output APIs preserve snapshots and scope transcripts to a reco
   });
   await app.approve(draft.id, draft.revision);
   const run = await waitForRun(() => app.getRun(draft.id), { signal: AbortSignal.timeout(15000) });
-  assert.equal(run.status, "completed", run.error);
+  assert.equal(run.status, "completed", run.error ?? "");
   const snapshot = await client.execution(run.id);
   const history = await client.history(run.id, { asOf: snapshot.asOf, limit: 500 });
   assert.equal(history.asOf, snapshot.asOf);

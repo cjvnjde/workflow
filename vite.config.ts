@@ -1,10 +1,17 @@
 import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import vue from "@vitejs/plugin-vue";
+import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import babel from "@rolldown/plugin-babel";
 
 export default defineConfig({
-  plugins: [vue(), react(), tailwindcss()],
+  plugins: [
+    react(),
+    babel({
+      include: /[/\\]web[/\\].*\.[jt]sx?$/,
+      presets: [reactCompilerPreset({ target: "19" })],
+    }),
+    tailwindcss(),
+  ],
   root: "web",
   build: { outDir: "../dist/web", emptyOutDir: true },
   // Keep client modules such as /api.ts in Vite; only API routes go to Fastify.

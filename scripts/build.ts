@@ -3,7 +3,6 @@ import { chmod, readdir, rm, writeFile } from "node:fs/promises";
 import { bundleWorkflowCode, DefaultLogger } from "@temporalio/worker";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
 import { entrypoints } from "./entrypoints.js";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -29,24 +28,30 @@ const publicNames = [
   "web",
   "terminal",
 ] as const;
-const declarations = ts.createProgram(
-  publicNames.map((name) => path.join(root, "src", entrypoints[name])),
-  {
-    declaration: true,
-    emitDeclarationOnly: true,
-    outDir: dist,
-    rootDir: path.join(root, "src"),
-    skipLibCheck: true,
-    target: ts.ScriptTarget.ES2023,
-    module: ts.ModuleKind.ESNext,
-    moduleResolution: ts.ModuleResolutionKind.Bundler,
-    strict: true,
-    types: ["bun", "node"],
-    esModuleInterop: true,
-  },
+const nativeTsc = fileURLToPath(
+  new URL("./bin/tsc", import.meta.resolve("@typescript/native/package.json")),
 );
-if (declarations.emit().emitSkipped)
-  throw new Error("Could not generate workflow SDK declarations");
+const declarationArgs = [
+  "--ignoreConfig",
+  "--declaration",
+  "--emitDeclarationOnly",
+  "--outDir",
+  dist,
+  "--rootDir",
+  path.join(root, "src"),
+  "--skipLibCheck",
+  "--target",
+  "ES2023",
+  "--module",
+  "ESNext",
+  "--moduleResolution",
+  "Bundler",
+  "--strict",
+  "--types",
+  "bun,node",
+  ...publicNames.map((name) => path.join(root, "src", entrypoints[name])),
+];
+await $`${process.execPath} ${nativeTsc} ${declarationArgs}`.cwd(root);
 for (const name of publicNames) {
   const module = entrypoints[name].replace(/\.ts$/, ".js");
   await writeFile(path.join(dist, `${name}.d.ts`), `export * from "./${module}";\n`);

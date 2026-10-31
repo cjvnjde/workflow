@@ -1,6 +1,6 @@
-import { describeActivity } from "../features/execution/activity.js";
-import { onMounted, onScopeDispose, shallowRef } from "vue";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { z } from "zod";
+import { describeActivity } from "../features/execution/activity.js";
 import {
   eventSchema,
   runSchema,
@@ -10,21 +10,21 @@ import {
 import { client, projectSchema, request, runListSchema } from "../shared/api.js";
 import { mergeEvents, mergeRuns, newerRun, type RunList } from "../features/execution/run-state.js";
 
-const refreshKinds = new Set([
-  "draft",
-  "approved",
-  "node_start",
-  "node_end",
-  "group_state",
-  "run_end",
-  "rejected",
-  "paused",
-  "resumed",
-  "interrupted",
-  "recovery",
-  "usage",
-  "run_deleted",
-]);
+const refreshKinds: Record<string, true> = {
+  draft: true,
+  approved: true,
+  node_start: true,
+  node_end: true,
+  group_state: true,
+  run_end: true,
+  rejected: true,
+  paused: true,
+  resumed: true,
+  interrupted: true,
+  recovery: true,
+  usage: true,
+  run_deleted: true,
+};
 export type WorkflowNotice = {
   id: string;
   runId: string;
@@ -33,232 +33,231 @@ export type WorkflowNotice = {
   time: string;
   read: boolean;
 };
-export type TaskStream = {
-  activity: string;
-  text: string;
-  kind: string;
-  time: string;
+export type TaskStream = { activity: string; text: string; kind: string; time: string };
+
+type WorkflowSnapshot = {
+  project: z.infer<typeof projectSchema> | undefined;
+  runs: RunList;
+  selectedId: string | undefined;
+  run: WorkflowRun | undefined;
+  events: RunEvent[];
+  usageRevision: number;
+  setupRevision: number;
+  liveText: string;
+  liveTextByNode: Record<string, string>;
+  coordinatorText: string;
+  coordinatorActivity: string;
+  connected: boolean;
+  error: string;
+  taskStreams: Record<string, TaskStream>;
+  notices: WorkflowNotice[];
 };
 
-/** One event stream per application; refreshes are coalesced and revision guarded. */
-export function useWorkflowData() {
-  const project = shallowRef<z.infer<typeof projectSchema>>();
-  const runs = shallowRef<RunList>([]);
-  const selectedId = shallowRef<string>();
-  const run = shallowRef<WorkflowRun>();
-  const events = shallowRef<RunEvent[]>([]);
-  const usageRevision = shallowRef(0);
-  const setupRevision = shallowRef(0);
-  const liveText = shallowRef("");
-  const liveTextByNode = shallowRef<Record<string, string>>({});
-  const coordinatorText = shallowRef("");
-  const coordinatorActivity = shallowRef("");
-  const connected = shallowRef(false);
-  const error = shallowRef("");
-  const taskStreams = shallowRef<Record<string, TaskStream>>({});
-  const notices = shallowRef<WorkflowNotice[]>([]);
-  const stepSummaries = new Map<string, string>();
-  function markNoticesRead() {
-    notices.value = notices.value.map((item) => ({ ...item, read: true }));
-  }
-  const controller = new AbortController();
-  const options = { signal: controller.signal };
-  let source: ReturnType<typeof client.subscribe> | undefined;
-  let running = false;
-  let pending = false;
-  let pendingEvents = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let loadError = "";
-  const report = (failure: unknown) => {
-    if (!controller.signal.aborted) {
-      error.value = failure instanceof Error ? failure.message : String(failure);
-      loadError = error.value;
-    }
+function createWorkflowStore(initialId?: string) {
+  let snapshot: WorkflowSnapshot = {
+    project: undefined,
+    runs: [],
+    selectedId: initialId,
+    run: undefined,
+    events: [],
+    usageRevision: 0,
+    setupRevision: 0,
+    liveText: "",
+    liveTextByNode: {},
+    coordinatorText: "",
+    coordinatorActivity: "",
+    connected: false,
+    error: "",
+    taskStreams: {},
+    notices: [],
   };
-
-  function selectRun(id?: string) {
-    if (id === selectedId.value) {
-      return;
-    }
-    selectedId.value = id;
-    run.value = undefined;
-    events.value = [];
-    liveText.value = "";
-    liveTextByNode.value = {};
-    schedule(true);
+  const listeners = new Set<() => void>();
+  const stepSummaries = new Map<string, string>();
+  let controller: AbortController | undefined;
+  let scheduleRefresh: ((includeEvents: boolean) => void) | undefined;
+  let loadError = "";
+  function update(patch: Partial<WorkflowSnapshot>) {
+    snapshot = { ...snapshot, ...patch };
+    for (const listener of listeners) listener();
   }
   function applyRun(loaded: WorkflowRun) {
-    run.value = newerRun(run.value, loaded, selectedId.value);
     const { id, status, mode, createdAt, updatedAt, revision, cursor, deletedAt } = loaded;
-    runs.value = mergeRuns(runs.value, [
-      {
-        id,
-        status,
-        mode,
-        createdAt,
-        updatedAt,
-        revision,
-        cursor,
-        deletedAt,
-        title: loaded.plan.title,
-        task: loaded.plan.task,
-      },
-    ]);
+    update({
+      run: newerRun(snapshot.run, loaded, snapshot.selectedId),
+      runs: mergeRuns(snapshot.runs, [
+        {
+          id,
+          status,
+          mode,
+          createdAt,
+          updatedAt,
+          revision,
+          cursor,
+          deletedAt,
+          title: loaded.plan.title,
+          task: loaded.plan.task,
+        },
+      ]),
+    });
   }
   async function refreshRuns() {
-    const loaded = await request("/api/runs", runListSchema, options);
-    if (!controller.signal.aborted) {
-      runs.value = mergeRuns(runs.value, loaded);
-    }
+    const signal = controller?.signal;
+    const loaded = await request("/api/runs", runListSchema, { signal });
+    if (!signal?.aborted) update({ runs: mergeRuns(snapshot.runs, loaded) });
   }
   async function refreshProject() {
-    const loaded = await request("/api/project", projectSchema, options);
-    if (!controller.signal.aborted) {
-      project.value = loaded;
-      if (error.value === loadError) error.value = "";
+    const signal = controller?.signal;
+    const loaded = await request("/api/project", projectSchema, { signal });
+    if (!signal?.aborted) {
+      update({ project: loaded, ...(snapshot.error === loadError ? { error: "" } : {}) });
     }
   }
-  async function refresh() {
-    timer = undefined;
-    if (controller.signal.aborted || running) {
-      return;
+  function start() {
+    const lifetime = new AbortController();
+    controller = lifetime;
+    const options = { signal: lifetime.signal };
+    let running = false;
+    let pending = false;
+    let pendingEvents = false;
+    let timer: number | undefined;
+    function report(failure: unknown) {
+      if (lifetime.signal.aborted) return;
+      loadError = failure instanceof Error ? failure.message : String(failure);
+      update({ error: loadError });
     }
-    running = true;
-    const id = selectedId.value;
-    const includeEvents = pendingEvents;
-    pending = false;
-    pendingEvents = false;
-    const [list, detail, history] = await Promise.allSettled([
-      request("/api/runs", runListSchema, options),
-      id ? request(`/api/runs/${id}`, runSchema, options) : Promise.resolve(undefined),
-      id && includeEvents
-        ? request(`/api/runs/${id}/events`, z.array(eventSchema), options)
-        : Promise.resolve(undefined),
-    ]);
-    if (!controller.signal.aborted) {
-      if (
-        [list, detail, history].every((result) => result.status === "fulfilled") &&
-        error.value === loadError
-      )
-        error.value = "";
-      if (list.status === "fulfilled") {
-        runs.value = mergeRuns(runs.value, list.value);
-      } else {
-        report(list.reason);
+    async function refresh() {
+      timer = undefined;
+      if (lifetime.signal.aborted || running) return;
+      running = true;
+      const id = snapshot.selectedId;
+      const includeEvents = pendingEvents;
+      pending = false;
+      pendingEvents = false;
+      const [list, detail, history] = await Promise.allSettled([
+        request("/api/runs", runListSchema, options),
+        id ? request(`/api/runs/${id}`, runSchema, options) : Promise.resolve(undefined),
+        id && includeEvents
+          ? request(`/api/runs/${id}/events`, z.array(eventSchema), options)
+          : Promise.resolve(undefined),
+      ]);
+      if (!lifetime.signal.aborted) {
+        if (
+          [list, detail, history].every((result) => result.status === "fulfilled") &&
+          snapshot.error === loadError
+        )
+          update({ error: "" });
+        if (list.status === "fulfilled") update({ runs: mergeRuns(snapshot.runs, list.value) });
+        else report(list.reason);
+        if (detail.status === "fulfilled") {
+          if (detail.value) applyRun(detail.value);
+        } else if (id === snapshot.selectedId) report(detail.reason);
+        if (history.status === "fulfilled") {
+          if (history.value && id === snapshot.selectedId) {
+            update({ events: mergeEvents(snapshot.events, history.value) });
+          }
+        } else if (id === snapshot.selectedId) report(history.reason);
       }
-      if (detail.status === "fulfilled") {
-        if (detail.value) {
-          applyRun(detail.value);
-        }
-      } else if (id === selectedId.value) {
-        report(detail.reason);
-      }
-      if (history.status === "fulfilled") {
-        if (history.value && id === selectedId.value) {
-          events.value = mergeEvents(events.value, history.value);
-        }
-      } else if (id === selectedId.value) {
-        report(history.reason);
-      }
+      running = false;
+      if (!lifetime.signal.aborted && pending) timer = window.setTimeout(() => void refresh(), 80);
     }
-    running = false;
-    if (!controller.signal.aborted && pending) {
-      timer = setTimeout(() => {
-        void refresh();
-      }, 80);
+    function schedule(includeEvents: boolean) {
+      pending = true;
+      pendingEvents ||= includeEvents;
+      if (!running && timer === undefined) timer = window.setTimeout(() => void refresh(), 80);
     }
-  }
-  function schedule(includeEvents: boolean) {
-    pending = true;
-    pendingEvents ||= includeEvents;
-    if (!running && timer === undefined) {
-      timer = setTimeout(() => {
-        void refresh();
-      }, 80);
-    }
-  }
-  onMounted(() => {
+    scheduleRefresh = schedule;
     void refreshProject().catch(report);
     void refreshRuns().catch(report);
-    source = client.subscribe(
+    const source = client.subscribe(
       (event) => {
-        if (controller.signal.aborted) return;
+        if (lifetime.signal.aborted) return;
         if (event.kind === "setup_state") {
-          setupRevision.value++;
-          usageRevision.value++;
+          update({
+            setupRevision: snapshot.setupRevision + 1,
+            usageRevision: snapshot.usageRevision + 1,
+          });
           return;
         }
-        if (["usage", "model_session_end", "task_state", "run_end"].includes(event.kind))
-          usageRevision.value++;
+        if (["usage", "model_session_end", "task_state", "run_end"].includes(event.kind)) {
+          update({ usageRevision: snapshot.usageRevision + 1 });
+        }
         if (event.kind === "run_deleted") {
-          notices.value = notices.value.filter((item) => item.runId !== event.runId);
+          update({ notices: snapshot.notices.filter((item) => item.runId !== event.runId) });
           stepSummaries.delete(event.runId);
         }
-        if (event.kind === "node_end")
+        if (event.kind === "node_end") {
           stepSummaries.set(event.runId, event.message.split("\n").slice(1).join("\n"));
+        }
         if (
           ["run_end", "interrupted", "paused"].includes(event.kind) &&
-          !notices.value.some((item) => item.id === event.id)
+          !snapshot.notices.some((item) => item.id === event.id)
         ) {
-          const title = runs.value.find((item) => item.id === event.runId)?.title ?? "Workflow";
-          notices.value = [
-            {
-              id: event.id,
-              runId: event.runId,
-              title,
-              time: event.time,
-              read: false,
-              message: `${event.message}${stepSummaries.get(event.runId) ? ` · ${stepSummaries.get(event.runId)}` : ""}`,
-            },
-            ...notices.value,
-          ].slice(0, 30);
+          const title = snapshot.runs.find((item) => item.id === event.runId)?.title ?? "Workflow";
+          const summary = stepSummaries.get(event.runId);
+          update({
+            notices: [
+              {
+                id: event.id,
+                runId: event.runId,
+                title,
+                time: event.time,
+                read: false,
+                message: `${event.message}${summary ? ` · ${summary}` : ""}`,
+              },
+              ...snapshot.notices,
+            ].slice(0, 30),
+          });
         }
         if (event.runId.startsWith("task:")) {
           const id = event.runId.slice(5);
-          const previous = taskStreams.value[id];
-          taskStreams.value = {
-            ...taskStreams.value,
-            [id]: {
-              activity:
-                event.kind === "text_delta"
-                  ? (previous?.activity ?? "Understanding your request…")
-                  : describeActivity(event).preview,
-              text:
-                event.kind === "text_delta"
-                  ? ((previous?.text ?? "") + event.message).slice(-8000)
-                  : event.kind === "agent_message"
-                    ? event.message
-                    : (previous?.text ?? ""),
-              kind: event.kind === "text_delta" ? (previous?.kind ?? "planning") : event.kind,
-              time: event.time,
+          const previous = snapshot.taskStreams[id];
+          update({
+            taskStreams: {
+              ...snapshot.taskStreams,
+              [id]: {
+                activity:
+                  event.kind === "text_delta"
+                    ? (previous?.activity ?? "Understanding your request…")
+                    : describeActivity(event).preview,
+                text:
+                  event.kind === "text_delta"
+                    ? ((previous?.text ?? "") + event.message).slice(-8000)
+                    : event.kind === "agent_message"
+                      ? event.message
+                      : (previous?.text ?? ""),
+                kind: event.kind === "text_delta" ? (previous?.kind ?? "planning") : event.kind,
+                time: event.time,
+              },
             },
-          };
-          if (event.kind === "task_state") {
-            schedule(false);
-          }
+          });
+          if (event.kind === "task_state") schedule(false);
           return;
         }
         if (event.runId === "coordinator") {
           if (event.kind === "text_delta") {
-            coordinatorText.value = (coordinatorText.value + event.message).slice(-8000);
+            update({ coordinatorText: (snapshot.coordinatorText + event.message).slice(-8000) });
           } else {
-            coordinatorActivity.value = describeActivity(event).preview.slice(0, 2000);
-            if (event.kind === "agent_message") {
-              coordinatorText.value = event.message.slice(-8000);
-            }
+            update({
+              coordinatorActivity: describeActivity(event).preview.slice(0, 2000),
+              ...(event.kind === "agent_message"
+                ? { coordinatorText: event.message.slice(-8000) }
+                : {}),
+            });
           }
           return;
         }
-        if (event.runId === selectedId.value) {
+        if (event.runId === snapshot.selectedId) {
           if (event.kind === "text_delta") {
             if (event.nodeId)
-              liveTextByNode.value = {
-                ...liveTextByNode.value,
-                [event.nodeId]: ((liveTextByNode.value[event.nodeId] ?? "") + event.message).slice(
-                  -16_000,
-                ),
-              };
-            else liveText.value = (liveText.value + event.message).slice(-16_000);
+              update({
+                liveTextByNode: {
+                  ...snapshot.liveTextByNode,
+                  [event.nodeId]: (
+                    (snapshot.liveTextByNode[event.nodeId] ?? "") + event.message
+                  ).slice(-16_000),
+                },
+              });
+            else update({ liveText: (snapshot.liveText + event.message).slice(-16_000) });
             return;
           }
           if (
@@ -266,59 +265,70 @@ export function useWorkflowData() {
               event.kind,
             )
           ) {
-            if (event.kind === "run_end") {
-              liveText.value = "";
-              liveTextByNode.value = {};
-            } else if (event.nodeId) {
-              const next = { ...liveTextByNode.value };
+            if (event.kind === "run_end") update({ liveText: "", liveTextByNode: {} });
+            else if (event.nodeId) {
+              const next = { ...snapshot.liveTextByNode };
               delete next[event.nodeId];
-              liveTextByNode.value = next;
-            } else liveText.value = "";
+              update({ liveTextByNode: next });
+            } else update({ liveText: "" });
           }
-          events.value = mergeEvents(events.value, [event]);
+          update({ events: mergeEvents(snapshot.events, [event]) });
         }
-        if (refreshKinds.has(event.kind)) {
-          schedule(false);
-        }
+        if (refreshKinds[event.kind]) schedule(false);
       },
       {
-        signal: controller.signal,
+        signal: lifetime.signal,
         onOpen: () => {
-          connected.value = true;
-          if (!project.value) void refreshProject().catch(report);
+          if (lifetime.signal.aborted) return;
+          update({ connected: true });
+          if (!snapshot.project) void refreshProject().catch(report);
           schedule(true);
         },
         onError: () => {
-          connected.value = false;
+          if (!lifetime.signal.aborted) update({ connected: false });
         },
       },
     );
-  });
-  onScopeDispose(() => {
-    controller.abort();
-    source?.close();
-    clearTimeout(timer);
-  });
+    if (snapshot.selectedId) schedule(true);
+    return () => {
+      lifetime.abort();
+      source.close();
+      window.clearTimeout(timer);
+      if (controller === lifetime) {
+        controller = undefined;
+        scheduleRefresh = undefined;
+      }
+    };
+  }
   return {
-    project,
-    runs,
-    selectedId,
-    selectRun,
-    run,
+    getSnapshot: () => snapshot,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    start,
+    selectRun: (id?: string) => {
+      if (id === snapshot.selectedId) return;
+      update({ selectedId: id, run: undefined, events: [], liveText: "", liveTextByNode: {} });
+      scheduleRefresh?.(true);
+    },
     applyRun,
     refreshRuns,
     refreshProject,
-    events,
-    usageRevision,
-    setupRevision,
-    liveText,
-    liveTextByNode,
-    coordinatorText,
-    coordinatorActivity,
-    connected,
-    error,
-    taskStreams,
-    notices,
-    markNoticesRead,
+    setError: (error: string) => update({ error }),
+    setCoordinatorText: (coordinatorText: string) => update({ coordinatorText }),
+    setCoordinatorActivity: (coordinatorActivity: string) => update({ coordinatorActivity }),
+    markNoticesRead: () =>
+      update({ notices: snapshot.notices.map((item) => ({ ...item, read: true })) }),
   };
+}
+
+/** One reconnecting event stream per mounted application, with revision-guarded refreshes. */
+export function useWorkflowData(initialId?: string) {
+  const [store] = useState(() => createWorkflowStore(initialId));
+  const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  useEffect(() => store.start(), [store]);
+  return { ...snapshot, ...store };
 }

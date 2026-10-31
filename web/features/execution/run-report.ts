@@ -119,6 +119,7 @@ export function runReport(run: WorkflowRun, events: RunEvent[]) {
     }
   }
   const modelOverlaps: {
+    id: string;
     first: string;
     second: string;
     seconds: number;
@@ -134,6 +135,7 @@ export function runReport(run: WorkflowRun, events: RunEvent[]) {
         Math.max(Date.parse(a.startedAt), Date.parse(b.startedAt));
       if (ms > 0)
         modelOverlaps.push({
+          id: `${a.id}/${b.id}`,
           first: a.nodeId ?? "session",
           second: b.nodeId ?? "session",
           seconds: ms / 1000,

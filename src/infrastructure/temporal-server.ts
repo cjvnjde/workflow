@@ -1,3 +1,4 @@
+import { dlopen, ptr } from "bun:ffi";
 import { randomUUID } from "node:crypto";
 import { chmod, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
@@ -82,20 +83,78 @@ async function freePort() {
   return address.port;
 }
 
-async function ownsProcess(pid: number, binary: string, database: string) {
-  if (process.platform !== "linux") {
-    return false;
-  }
-  try {
-    const args = (await readFile(`/proc/${pid}/cmdline`, "utf8")).split("\0");
+const darwinInspector =
+  process.platform === "darwin"
+    ? dlopen("/usr/lib/libSystem.B.dylib", {
+        sysctl: {
+          args: ["ptr", "u32", "ptr", "ptr", "ptr", "u64"],
+          returns: "i32",
+        },
+      })
+    : undefined;
 
-    return args[0] === binary && args.includes(database) && args.includes("start-dev");
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return false;
+async function processArguments(pid: number, binary: string) {
+  if (process.platform === "linux") {
+    try {
+      return (await readFile(`/proc/${pid}/cmdline`, "utf8")).split("\0");
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+        return undefined;
+      }
+      throw error;
     }
-    throw error;
   }
+  if (!darwinInspector) {
+    return undefined;
+  }
+  // CTL_KERN / KERN_PROCARGS2 preserves argv boundaries, unlike ps output.
+  const name = new Int32Array([1, 49, pid]);
+  const size = new BigUint64Array(1);
+  if (darwinInspector.symbols.sysctl(ptr(name), name.length, null, ptr(size), null, 0) !== 0) {
+    return undefined;
+  }
+  const buffer = Buffer.alloc(Number(size[0]));
+  if (
+    buffer.length < 4 ||
+    darwinInspector.symbols.sysctl(ptr(name), name.length, ptr(buffer), ptr(size), null, 0) !== 0
+  ) {
+    return undefined;
+  }
+  const length = Number(size[0]);
+  const count = buffer.readInt32LE(0);
+  const executableEnd = buffer.indexOf(0, 4);
+  if (count < 1 || executableEnd < 4 || buffer.toString("utf8", 4, executableEnd) !== binary) {
+    return undefined;
+  }
+  // The kernel puts its executable path and alignment padding before argv.
+  let offset = executableEnd + 1;
+  while (offset < length && buffer[offset] === 0) offset++;
+  const args: string[] = [];
+  for (let index = 0; index < count; index++) {
+    const end = buffer.indexOf(0, offset);
+    if (end < offset || end >= length) return undefined;
+    args.push(buffer.toString("utf8", offset, end));
+    offset = end + 1;
+  }
+
+  return args;
+}
+
+async function ownsProcess(pid: number, binary: string, database: string, port: number) {
+  const args = await processArguments(pid, binary);
+  const option = (name: string, value: string) => {
+    const index = args?.indexOf(name) ?? -1;
+    return index >= 3 && args?.[index + 1] === value;
+  };
+
+  return (
+    args?.[0] === binary &&
+    args[1] === "server" &&
+    args[2] === "start-dev" &&
+    option("--db-filename", database) &&
+    option("--port", String(port)) &&
+    option("--ip", "127.0.0.1")
+  );
 }
 
 export async function startTemporalServer(project: string, namespace: string) {
@@ -113,14 +172,14 @@ export async function startTemporalServer(project: string, namespace: string) {
     }
   }
   const previousBinary = previous?.binary ?? binary;
-  if (previous && (await ownsProcess(previous.pid, previousBinary, database))) {
+  if (previous && (await ownsProcess(previous.pid, previousBinary, database, previous.port))) {
     return {
       address: `127.0.0.1:${previous.port}`,
       stop: async () => {
-        if (await ownsProcess(previous.pid, previousBinary, database)) {
+        if (await ownsProcess(previous.pid, previousBinary, database, previous.port)) {
           process.kill(previous.pid, "SIGTERM");
           const deadline = Date.now() + 5000;
-          while (await ownsProcess(previous.pid, previousBinary, database)) {
+          while (await ownsProcess(previous.pid, previousBinary, database, previous.port)) {
             if (Date.now() > deadline) {
               process.kill(previous.pid, "SIGKILL");
               break;
@@ -132,7 +191,7 @@ export async function startTemporalServer(project: string, namespace: string) {
       },
     };
   }
-  if (previous && process.platform !== "linux") {
+  if (previous) {
     try {
       process.kill(previous.pid, 0);
       throw new Error(

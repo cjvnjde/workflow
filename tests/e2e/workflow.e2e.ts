@@ -140,8 +140,8 @@ test("generated tasks show code blocks and all connections before approval with 
     await page.goto("/");
     await newTask(page, "Preview code graph for a bug before execution");
     await expect(page.getByRole("button", { name: "Workflow", exact: true })).toHaveClass(/active/);
-    await expect(page.locator(".vue-flow__node")).toHaveCount(5);
-    await expect(page.locator(".vue-flow__edge")).toHaveCount(9);
+    await expect(page.locator(".react-flow__node")).toHaveCount(5);
+    await expect(page.locator(".react-flow__edge")).toHaveCount(9);
     const runs = await (await request.get("/api/runs")).json();
     const id = runs.find(
       (run: { task: string }) => run.task === "Preview code graph for a bug before execution",
@@ -168,7 +168,7 @@ test("generated tasks show code blocks and all connections before approval with 
     expect(saved.executionVersion).toBe(before.executionVersion);
     expect(saved.program.input.plan).toEqual(saved.plan);
     await page.getByRole("button", { name: "Workflow", exact: true }).click();
-    await page.locator('.vue-flow__node[data-id="review"]').click();
+    await page.locator('.react-flow__node[data-id="review"]').click();
     await expect(page.locator(".step-inspector")).toContainText("test-model · high");
     await page.screenshot({ path: "/tmp/workflow-planned-code-graph.png", fullPage: true });
     await page.getByRole("button", { name: "Approve & start", exact: true }).click();
@@ -176,7 +176,7 @@ test("generated tasks show code blocks and all connections before approval with 
     await expect(page.locator(".status-pill")).toHaveText("Completed");
     const completed = await (await request.get(`/api/runs/${id}`)).json();
     expect(completed.plan).toEqual(saved.plan);
-    await expect(page.locator(".vue-flow__edge")).toHaveCount(9);
+    await expect(page.locator(".react-flow__edge")).toHaveCount(9);
   } finally {
     await save(original);
     if (!wasConnected)
@@ -234,7 +234,7 @@ export default workflow({name:"Code review",input:z.object({request:z.string()})
   await expect(page.locator(".status-pill")).toHaveText("Completed");
   await expect(page.getByRole("button", { name: "Workflow", exact: true })).toHaveClass(/active/);
   await expect(
-    page.locator(".vue-flow__node").filter({ hasText: "Independent review" }),
+    page.locator(".react-flow__node").filter({ hasText: "Independent review" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Results", exact: true }).click();
   await expect(
@@ -242,7 +242,7 @@ export default workflow({name:"Code review",input:z.object({request:z.string()})
   ).toBeVisible();
   await page.getByRole("button", { name: "Workflow", exact: true }).click();
   await expect(
-    page.locator(".vue-flow__node").filter({ hasText: "Independent review" }),
+    page.locator(".react-flow__node").filter({ hasText: "Independent review" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Editor", exact: true }).click();
   await expect(code).toHaveAttribute("aria-readonly", "true");
@@ -285,8 +285,8 @@ test("a user reviews a bug graph, approves it and sees review feedback return to
   await page.getByLabel("What should we work on?").fill("Fix the empty-input bug");
   await page.getByRole("button", { name: "Start task", exact: true }).click();
   await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
-  await expect(page.locator(".vue-flow__node")).toHaveCount(5);
-  await page.locator(".vue-flow__node[data-id='work']").click();
+  await expect(page.locator(".react-flow__node")).toHaveCount(5);
+  await page.locator(".react-flow__node[data-id='work']").click();
   await page.getByText("Instructions & tools", { exact: true }).click();
   await expect(page.locator(".step-inspector")).toContainText("Full file access, Bash, Git");
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
@@ -297,7 +297,7 @@ test("a user reviews a bug graph, approves it and sees review feedback return to
   await page.getByRole("button", { name: "Show all steps", exact: true }).click();
   await expect(page.locator(".activity")).toContainText("RETRY → work");
   await page.getByRole("button", { name: "Workflow", exact: true }).click();
-  await expect(page.locator(".vue-flow__node[data-id='work']")).toContainText("2/3 visits");
+  await expect(page.locator(".react-flow__node[data-id='work']")).toContainText("2/3 visits");
   await page.getByRole("button", { name: "Artifacts", exact: true }).click();
   await page.getByText("review / feedback", { exact: true }).click();
   await expect(page.locator(".artifact-list")).toContainText("demonstration data");
@@ -351,7 +351,7 @@ test("a user pauses a Temporal workflow, reloads the page, and resumes the remai
   await expect(budget).toHaveText(checkpoint ?? "");
   await page.getByRole("button", { name: "Resume workflow", exact: true }).click();
   await expect(page.locator(".status-pill")).toHaveText("Completed", { timeout: 15_000 });
-  await expect(page.locator(".vue-flow__node[data-id='prepare']")).toContainText(/1\/\d+ visits/);
+  await expect(page.locator(".react-flow__node[data-id='prepare']")).toContainText(/1\/\d+ visits/);
 });
 
 test("a delayed approval response cannot replace a completed workflow with old state", async ({
@@ -651,7 +651,7 @@ test("step controls validate edits, preview the graph and save model and handoff
   await page.getByLabel("Artifact 1", { exact: true }).selectOption("feedback");
   await page.getByLabel("Input alias 1", { exact: true }).fill("previous-feedback");
   await page.getByRole("button", { name: "Workflow", exact: true }).click();
-  await expect(page.locator(".vue-flow__node[data-id='prepare']")).toContainText(
+  await expect(page.locator(".react-flow__node[data-id='prepare']")).toContainText(
     "Prepare a focused change",
   );
   await expect(page.locator(".graph-legend")).toContainText("Unsaved preview");
@@ -975,7 +975,7 @@ test("block form preserves multiline edits and warns before discarding them", as
   await expect(page.getByLabel("Block name", { exact: true })).toHaveValue("Read-only audit");
   await page.getByRole("button", { name: "Save block", exact: true }).click();
   await expect(page.getByText(/Block saved. New workflows/)).toBeVisible();
-  // Vue's mutable edit buffer must stay separate from the saved baseline.
+  // Local edits must stay separate from the saved baseline.
   const blockId = await page.getByLabel("Block ID", { exact: true }).inputValue();
   const instructions = source;
   const savedInstructions = await readCode(instructions);
@@ -1400,7 +1400,7 @@ test("graph blocks can be arranged and keep their positions through execution an
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto("/");
   await newTask(page, "Drag the graph for this bug review");
-  const node = page.locator(".vue-flow__node[data-id='work']");
+  const node = page.locator(".react-flow__node[data-id='work']");
   await expect(node).toBeVisible();
   const before = await node.evaluate((element) => (element as HTMLElement).style.transform);
   const box = await node.boundingBox();
@@ -1414,7 +1414,7 @@ test("graph blocks can be arranged and keep their positions through execution an
     .not.toBe(before);
   const arranged = await node.evaluate((element) => (element as HTMLElement).style.transform);
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
-  await expect(page.locator(".vue-flow__node.active")).toHaveCount(1);
+  await expect(page.locator(".react-flow__node.active")).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Focus active step", exact: true })).toBeVisible();
   await expect(page.locator(".status-pill")).toHaveText("Completed", { timeout: 15_000 });
   await expect
@@ -1635,7 +1635,7 @@ test("expanded workspaces keep graph context, search and draft edits with keyboa
   await page.goto("/");
   await newTask(page, "Fix the expanded workspace fixture bug");
   const normalGraph = page.locator(".graph-panel");
-  await expect(normalGraph.locator(".vue-flow__node[data-id='work']")).toBeVisible();
+  await expect(normalGraph.locator(".react-flow__node[data-id='work']")).toBeVisible();
   const originalHeight = (await normalGraph.boundingBox())!.height;
   await page.getByRole("button", { name: "Expand workspace", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Expanded workflow workspace", exact: true });
@@ -1645,12 +1645,14 @@ test("expanded workspaces keep graph context, search and draft edits with keyboa
     originalHeight + 150,
   );
   await dialog.getByRole("button", { name: "Fit workflow", exact: true }).click();
-  await dialog.locator(".vue-flow__node[data-id='work']").click();
+  await dialog.locator(".react-flow__node[data-id='work']").click();
   await expect(dialog.locator(".step-inspector")).toBeVisible();
   await expect
     .poll(async () => {
       const panel = (await dialog.locator(".graph-panel").boundingBox())!;
-      const terminal = (await dialog.locator(".vue-flow__node[data-id='$failed']").boundingBox())!;
+      const terminal = (await dialog
+        .locator(".react-flow__node[data-id='$failed']")
+        .boundingBox())!;
       return terminal.x >= panel.x && terminal.x + terminal.width <= panel.x + panel.width;
     })
     .toBe(true);
@@ -2224,7 +2226,7 @@ repeatUntil("repair",{body:parallel([step("d",job),step("e",job)]),until:()=>tru
   await page.goto(`/#run=${run.id}`);
   await page.getByRole("button", { name: "Expand workspace", exact: true }).click();
   await expect(page.locator(".workflow-node")).toHaveCount(7);
-  await expect.poll(() => page.locator(".vue-flow__edge-path").count()).toBeGreaterThan(10);
+  await expect.poll(() => page.locator(".react-flow__edge-path").count()).toBeGreaterThan(10);
   await expect
     .poll(() =>
       page.locator(".workflow-graph").evaluate((root) => {
@@ -2232,7 +2234,7 @@ repeatUntil("repair",{body:parallel([step("d",job),step("e",job)]),until:()=>tru
           el.getBoundingClientRect(),
         );
         let collisions = 0;
-        for (const path of root.querySelectorAll<SVGPathElement>(".vue-flow__edge-path")) {
+        for (const path of root.querySelectorAll<SVGPathElement>(".react-flow__edge-path")) {
           const matrix = path.getScreenCTM();
           if (!matrix) continue;
           const length = path.getTotalLength();

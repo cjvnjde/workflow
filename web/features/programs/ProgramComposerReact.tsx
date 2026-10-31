@@ -1,9 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import type { Component } from "vue";
+import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import { Input } from "../../components/ui/input.js";
 import { Button } from "../../components/ui/button.js";
 import { programSourceSchema, type ProgramSource } from "../../../src/contracts/index.js";
-import { VueIslandReact } from "../../shared/VueIslandReact.js";
 
 type ProgramComposerProps = {
   onSubmit: (
@@ -34,7 +32,10 @@ export default workflow({
 `;
 const initialInput = '{\n  "request": "Inspect the working tree"\n}';
 
+const CodeEditor = lazy(() => import("../../shared/CodeEditor.js"));
+
 export function ProgramComposerReact({ onSubmit }: ProgramComposerProps) {
+  const editorId = useId();
   const [title, setTitle] = useState("My workflow");
   const [filename, setFilename] = useState("workflow.ts");
   const [source, setSource] = useState(template);
@@ -42,23 +43,11 @@ export function ProgramComposerReact({ onSubmit }: ProgramComposerProps) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
-  const [codeEditor, setCodeEditor] = useState<Component | null>(null);
   const picker = useRef<HTMLInputElement | null>(null);
   const panel = useRef<HTMLDetailsElement | null>(null);
   const controller = useRef<AbortController | null>(null);
 
   useEffect(() => () => controller.current?.abort(), []);
-
-  useEffect(() => {
-    if (!open || codeEditor) return;
-    let cancelled = false;
-    void import("../../shared/CodeEditor.vue").then((module) => {
-      if (!cancelled) setCodeEditor(() => module.default);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, codeEditor]);
 
   function discard() {
     setSource(template);
@@ -164,40 +153,42 @@ export function ProgramComposerReact({ onSubmit }: ProgramComposerProps) {
           </div>
           <div>
             <span className="text-sm font-medium">New workflow TypeScript</span>
-            {codeEditor ? (
-              <VueIslandReact
-                className="mt-2"
-                component={codeEditor}
-                componentProps={{
-                  modelValue: source,
-                  label: "New workflow TypeScript",
-                  readonly: busy,
-                  "onUpdate:modelValue": setSource,
-                }}
-              />
-            ) : (
-              <div className="mt-2 h-48 animate-pulse rounded-md border border-input bg-muted" />
-            )}
+            <div className="mt-2">
+              <Suspense
+                fallback={
+                  <div className="h-48 animate-pulse rounded-md border border-input bg-muted" />
+                }
+              >
+                <CodeEditor
+                  modelValue={source}
+                  id={`${editorId}-source`}
+                  label="New workflow TypeScript"
+                  readonly={busy}
+                  onUpdateModelValue={setSource}
+                />
+              </Suspense>
+            </div>
           </div>
           <div>
             <span className="text-sm font-medium">New workflow inputs (JSON)</span>
-            {codeEditor ? (
-              <VueIslandReact
-                className="mt-2"
-                component={codeEditor}
-                componentProps={{
-                  modelValue: input,
-                  label: "New workflow inputs (JSON)",
-                  language: "json",
-                  minLines: 3,
-                  maxLines: 12,
-                  readonly: busy,
-                  "onUpdate:modelValue": setInput,
-                }}
-              />
-            ) : (
-              <div className="mt-2 h-24 animate-pulse rounded-md border border-input bg-muted" />
-            )}
+            <div className="mt-2">
+              <Suspense
+                fallback={
+                  <div className="h-24 animate-pulse rounded-md border border-input bg-muted" />
+                }
+              >
+                <CodeEditor
+                  modelValue={input}
+                  id={`${editorId}-input`}
+                  label="New workflow inputs (JSON)"
+                  language="json"
+                  minLines={3}
+                  maxLines={12}
+                  readonly={busy}
+                  onUpdateModelValue={setInput}
+                />
+              </Suspense>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button type="button" disabled={busy} onClick={() => void submit()}>
@@ -221,7 +212,7 @@ export function ProgramComposerReact({ onSubmit }: ProgramComposerProps) {
       )}
       {error && (
         <pre
-          className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+          className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm whitespace-pre-wrap wrap-anywhere text-destructive"
           role="alert"
         >
           {error}
