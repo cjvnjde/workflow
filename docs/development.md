@@ -17,6 +17,20 @@ bun run workflow
 
 Run `bun run workflow init` once per checkout to create local `.workflow/` configuration; Git ignores this directory. `bun run workflow` opens the terminal workspace and starts a source host with the hot-reloading web app on the same port as the API (**4310** by default). Use `/web` in the terminal for its browser link, or `bun run workflow --web` to open the browser directly. These commands use real AI when tasks request it; they do not silently substitute demo responses.
 
+### Stale Temporal workflow bundles
+
+Rebuild after updating dependencies, especially `@temporalio/*`. The source CLI still loads generated Temporal workflow bundles from `dist/`; `workflow init` creates project configuration but does not rebuild them.
+
+If startup reports `The provided Workflow Bundle does not contain a Temporal SDK version annotation`, or a bundle SDK version mismatch, stop any running host before rebuilding:
+
+```sh
+bun run workflow stop
+bun run build
+bun run workflow
+```
+
+Keep `.workflow/` intact; deleting project state or rerunning initialization does not repair stale build artifacts. An explicitly supplied `--temporal-workflow-bundle` must also be regenerated with the installed `@temporalio/worker` version.
+
 ### Web hot reload
 
 Source hosts embed Vite's development middleware and HMR WebSocket in the existing HTTP server. The browser, `/api/` routes, and hot reload all use **http://127.0.0.1:4310**, or the port selected with `--port`. No second server, proxy, or frontend command is required.
