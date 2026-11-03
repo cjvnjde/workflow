@@ -35,18 +35,37 @@ import {
   type WorkflowRun,
 } from "../contracts/index.js";
 import { setupSchema } from "../contracts/setup-schema.js";
+import {
+  automationStateSchema,
+  automationSchema,
+  automationJobSchema,
+  automationVersionSchema,
+  saveAutomationSchema,
+  schedulerSettingsSchema,
+  ingestSignalsSchema,
+  automationActionSchema,
+  automationJobActionSchema,
+  type AutomationConfig,
+  type AutomationAction,
+  type AutomationJobAction,
+  type SchedulerSettings,
+  type DiscoveryResult,
+} from "../contracts/automation-schema.js";
 
 export interface RequestOptions {
   method?: string;
   body?: unknown;
   revision?: number;
   signal?: AbortSignal;
+  headers?: HeadersInit;
 }
 export interface ClientOptions {
   /** Origin plus an optional reverse-proxy prefix; empty uses the current origin. */
   baseUrl?: string;
   fetch?: typeof globalThis.fetch;
   headers?: HeadersInit;
+  /** Sent only to the generic signal ingestion endpoint. */
+  signalToken?: string;
 }
 export type SessionReference = { kind: "task" | "run"; id: string };
 export class WorkflowApiError extends Error {
@@ -91,6 +110,7 @@ export class WorkflowClient {
   }
   private headers(options: RequestOptions = {}) {
     const headers = new Headers(this.options.headers);
+    new Headers(options.headers).forEach((value, key) => headers.set(key, value));
     headers.set("x-workflow-client", "1");
     if (options.body !== undefined) headers.set("content-type", "application/json");
     if (options.revision !== undefined) headers.set("if-match", `"${options.revision}"`);
@@ -361,6 +381,61 @@ export class WorkflowClient {
       `/api/trigger-events/${encodeURIComponent(id)}/${action}`,
       triggerJobSchema,
       { method: "POST", body: {} },
+    );
+  }
+  automations(signal?: AbortSignal) {
+    return this.request("/api/automations", automationStateSchema, { signal });
+  }
+  saveAutomation(config: AutomationConfig, id?: string, revision?: number) {
+    return this.request("/api/automations", automationSchema, {
+      method: "POST",
+      body: saveAutomationSchema.parse({ config, id, revision }),
+    });
+  }
+  automationAction(id: string, action: AutomationAction, revision?: number) {
+    return this.request(
+      `/api/automations/${z.string().uuid().parse(id)}/${automationActionSchema.parse(action)}`,
+      z.union([automationSchema, automationJobSchema]),
+      { method: "POST", body: { revision } },
+    );
+  }
+  automationJobAction(id: string, action: AutomationJobAction) {
+    return this.request(
+      `/api/automation-jobs/${z.string().uuid().parse(id)}/${automationJobActionSchema.parse(action)}`,
+      automationJobSchema,
+      { method: "POST", body: {} },
+    );
+  }
+  emitSignals(id: string, value: DiscoveryResult) {
+    return this.request(
+      `/api/automations/${z.string().uuid().parse(id)}/signals`,
+      automationStateSchema,
+      {
+        method: "POST",
+        body: ingestSignalsSchema.parse(value),
+        headers: this.options.signalToken
+          ? { authorization: `Bearer ${this.options.signalToken}` }
+          : undefined,
+      },
+    );
+  }
+  tickAutomations() {
+    return this.request("/api/automations/tick", automationStateSchema, {
+      method: "POST",
+      body: {},
+    });
+  }
+  updateSchedulerSettings(settings: SchedulerSettings) {
+    return this.request("/api/automations/settings", schedulerSettingsSchema, {
+      method: "PUT",
+      body: schedulerSettingsSchema.parse(settings),
+    });
+  }
+  automationVersion(id: string, signal?: AbortSignal) {
+    return this.request(
+      `/api/automation-versions/${z.string().uuid().parse(id)}`,
+      automationVersionSchema,
+      { signal },
     );
   }
   task(id: string, signal?: AbortSignal) {

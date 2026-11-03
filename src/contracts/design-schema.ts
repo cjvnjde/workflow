@@ -91,6 +91,7 @@ export const designPageContextSchema = z
         "capabilities",
         "execution",
         "triggers",
+        "automations",
         "memory",
       ])
       .optional(),

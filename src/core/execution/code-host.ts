@@ -6,6 +6,7 @@ import type { CodeOperation } from "../../contracts/code-schema.js";
 import type { ExecResult } from "../../sdk/workflow-sdk.js";
 import {
   localExecutionEnvironment,
+  createExecutionEnvironment,
   type ExecutionEnvironmentFactory,
 } from "./execution-environment.js";
 import type { FileJournal } from "../storage/recovery.js";
@@ -56,10 +57,11 @@ export async function executeCodeCommand(
       { mode: 0o600 },
     );
     const factory = options.environmentFactory ?? localExecutionEnvironment;
-    const environment = await factory({
+    const environment = await createExecutionEnvironment(factory, {
       project,
       signal,
       journal: options.journal,
+      isolated: !!run.automation,
       outputDirectory: options.outputDirectory,
       onCapture: options.onCapture,
     });

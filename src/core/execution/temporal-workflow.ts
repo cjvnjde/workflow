@@ -26,6 +26,7 @@ import { failureMessage } from "./failure-message.js";
 import { programStep } from "./program-steps.js";
 import { executeCode } from "./code-runtime.js";
 import type { CodeOperation } from "../../contracts/code-schema.js";
+import { boundedJSONSchema } from "../../contracts/automation-signal-schema.js";
 import type { Block, CodeBlock, StepOptions, WorkflowDefinition } from "../../sdk/workflow-sdk.js";
 import { describeFlow } from "../../sdk/composition-sdk.js";
 import { executeFlow, FlowDispatchStopped } from "./composition-runtime.js";
@@ -492,11 +493,15 @@ export async function executeWorkflow(
         return operation;
       };
       let output: unknown;
+      let flowOutput: unknown;
       try {
         output = await scope.run(() =>
           program.flow
             ? executeFlow({
                 recordDecisions: patched("flow-decision-evidence-v1"),
+                completed: (result) => {
+                  flowOutput = result?.data;
+                },
                 flow: program.flow,
                 structure: run.program!.structure!,
                 input,
@@ -542,6 +547,19 @@ export async function executeWorkflow(
         throw error;
       }
       if (output !== undefined) {
+        // Old histories keep their prior display-only return contract on replay.
+        if (patched("workflow-output-value-v1")) {
+          const result = boundedJSONSchema.safeParse(
+            program.flow && flowOutput !== undefined ? flowOutput : output,
+          );
+          // Preserve display-only workflows; machine consumers reject invalid durable data.
+          run.outputValue = result.success ? result.data : undefined;
+          run.outputValueError = result.success
+            ? undefined
+            : result.error.issues.some((issue) => issue.code === "custom")
+              ? "too_large"
+              : "invalid_json";
+        }
         run.output = (
           typeof output === "string"
             ? output

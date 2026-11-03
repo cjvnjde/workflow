@@ -6,16 +6,17 @@ All routine setup is available under **Settings**. Changes apply to future propo
 
 ## Settings sections
 
-| Section                | Use it for                                                                                                                          |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| **Providers & models** | ChatGPT sign-in, provider API keys, connection status, and project defaults.                                                        |
-| **Model profiles**     | Described model choices for planning and execution roles.                                                                           |
-| **Task instructions**  | Shared planning guidance and editable cases such as bug, feature, or investigation.                                                 |
-| **Blocks**             | Reusable TypeScript functions, prompts, model calls, checks, and outputs.                                                           |
-| **Skills & MCP**       | Explicit instruction resources and enabled tool servers.                                                                            |
-| **Execution**          | Approval mode, project instructions, total steps, spending limits, named commands, and expandable project usage.                    |
-| **Triggers (Alpha)**   | Run saved workflows for matching GitHub issues and pull requests.                                                                   |
-| **Memory (Alpha)**     | Enable optional project memory and manage preferences, notes, observations and remembered approaches. [Memory controls](memory.md). |
+| Section                | Use it for                                                                                                                                    |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Providers & models** | ChatGPT sign-in, provider API keys, connection status, and project defaults.                                                                  |
+| **Model profiles**     | Described model choices for planning and execution roles.                                                                                     |
+| **Task instructions**  | Shared planning guidance and editable cases such as bug, feature, or investigation.                                                           |
+| **Blocks**             | Reusable TypeScript functions, prompts, model calls, checks, and outputs.                                                                     |
+| **Skills & MCP**       | Explicit instruction resources and enabled tool servers.                                                                                      |
+| **Execution**          | Approval mode, project instructions, total steps, spending limits, named commands, and expandable project usage.                              |
+| **Automations**        | Explicitly enabled block/workflow schedules, signal routes, scoped execution, durable jobs, approvals, and recovery. [Guide](automations.md). |
+| **Triggers (Alpha)**   | Run saved workflows for matching GitHub issues and pull requests.                                                                             |
+| **Memory (Alpha)**     | Enable optional project memory and manage preferences, notes, observations and remembered approaches. [Memory controls](memory.md).           |
 
 Unsaved forms have discard/cancel controls. Saves carry revisions, so a stale browser cannot silently overwrite newer settings. Save or discard form changes before applying an AI proposal.
 
@@ -134,19 +135,37 @@ An example `.workflow/config.json` with inherited model defaults:
 
 Named commands use argument arrays without shell interpolation. Code blocks interpret `ctx.exec` results themselves. Older agent definitions can have host checks that override an agent's claimed pass when the actual command fails. Test results should guide implementation rather than cause verification to weaken tests.
 
+## Automation scope and credentials
+
+**Settings → Automations** captures a library block or saved workflow plus schedule, inputs, ordered routes, execution policy, and optional output target into an immutable version. It is not provider onboarding. Reuse existing Workflow model profiles, Pi-managed provider connections, skills, MCP definitions, and ordinary command tools. Save disabled, test deliberately, then explicitly enable automatic execution; configured output requires separate approval by default. Later settings edits apply to future snapshots, not admitted jobs.
+
+`execution.environment` contains environment variable **names**, for example `["GH_TOKEN"]`, never credential values. Commands receive those references resolved from the host plus basic OS variables (`PATH`, `HOME`, `USER`, `LOGNAME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TMPDIR`, `TMP`, `TEMP`, `SYSTEMROOT`) and applicable Workflow execution-protocol fields. MCP stdio inherits the scoped environment; an MCP HTTP bearer-token environment reference must be allowed. Model requests continue using existing Workflow-managed provider authentication, not a copied key in automation inputs. Do not put secrets in source, payloads, references, artifacts, or definition JSON; those persist in history.
+
+Automated `ctx.exec` calls reject inline `options.env` values; declare host environment reference names in the captured execution policy instead. For nonsecret command parameters, use correctly quoted arguments or local shell assignments, as in the GitHub example. Never interpolate credentials into command text: command evidence is retained.
+
+`execution.skills` and `mcpServers` select capabilities; model overrides, `maxSteps`, `maxCommands`, `maxModelCalls`, `maxToolCalls`, and `maxCostUsd` bound each captured target. Named `resources` serialize shared external environments independently of Git checkout isolation. A managed local worktree is not a filesystem/network sandbox. A selected command or MCP server can still exercise the host user's access; use the host execution-environment seam when stronger isolation is required.
+
+Scheduler-wide settings have their own revision and are changed with `workflow automation settings settings.json` or `updateSchedulerSettings()`. Per-definition policy controls concurrency, queue size, cooldown, missed runs, overlap, and explicit read-only retry. Spending caps reserve each admitted job's `execution.maxCostUsd`, count stored spending cumulatively, and block capped admission on unpriced usage. They do not promise exact provider billing or a daily reset.
+
+Budgeted automation provider requests also pass a conservative preflight, including retries: full model context window at the highest frozen input/cache price plus full maximum output at the highest output price must fit the remaining run/session cap. Unknown prices reject budgeted calls. The host does not shrink output tokens to fit; a low cap can reject even a short prompt before the request. Choose a smaller model or deliberately increase the cap. Actual recorded usage consumes the balance, not the worst-case reservation. This automation-only safeguard leaves manual-run budgeting unchanged.
+
+External signal intake additionally requires `WORKFLOW_SIGNAL_TOKEN` in the host and submitting CLI environment (or client `signalToken`). Restart a running host to change its inherited environment. Never store that token in a definition; no default token exists. See [automation configuration and security](automations.md).
+
 ## Where settings live
 
-| Location                         | Contents                                                                                                           |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `.workflow/config.json`          | Project instructions, model/coordinator defaults, commands, limits, recovery.                                      |
-| `.workflow/orchestration.json`   | Profiles, task cases, shared planning instructions, skills/MCP, approval preferences.                              |
-| `.workflow/blocks/<id>/block.ts` | Editable TypeScript block source; generated setup and UI-applied code are written here.                            |
-| `.workflow/library.json`         | Active block metadata, source-file references, and a recoverable inline snapshot.                                  |
-| `.workflow/setup.json`           | Completed bootstrap marker and the model used for setup.                                                           |
-| `.workflow/server.json`          | Private running-host discovery receipt; not reusable project configuration.                                        |
-| `.workflow/libraries/`           | Prior library snapshots.                                                                                           |
-| `.workflow/design-chats/`        | Private settings conversations and proposals.                                                                      |
-| `.workflow/usage/`               | Private durable model-session usage, pricing, and task/setup ownership; retained when history entries are removed. |
+| Location                           | Contents                                                                                                               |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `.workflow/config.json`            | Project instructions, model/coordinator defaults, commands, limits, recovery.                                          |
+| `.workflow/orchestration.json`     | Profiles, task cases, shared planning instructions, skills/MCP, approval preferences.                                  |
+| `.workflow/blocks/<id>/block.ts`   | Editable TypeScript block source; generated setup and UI-applied code are written here.                                |
+| `.workflow/library.json`           | Active block metadata, source-file references, and a recoverable inline snapshot.                                      |
+| `.workflow/setup.json`             | Completed bootstrap marker and the model used for setup.                                                               |
+| `.workflow/server.json`            | Private running-host discovery receipt; not reusable project configuration.                                            |
+| `.workflow/libraries/`             | Prior library snapshots.                                                                                               |
+| `.workflow/design-chats/`          | Private settings conversations and proposals.                                                                          |
+| `.workflow/usage/`                 | Private durable model-session usage, pricing, and task/setup ownership; retained when history entries are removed.     |
+| `.workflow/automations/`           | Private SQLite automation definitions/versions, checkpoints, cases, jobs, observations, audit, and scheduler settings. |
+| `.workflow/automation-workspaces/` | Owned execution worktrees; retain dirty/unpublished work and repository Git metadata.                                  |
 
 Reusable project configuration can be version controlled. Generated runs, tasks, attachments, conversations, journals, and Temporal state are private runtime data; initialization adds ignore rules for them. [Operations](operations.md#persistence-and-backups) lists what to back up.
 

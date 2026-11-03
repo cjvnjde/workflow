@@ -14,42 +14,47 @@ Workflow turns a development request into an inspectable TypeScript graph, then 
 
 **Reuse useful work:** [Reusing an approach](reusing-approaches.md) explains the explicit Remember action and how planners load selected block definitions and strategy guidance.
 
-**Unattended GitHub work:** [Triggers](triggers.md) → [Running and recovering workflows](operations.md). Test a saved workflow, then enable issue or PR triggers.
+**Durable unattended work:** [Automations](automations.md) → [Running and recovering workflows](operations.md). Schedule a library block/full workflow or route provider-neutral signals, test disabled, then enable explicitly. Existing [GitHub triggers](triggers.md) retain their legacy behavior and require explicit migration.
 
 **Working on the application:** [Architecture](architecture.md) → [Development](development.md) → [CLI and local API](reference.md).
 
 ## Guides
 
-| Guide                                                           | Covers                                                                                                                         |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| [Concepts and design](concepts.md)                              | The problem Workflow solves; task, case, block, step, workflow, and run; why code, models, and durable execution fit together. |
-| [Getting started](getting-started.md)                           | Installation, project initialization, browser setup, first task, and importing TypeScript.                                     |
-| [Terminal workspace](terminal.md)                               | OpenTUI chat, live activity, graphs, approval, sessions, settings, and provider login.                                         |
-| [Writing workflows](workflows.md)                               | The composition primitives, typed data, conditions, outcomes, loops, parallel scheduling, and older workflow formats.          |
-| [Block contracts and evidence](block-contracts-and-evidence.md) | Single-block testing, enforced ownership roles, selective skills/MCP, decisions and actual model sessions.                     |
-| [Writing blocks](blocks.md)                                     | `block()`, context operations, AI outputs, model overrides, command results, artifacts, and reusable library modules.          |
-| [Execution inspection](execution-inspection.md)                 | Timeline, nested calls, historical activity, exact evidence links, request timing, and full command output.                    |
-| [Shared tools](tools.md)                                        | Typed tools callable by blocks and models, replay rules, frozen implementations, structured activity, and environments.        |
-| [Configuration](configuration.md)                               | Providers, model profiles, task instructions, AI settings chats, skills, MCP, limits, and stored configuration.                |
-| [GitHub triggers](triggers.md)                                  | Persistent polling, event filters, frozen workflows, queues, test drafts, result comments, and background operation.           |
-| [Running and recovering workflows](operations.md)               | Statuses, activity, pause/resume, cancellation, file recovery, version archives, backups, and troubleshooting.                 |
-| [Command and API reference](reference.md)                       | CLI commands, environment variables, HTTP routes, and concurrency headers.                                                     |
-| [Engine and clients](clients.md)                                | Headless execution, terminal control, embedding, shared client, and separate builds.                                           |
-| [Architecture](architecture.md)                                 | The request-to-execution path, responsibilities of Pi and Temporal, persistence, and source map.                               |
-| [Project review](project-review.md)                             | Vision alignment, implemented changes, verification, screenshots, and current boundaries.                                      |
-| [Development](development.md)                                   | Local development, build artifacts, tests, packaging, and how to keep these docs accurate.                                     |
+| Guide                                                           | Covers                                                                                                                             |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| [Concepts and design](concepts.md)                              | The problem Workflow solves; task, case, block, step, workflow, and run; why code, models, and durable execution fit together.     |
+| [Getting started](getting-started.md)                           | Installation, project initialization, browser setup, first task, and importing TypeScript.                                         |
+| [Terminal workspace](terminal.md)                               | OpenTUI chat, live activity, graphs, approval, sessions, settings, and provider login.                                             |
+| [Writing workflows](workflows.md)                               | The composition primitives, typed data, conditions, outcomes, loops, parallel scheduling, and older workflow formats.              |
+| [Block contracts and evidence](block-contracts-and-evidence.md) | Single-block testing, enforced ownership roles, selective skills/MCP, decisions and actual model sessions.                         |
+| [Writing blocks](blocks.md)                                     | `block()`, context operations, AI outputs, model overrides, command results, artifacts, and reusable library modules.              |
+| [Execution inspection](execution-inspection.md)                 | Timeline, nested calls, historical activity, exact evidence links, request timing, and full command output.                        |
+| [Shared tools](tools.md)                                        | Typed tools callable by blocks and models, replay rules, frozen implementations, structured activity, and environments.            |
+| [Configuration](configuration.md)                               | Providers, model profiles, task instructions, AI settings chats, skills, MCP, limits, and stored configuration.                    |
+| [Durable automations](automations.md)                           | Block/workflow targets, schedules, discovery/signals, case revisions, admission, worktrees, budgets, output approval and recovery. |
+| [GitHub triggers](triggers.md)                                  | Persistent polling, event filters, frozen workflows, queues, test drafts, result comments, and background operation.               |
+| [Running and recovering workflows](operations.md)               | Statuses, activity, pause/resume, cancellation, file recovery, version archives, backups, and troubleshooting.                     |
+| [Command and API reference](reference.md)                       | CLI commands, environment variables, HTTP routes, and concurrency headers.                                                         |
+| [Engine and clients](clients.md)                                | Headless execution, terminal control, embedding, shared client, and separate builds.                                               |
+| [Architecture](architecture.md)                                 | The request-to-execution path, responsibilities of Pi and Temporal, persistence, and source map.                                   |
+| [Project review](project-review.md)                             | Vision alignment, implemented changes, verification, screenshots, and current boundaries.                                          |
+| [Development](development.md)                                   | Local development, build artifacts, tests, packaging, and how to keep these docs accurate.                                         |
 
 ## Examples
 
-| File                                                         | Purpose                                                                                                      |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| [composed.ts](../examples/composed.ts)                       | Implementation, deterministic tests, concurrent inspection, a typed approval loop, and a conditional report. |
-| [parallel-handoffs.ts](../examples/parallel-handoffs.ts)     | Two parallel producers with named typed inputs and an inspectable schema transformation; no AI calls.        |
-| [implement-reviewed.ts](../examples/implement-reviewed.ts)   | The supported imperative `run(ctx)` style, with explicit awaited steps.                                      |
-| [scripts-only.ts](../examples/scripts-only.ts)               | Running commands without model calls, including existing script compatibility.                               |
-| [shared-tools.ts](../examples/shared-tools.ts)               | One typed file tool used directly by a block and selected for an AI review.                                  |
-| [github-event-report.ts](../examples/github-event-report.ts) | A trigger workflow that turns an issue/PR input into a report without model calls.                           |
-| [workflow.service](../examples/workflow.service)             | Adaptable systemd user-service unit for keeping a project running.                                           |
+| File                                                             | Purpose                                                                                                                   |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| [composed.ts](../examples/composed.ts)                           | Implementation, deterministic tests, concurrent inspection, a typed approval loop, and a conditional report.              |
+| [parallel-handoffs.ts](../examples/parallel-handoffs.ts)         | Two parallel producers with named typed inputs and an inspectable schema transformation; no AI calls.                     |
+| [implement-reviewed.ts](../examples/implement-reviewed.ts)       | The supported imperative `run(ctx)` style, with explicit awaited steps.                                                   |
+| [scripts-only.ts](../examples/scripts-only.ts)                   | Running commands without model calls, including existing script compatibility.                                            |
+| [shared-tools.ts](../examples/shared-tools.ts)                   | One typed file tool used directly by a block and selected for an AI review.                                               |
+| [github-event-report.ts](../examples/github-event-report.ts)     | A trigger workflow that turns an issue/PR input into a report without model calls.                                        |
+| [automations/bootstrap.ts](../examples/automations/bootstrap.ts) | Creates disabled runnable automation examples against an existing project host; no implicit enablement.                   |
+| [automations/nightly.ts](../examples/automations/nightly.ts)     | Code-only scheduled verification with an explicit project command.                                                        |
+| [automations/fixture.ts](../examples/automations/fixture.ts)     | Offline multi-candidate discovery and handling; bootstrap embeds the JSON fixture in saved input.                         |
+| [automations/github.ts](../examples/automations/github.ts)       | GitHub as user code: discovery, current-revision CI/review continuation, gated publication, and read-only reconciliation. |
+| [workflow.service](../examples/workflow.service)                 | Adaptable systemd user-service unit for keeping a project running.                                                        |
 
 The examples use project tools and, where applicable, configured model profiles. Read their commands and adapt them to your project before approving execution.
 

@@ -104,6 +104,39 @@ test("TypeScript script workflows execute only after approval and freeze importe
   assert.equal(run.blocks.check?.definition.executor?.kind, "script");
 });
 
+test("manual display results remain compatible when they exceed the durable JSON boundary", async (t) => {
+  const { project, library, cleanup } = await fixture(t);
+  const engine = new WorkflowEngine(project, "live", async () => {
+    throw new Error("Display-only workflows must not invoke a model");
+  });
+  cleanup(() => engine.shutdown());
+  await engine.initialize();
+  for (const value of [
+    { expression: '"x".repeat(300_000)', output: "x".repeat(64_000), error: "too_large" },
+    {
+      expression: 'new Date("2026-11-03T12:00:00Z")',
+      output: '```json\n"2026-11-03T12:00:00.000Z"\n```',
+      error: "invalid_json",
+    },
+  ]) {
+    const draft = await engine.createProgram(
+      "Display-only result",
+      "Retain the historical display contract",
+      {
+        source: `import { workflow } from "workflow"; export default workflow({name:"Report", async run(){return ${value.expression};}});`,
+      },
+      library,
+    );
+    await engine.approve(draft.id);
+    await engine.waitForIdle();
+    const run = engine.get(draft.id);
+    assert.equal(run.status, "completed", run.error ?? "");
+    assert.equal(run.output, value.output);
+    assert.equal(run.outputValue, undefined);
+    assert.equal(run.outputValueError, value.error);
+  }
+});
+
 test("cancelling source compilation or draft publication leaves no visible workflow", async (t) => {
   const { project, library, cleanup } = await fixture(t);
   const engine = new WorkflowEngine(project, "live", passingRunner);

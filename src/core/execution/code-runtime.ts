@@ -16,6 +16,7 @@ import { failureMessage } from "./failure-message.js";
 import { toolReference } from "../../sdk/tool-sdk.js";
 import type { WorkflowTool } from "../../sdk/tool-sdk.js";
 import { serializeEvidenceValue, type EvidenceValue } from "../../contracts/evidence-value.js";
+import { workSignalSchema, boundedJSONSchema } from "../../contracts/automation-signal-schema.js";
 
 /** Pure block code runs durably; every host effect is recorded as an activity. */
 export async function executeCode(options: {
@@ -143,6 +144,17 @@ export async function executeCode(options: {
           env: settings?.env,
         }),
       ),
+    emitSignal: async (signal, settings) => {
+      const parsed = workSignalSchema.parse(signal);
+      boundedJSONSchema.parse(parsed);
+      await effect(() =>
+        options.operation({
+          kind: "signal",
+          signal: parsed,
+          automationId: settings?.automationId,
+        }),
+      );
+    },
     readFile: (path) => effect<string>(() => options.operation({ kind: "read", path })),
     writeFile: async (path, content) => {
       await effect(() => options.operation({ kind: "write", path, content }));

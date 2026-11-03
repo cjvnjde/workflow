@@ -1,0 +1,60 @@
+.automation-settings {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+.automation-settings .settings-card,
+.automation-settings .field,
+.automation-settings fieldset,
+.automation-settings .field-grid > * {
+  min-width: 0;
+}
+.automation-settings .field-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+}
+.automation-settings p,
+.automation-settings summary,
+.automation-settings li,
+.automation-settings a {
+  overflow-wrap: anywhere;
+}
+.automation-settings pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  max-height: 30rem;
+  overflow: auto;
+}
+.automation-settings input:not([type="checkbox"]),
+.automation-settings select,
+.automation-json {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.automation-json {
+  font-family: monospace;
+  resize: vertical;
+}
+.automation-actions,
+.automation-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin-block: 0.75rem;
+}
+.automation-settings button {
+  white-space: normal;
+  height: auto;
+  min-height: 2.25rem;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.automation-job {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}

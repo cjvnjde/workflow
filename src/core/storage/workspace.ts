@@ -27,6 +27,7 @@ export class Workspace {
       protect?: ProtectedPaths;
       absoluteJournalPaths?: boolean;
       writeRootOnly?: boolean;
+      readRootOnly?: boolean;
     } = {},
   ) {}
 
@@ -38,6 +39,7 @@ export class Workspace {
       protect?: ProtectedPaths;
       absoluteJournalPaths?: boolean;
       writeRootOnly?: boolean;
+      readRootOnly?: boolean;
     } = {},
   ) {
     return new Workspace(await realpath(root), options);
@@ -80,11 +82,14 @@ export class Workspace {
       throw new Error("Too many symbolic links");
     }
     this.options.signal?.throwIfAborted();
-    if (operation === "write" && this.options.writeRootOnly) {
+    if (
+      (operation === "write" && this.options.writeRootOnly) ||
+      (operation === "read" && this.options.readRootOnly)
+    ) {
       const logical = this.resolve(input);
       const physical = await this.physicalPath(logical);
       if (![logical, physical].every((filename) => filename.startsWith(this.root + path.sep)))
-        throw new Error("Isolated workspace writes must stay inside their worktree");
+        throw new Error("Isolated workspace file access must stay inside its worktree");
     }
     if (operation === "write") this.options.protect?.assertWritable(this.resolve(input));
     const filename = await this.physicalPath(this.resolve(input));

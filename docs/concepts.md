@@ -12,17 +12,21 @@ This is useful for repeatable development work, bounded implementation/review cy
 
 ## The vocabulary
 
-| Term                | Meaning                                                                       | Example                                                        |
-| ------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| **Task**            | Your request, attachments, and any follow-up answers.                         | “Fix the empty-input bug.”                                     |
-| **Task case**       | An editable description of a kind of work and instructions for handling it.   | A bug case asks for reproduction and independent verification. |
-| **Model profile**   | A provider/model choice with a description of when to use it.                 | “Careful reviewer for consequential changes.”                  |
-| **Block**           | A reusable TypeScript function that performs a unit of work.                  | Implement, review, run tests, or push existing commits.        |
-| **Step**            | A named use of a block in a workflow, with inputs, model options, and limits. | `step("review", reviewer, { maxVisits: 3 })`.                  |
-| **Workflow**        | The executable composition of those steps.                                    | Implement → test → review, repeating until approved.           |
-| **Run**             | A persisted draft or execution of a workflow with its saved configuration.    | The graph and history shown for one task.                      |
-| **Visit / attempt** | One invocation of a step. Loops and explicit retries create more visits.      | The review step's second attempt.                              |
-| **Artifact**        | A named text result retained for inspection or handoff.                       | Test diagnostics or `review.md`.                               |
+| Term                | Meaning                                                                                                                          | Example                                                                  |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| **Task**            | Your request, attachments, and any follow-up answers.                                                                            | “Fix the empty-input bug.”                                               |
+| **Task case**       | An editable description of a kind of work and instructions for handling it.                                                      | A bug case asks for reproduction and independent verification.           |
+| **Model profile**   | A provider/model choice with a description of when to use it.                                                                    | “Careful reviewer for consequential changes.”                            |
+| **Block**           | A reusable TypeScript function that performs a unit of work.                                                                     | Implement, review, run tests, or push existing commits.                  |
+| **Step**            | A named use of a block in a workflow, with inputs, model options, and limits.                                                    | `step("review", reviewer, { maxVisits: 3 })`.                            |
+| **Workflow**        | The executable composition of those steps.                                                                                       | Implement → test → review, repeating until approved.                     |
+| **Run**             | A persisted draft or execution of a workflow with its saved configuration.                                                       | The graph and history shown for one task.                                |
+| **Visit / attempt** | One invocation of a step. Loops and explicit retries create more visits.                                                         | The review step's second attempt.                                        |
+| **Artifact**        | A named text result retained for inspection or handoff.                                                                          | Test diagnostics or `review.md`.                                         |
+| **Automation**      | An explicitly enabled schedule/intake policy targeting a frozen block or saved workflow.                                         | Nightly verification or reacting to current-revision CI.                 |
+| **Signal**          | A normalized source observation with deterministic identity, revision, and payload.                                              | A candidate or review result for a particular commit.                    |
+| **Automation case** | Correlated source resources, current revision, references, and prior run identifiers; not a planning task case or model session. | One issue and its related PR/CI feedback.                                |
+| **Job**             | A durable reserved invocation under an immutable automation version and admission policy.                                        | A queued reaction, an approval-gated output, or a reconciliation lookup. |
 
 Reusing a block does not reuse its conversation. Each AI call creates a fresh model session. Pass the information it needs through explicit inputs, prompts, and returned data.
 
@@ -74,10 +78,16 @@ Durability is not a promise of exactly-once external effects. An interrupted com
 
 Workflow uses its own credential storage and explicit project resources. It does not load ambient Pi extensions, credentials, or previous conversations. See [Architecture](architecture.md) for how these pieces connect in code.
 
+## From repeatable workflow to automation
+
+An [automation](automations.md) reuses a library block or complete saved workflow without replanning it. Timers can be interval, timezone cron, or once; manual and normalized signal intake have no timer. Discovery is ordinary code returning zero or many signals and an optional checkpoint. Exact first-match routes decide whether to advance a case revision or react only to its current revision. A new job receives selected signal/case/prior-result context, not the previous conversation.
+
+Saving freezes executable targets and configuration for future jobs. Enabling is an explicit authorization; edits do not rewrite already queued or running work. Output is a separate job requiring approval by default. Local work and remote publication are different effects, and an interrupted mutation is not automatically safe to retry.
+
 ## Scope today
 
-Workflow is a local, single-user tool. One workflow owns a project at a time; explicit groups can run blocks concurrently inside that workflow. Parallel blocks share the project directory.
+Workflow is a local, single-user tool. Unmanaged manual runs and legacy triggers retain exclusive project ownership. Automations can run in distinct managed Git worktrees concurrently within admission limits, while jobs for the same case serialize. Explicit parallel blocks inside one run still share that run's directory.
 
-AI tools and commands have the server user's access. Roles such as “read-only reviewer” are instructions, not filesystem permission sandboxes. The project currently provides workflow approval, execution limits, managed-file recovery, and local HTTP request guards. AI calls can select existing same-repository Git worktrees; the workflow must create and integrate them explicitly. Remote workers and OS isolation are not supplied by the composition API.
+AI tools and commands have the server user's access. Roles and local Git worktrees are not OS permission sandboxes. Workflow provides approval, frozen execution limits, workspace ownership checks, managed-file recovery, and local HTTP request guards. Automatic worktree isolation applies to managed automation jobs; ordinary workflows can still select existing same-repository worktrees explicitly. Remote workers, container isolation, and rollback of arbitrary shell/network effects are not supplied by the composition API.
 
 [Next: run your first task](getting-started.md) · [Write a workflow](workflows.md)

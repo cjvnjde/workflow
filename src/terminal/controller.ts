@@ -30,6 +30,10 @@ import { exportAttemptEvidence, formatEvidenceExport } from "../core/storage/evi
 import { formatMemoryEntry } from "../cli/memory-client.js";
 import { formatStrategyPreview } from "../cli/strategy-client.js";
 import type { StrategyPreview } from "../contracts/memory-schema.js";
+import {
+  automationActionSchema,
+  automationJobActionSchema,
+} from "../contracts/automation-schema.js";
 
 export type Session = {
   id: string;
@@ -534,6 +538,10 @@ export class TerminalController extends EventEmitter {
       this.state.detail = `${this.selected ? `Session ID\n${this.selected.kind}:${this.selected.id}\n\n` : ""}Browser\n${this.browserUrl()}${this.selected ? `\n\nAnother terminal in this project\nworkflow attach ${this.selected.id}` : ""}\n\nBoth interfaces share the same task, graph, approvals, and results.\nPress Esc to return.`;
       return;
     }
+    if (command === "/automations") {
+      await this.automations(argument);
+      return;
+    }
     if (command === "/sessions") {
       await this.refresh();
       this.picker(
@@ -835,6 +843,112 @@ export class TerminalController extends EventEmitter {
               2,
             );
           },
+        },
+      ],
+    );
+  }
+  private async automations(id = "") {
+    const state = await this.client.automations(this.signal());
+    if (!id) {
+      this.picker(
+        "Automations",
+        "Durable project jobs. Configure with workflow automation save or browser Settings.",
+        [
+          {
+            id: "refresh",
+            label: "Refresh",
+            detail: "Read persisted scheduler state",
+            action: () => this.automations(),
+          },
+          ...state.automations.map((automation) => ({
+            id: automation.id,
+            label: automation.config.name,
+            detail: `${automation.state} · revision ${automation.revision} · ${automation.config.schedule.kind}`,
+            action: () => this.automations(automation.id),
+          })),
+        ],
+      );
+      return;
+    }
+    const automation = state.automations.find((entry) => entry.id === id);
+    if (!automation) throw new Error("Automation not found");
+    this.picker(
+      automation.config.name,
+      `${automation.state} · revision ${automation.revision}\n${automation.error ?? automation.config.description}`,
+      [
+        {
+          id: "inspect",
+          label: "Inspect configuration and history",
+          detail: automation.versionId,
+          action: () => {
+            this.state.screen = "step";
+            this.state.panelTitle = automation.config.name;
+            this.state.detail = JSON.stringify(
+              {
+                automation,
+                audit: state.audit.filter((entry) => entry.automationId === id),
+                observations: state.observations.filter((entry) => entry.automationId === id),
+              },
+              null,
+              2,
+            );
+          },
+        },
+        ...automationActionSchema.options.map((action) => ({
+          id: action,
+          label: action,
+          detail: action === "test" ? "Create reviewable test work" : "Apply to this definition",
+          action: async () => {
+            await this.client.automationAction(id, action, automation.revision);
+            await this.automations(id);
+          },
+        })),
+        ...state.jobs
+          .filter((job) => job.automationId === id)
+          .map((job) => ({
+            id: job.id,
+            label: `${job.phase} · ${job.status}`,
+            detail: job.reason ?? job.runId,
+            action: () =>
+              this.picker(`Job ${job.id}`, `${job.status} · ${job.reason ?? ""}`, [
+                {
+                  id: "details",
+                  label: "Inspect job",
+                  detail: "Persisted input, output and execution state",
+                  action: () => {
+                    this.state.screen = "step";
+                    this.state.panelTitle = `Job ${job.id}`;
+                    this.state.detail = JSON.stringify(job, null, 2);
+                  },
+                },
+                {
+                  id: "run",
+                  label: "Open linked run",
+                  detail: job.runId,
+                  action: () => this.openSessionById(`run:${job.runId}`),
+                },
+                ...automationJobActionSchema.options.map((action) => ({
+                  id: action,
+                  label: action,
+                  detail: "Server validates the current job state",
+                  action: async () => {
+                    await this.client.automationJobAction(job.id, action);
+                    await this.automations(id);
+                  },
+                })),
+                {
+                  id: "back",
+                  label: "Back to automation",
+                  detail: automation.config.name,
+                  action: () => this.automations(id),
+                },
+              ]),
+          })),
+        {
+          id: "list",
+          label: "All automations",
+          detail: "Return to definitions",
+          action: () => this.automations(),
         },
       ],
     );

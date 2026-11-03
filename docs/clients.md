@@ -164,6 +164,18 @@ Import types and validation schemas from `/contracts`, not application internals
 
 Structured tool events include `event.operation` with call and parent IDs, lifecycle state, typed evidence and duration. Render these fields directly; older events retain their text format. Embedded hosts can supply a shared-tool execution environment through `createApplication({ environment })`. See [shared tools](tools.md) for the contract and recovery limits.
 
+## Durable automation clients
+
+The application owns `app.automations`, independent of HTTP or an open UI. `createApplication({ startAutomations: false })` disables its periodic ticks for an embedded host that drives `await app.automations.tick()` explicitly. `automationClock: () => milliseconds` injects the clock for deterministic hosts/tests. `close()` drains and closes the coordinator with the other application services. Normal hosted applications start it automatically.
+
+The embedded service exposes `state()`, `save({ id?, revision?, config })`, `action(id, action, expectedRevision?)`, `ingest(id, { signals, checkpoint? })`, `jobAction(id, action)`, `settings(settings)`, `version(versionId)`, and `tick()`. `run-now`/`test` actions return a job; other definition actions return the automation. `save` captures target versions; it does not call the planner.
+
+Shared `WorkflowClient` methods are `automations()`, `saveAutomation(config, id?, revision?)`, `automationAction(id, action, revision?)`, `automationJobAction(id, action)`, `automationVersion(versionId)`, `tickAutomations()`, `updateSchedulerSettings(settings)`, and `emitSignals(id, { signals, checkpoint? })`. Parse authored defaults with `automation(config)` from `/workflow`, and use `/contracts` for API schemas. Refresh persisted scheduler state after actions/reconnect; do not infer it from an open run's event stream alone.
+
+External HTTP signal ingestion requires a configured host `WORKFLOW_SIGNAL_TOKEN` and matching bearer token. For trusted clients, pass `new WorkflowClient({ baseUrl, signalToken })`; CLI signal submission reads the variable locally as well. Keep the token out of URLs/definitions and retain loopback/origin guards. Direct embedded `ingest` is already inside the trusted application's boundary; the signal token is not a new authorization scheme for every local API route.
+
+Use `workflow automation help` for exact CLI arguments or terminal `/automations` to inspect jobs, recover them, and open linked runs. The browser has **Settings → Automations** without a provider-specific wizard. See [the automation guide](automations.md) for explicit enablement, immutable versions, signal routing, output approval, and legacy-trigger migration.
+
 ## Build separately
 
 ```sh

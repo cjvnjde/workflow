@@ -1,3 +1,23 @@
+import { loadLibrary } from "./library/library.js";
+import {
+  automationTemplate,
+  applyAutomationExecution,
+  automationRunPolicy,
+} from "./execution/automation-template.js";
+import { ManagedWorkspaces, automationDigest } from "./execution/managed-workspaces.js";
+import {
+  automationBoundary,
+  consumeAutomationLimit,
+} from "../infrastructure/automation-boundary.js";
+import {
+  automationExecutionSchema,
+  automationRunOwnershipSchema,
+  type AutomationTarget,
+  type AutomationExecution,
+  type AutomationRunOwnership,
+  type WorkSignal,
+} from "../contracts/automation-schema.js";
+import type { ProgramSource } from "../contracts/program-schema.js";
 import { distributionUrl } from "../infrastructure/package-paths.js";
 import {
   readCommandOutput,
@@ -9,6 +29,7 @@ import { Type } from "@earendil-works/pi-ai";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import {
   localExecutionEnvironment,
+  createExecutionEnvironment,
   type ExecutionEnvironmentFactory,
   type EnvironmentOptions,
 } from "./execution/execution-environment.js";
@@ -42,6 +63,7 @@ import {
   type WorkflowPlan,
   type WorkflowRun,
   type UsageTotals,
+  type BlockResult,
 } from "../contracts/domain.js";
 import {
   runCommandBlock,
@@ -119,6 +141,73 @@ export class WorkflowEngine {
   private readonly leaseCancellation = new AbortController();
   private fileClaims: FileClaims | undefined;
   private budgetQueue = Promise.resolve();
+  private readonly managedWorkspaces: ManagedWorkspaces;
+  private signalHandler?: (automationId: string, signal: WorkSignal) => Promise<void>;
+  private automationAdmissionGuard?: (runId: string) => void | Promise<void>;
+
+  setAutomationAdmissionGuard(guard?: (runId: string) => void | Promise<void>) {
+    this.automationAdmissionGuard = guard;
+  }
+
+  setSignalHandler(handler?: (automationId: string, signal: WorkSignal) => Promise<void>) {
+    this.signalHandler = handler;
+  }
+
+  private hostRun(value: WorkflowRun): WorkflowRun {
+    const run = runSchema.parse(value);
+    const owner = this.runs.get(run.id)?.automation;
+    if (run.automation && !isDeepStrictEqual(run.automation, owner))
+      throw new Error("Automation ownership cannot be changed by execution");
+    run.automation = owner && structuredClone(owner);
+    return run;
+  }
+
+  private async executionRoot(run: WorkflowRun) {
+    return run.automation
+      ? this.managedWorkspaces.assert(
+          run.id,
+          run.automation,
+          automationRunPolicy(this.requireRun(run.id)),
+        )
+      : this.project;
+  }
+
+  private async inAutomation<T>(run: WorkflowRun, execute: () => Promise<T>): Promise<T> {
+    const owner = this.runs.get(run.id)?.automation;
+    if (!owner) return execute();
+    await this.managedWorkspaces.assert(
+      run.id,
+      owner,
+      automationRunPolicy(this.requireRun(run.id)),
+    );
+    return automationBoundary.run(
+      {
+        environment: owner.execution.environment,
+        consume: (kind) => this.managedWorkspaces.consume(run.id, owner, kind),
+      },
+      execute,
+    );
+  }
+
+  private async assertAdmission(run: WorkflowRun) {
+    if (run.automation) {
+      if (!this.automationAdmissionGuard)
+        throw new Error("Automation scheduler admission is unavailable");
+      await this.automationAdmissionGuard(run.id);
+    }
+    const root = await this.executionRoot(run);
+    for (const candidate of this.runs.values()) {
+      if (candidate.id === run.id || !activeStatuses.has(candidate.status)) continue;
+      if (
+        !run.automation ||
+        !candidate.automation ||
+        run.automation.workspace === "project" ||
+        candidate.automation.workspace === "project" ||
+        root === (await this.executionRoot(candidate))
+      )
+        throw new Error("Another workflow owns this execution workspace");
+    }
+  }
 
   constructor(
     readonly project: string,
@@ -128,6 +217,7 @@ export class WorkflowEngine {
     private readonly environmentFactory: ExecutionEnvironmentFactory = localExecutionEnvironment,
   ) {
     this.usage = new UsageStore(project);
+    this.managedWorkspaces = new ManagedWorkspaces(project);
     this.evidence = new EvidenceStore(project);
     this.memory = new MemoryStore(project);
     this.versions = new WorkflowVersions(path.join(project, ".workflow", "versions"));
@@ -153,6 +243,8 @@ export class WorkflowEngine {
           await this.store.save(run);
         }
         this.runs.set(run.id, run);
+        if (run.automation && activeStatuses.has(run.status))
+          await this.managedWorkspaces.assert(run.id, run.automation, automationRunPolicy(run));
         for (const attempt of run.attempts)
           await FileJournal.open(
             attemptDirectory(this.project, run.id, attempt.nodeId, attempt.visit),
@@ -618,16 +710,19 @@ export class WorkflowEngine {
       execute: async (id, input, toolSignal) => {
         if (this.mode === "demo") throw new Error("Custom tools are not executed in demo mode");
         const callId = `${parentId}/${id}`;
-        const result = await executeTool({
-          codePath,
-          tool,
-          input,
-          callId,
-          request: run.plan.task,
-          signal: toolSignal ? AbortSignal.any([options.signal, toolSignal]) : options.signal,
-          environment: (signal) => this.environmentFactory({ ...options, signal }),
-          record: (record) => this.recordOperation(run, run.cursor, record),
-        });
+        const result = await this.inAutomation(run, () =>
+          executeTool({
+            codePath,
+            tool,
+            input,
+            callId,
+            request: run.plan.task,
+            signal: toolSignal ? AbortSignal.any([options.signal, toolSignal]) : options.signal,
+            environment: (signal) =>
+              createExecutionEnvironment(this.environmentFactory, { ...options, signal }),
+            record: (record) => this.recordOperation(run, run.cursor, record),
+          }),
+        );
         return {
           content: [{ type: "text" as const, text: result.summary ?? JSON.stringify(result.data) }],
           details: {
@@ -778,7 +873,7 @@ export class WorkflowEngine {
     value: WorkflowRun,
     event?: { kind: string; message: string; nodeId?: string },
   ) {
-    const run = runSchema.parse(value);
+    const run = this.hostRun(value);
     this.assertSnapshot(run);
     const operation = this.projections.then(async () => {
       const current = this.runs.get(run.id);
@@ -992,6 +1087,124 @@ export class WorkflowEngine {
       throw new Error("Workflow snapshot is too large. Reduce source, inputs or block resources.");
   }
 
+  async snapshotForAutomation(
+    target: AutomationTarget,
+    raw: AutomationExecution,
+  ): Promise<WorkflowRun> {
+    const execution = automationExecutionSchema.parse(raw);
+    let template: WorkflowRun;
+    if (target.kind === "workflow") {
+      const source = this.requireRun(target.runId);
+      if (!["draft", "completed"].includes(source.status))
+        throw new Error("Choose a draft or completed workflow");
+      template = await automationTemplate(source);
+    } else {
+      const library = await loadLibrary(this.project);
+      if (!library.blocks[target.blockId])
+        throw new Error(`Unknown automation block: ${target.blockId}`);
+      const title = `Automation: ${target.blockId}`;
+      const prepared = await this.prepareProgram(
+        {
+          source: `import { workflow, step } from "workflow"; export default workflow({ name: ${JSON.stringify(title)}, flow: step("automation", ${JSON.stringify(target.blockId)}, { maxVisits: 1, inputs: (ctx) => ctx.input }) });`,
+          filename: "automation.ts",
+          input: {},
+        },
+        library,
+      );
+      const now = new Date().toISOString();
+      template = await automationTemplate(
+        runSchema.parse({
+          id: randomUUID(),
+          createdAt: now,
+          updatedAt: now,
+          revision: 0,
+          executionVersion: prepared.version.id,
+          executionProtocol: 2,
+          mode: this.mode,
+          status: "draft",
+          plan: { title, task: title, entry: "start", nodes: [] },
+          program: {
+            ...prepared.program,
+            composition: prepared.program.structure ? "structured" : undefined,
+          },
+          config: library.config,
+          blocks: {},
+          cursor: "start",
+          visits: {},
+          artifacts: {},
+          attempts: [],
+        }),
+      );
+    }
+    if (template.mode !== this.mode) throw new Error("Automation execution mode mismatch");
+    applyAutomationExecution(template, execution);
+    await this.versions.load(template.executionVersion!);
+    this.checkSnapshotSize(template);
+    return template;
+  }
+
+  async createAutomatedRun(
+    template: WorkflowRun,
+    id: string,
+    input: ProgramSource["input"],
+    raw: AutomationRunOwnership,
+  ) {
+    return this.mutate(async () => {
+      const ownership = automationRunOwnershipSchema.parse(raw);
+      const run = await automationTemplate(template);
+      applyAutomationExecution(run, ownership.execution);
+      run.id = id;
+      run.temporalWorkflowId = `workflow-${id}`;
+      run.program!.input = { ...run.program!.input, ...input };
+      const snapshot = automationRunPolicy(run);
+      if (run.mode !== this.mode) throw new Error("Automation execution mode mismatch");
+      await this.versions.load(run.executionVersion!);
+      const previous = ownership.previousRunId
+        ? this.requireRun(ownership.previousRunId)
+        : undefined;
+      if (
+        previous &&
+        (!previous.automation ||
+          previous.automation.automationId !== ownership.automationId ||
+          !["completed", "failed", "cancelled", "rejected"].includes(previous.status))
+      )
+        throw new Error("Continuation requires a terminal run owned by this automation");
+      run.automation = await this.managedWorkspaces.reserve(id, ownership, snapshot, previous);
+      const existing = this.runs.get(id);
+      if (existing) {
+        if (
+          automationDigest(existing.automation) !== automationDigest(run.automation) ||
+          automationDigest(automationRunPolicy(existing)) !== automationDigest(snapshot)
+        )
+          throw new Error("Reserved automation run was modified");
+        return this.get(id);
+      }
+      run.createdAt = run.updatedAt = new Date().toISOString();
+      this.checkSnapshotSize(run);
+      await this.usage.ensureRun(run);
+      await this.store.save(run);
+      this.runs.set(id, run);
+      this.emit(
+        run,
+        "draft",
+        "Created from a frozen automation target with a durable workspace reservation.",
+      );
+      await this.flushEvents();
+      return this.get(id);
+    });
+  }
+
+  async cleanupAutomationWorkspace(id: string) {
+    return this.mutate(async () => {
+      const run = this.requireRun(id);
+      if (!run.automation || !["completed", "failed", "cancelled", "rejected"].includes(run.status))
+        throw new Error("Only terminal automation workspaces can be cleaned");
+      if (run.attempts.some((attempt) => attempt.recovery?.status === "conflict"))
+        throw new Error("Resolve recovery conflicts before cleaning the workspace");
+      await this.managedWorkspaces.cleanup(id, run.automation);
+    });
+  }
+
   async snapshotForTrigger(id: string) {
     const source = this.requireRun(id);
     if (!["draft", "completed"].includes(source.status))
@@ -1077,6 +1290,10 @@ export class WorkflowEngine {
   async updateProgram(id: string, value: unknown, expectedRevision?: number, signal?: AbortSignal) {
     return await this.mutate(async () => {
       const run = structuredClone(this.requireRun(id));
+      if (run.automation)
+        throw new Error(
+          "Automation runs are frozen; edit the automation definition for future jobs",
+        );
       if (run.status !== "draft" || !run.program)
         throw new Error("Only a draft TypeScript workflow can be edited.");
       if (run.program.composition === "graph")
@@ -1130,6 +1347,10 @@ export class WorkflowEngine {
   async update(id: string, value: unknown, expectedRevision?: number) {
     return await this.mutate(async () => {
       const run = structuredClone(this.requireRun(id));
+      if (run.automation)
+        throw new Error(
+          "Automation runs are frozen; edit the automation definition for future jobs",
+        );
       if (run.status !== "draft") {
         throw new Error("Only draft workflows can be edited");
       }
@@ -1246,9 +1467,7 @@ export class WorkflowEngine {
         throw new Error("Only draft workflows can be approved");
       }
       this.assertRevision(run, expectedRevision);
-      if ([...this.runs.values()].some((candidate) => activeStatuses.has(candidate.status))) {
-        throw new Error("Another workflow is running or paused in this project");
-      }
+      await this.assertAdmission(run);
       if (run.mode !== this.mode) {
         throw new Error(
           "This draft was created in a different execution mode. Regenerate it before approval.",
@@ -1295,7 +1514,7 @@ export class WorkflowEngine {
       this.runs.set(id, approved);
       try {
         // Start receipts belong to the host, not the frozen workflow schema.
-        const { temporalStart: _receipt, ...input } = approved;
+        const { temporalStart: _receipt, automation: _ownership, ...input } = approved;
         await this.environment.client.workflow.start("executeWorkflow", {
           workflowId: run.temporalWorkflowId,
           taskQueue: this.queueFor(approved.executionVersion),
@@ -1343,6 +1562,7 @@ export class WorkflowEngine {
       if (run.mode !== this.mode) {
         throw new Error("Restart workflow in the original execution mode before resuming");
       }
+      await this.assertAdmission(run);
       if (run.executionProtocol === 2 && run.status === "interrupted") {
         const settled = await this.recoverAttempts(run);
         if (settled.recovery.status === "conflict") {
@@ -1437,7 +1657,7 @@ export class WorkflowEngine {
   }
 
   private scopeAttempt(value: WorkflowRun, identity?: AttemptIdentity): WorkflowRun {
-    const run = runSchema.parse(value);
+    const run = this.hostRun(value);
     if (identity) {
       if (
         !run.attempts.some(
@@ -1470,7 +1690,7 @@ export class WorkflowEngine {
     if (!bundle) {
       throw new Error("Unknown recovery block");
     }
-    const workspace = await Workspace.create(this.project);
+    const workspace = await Workspace.create(await this.executionRoot(run));
     const journal = await FileJournal.open(directory, this.fileClaims);
     const recovery = await journal.settle(
       workspace,
@@ -1480,7 +1700,7 @@ export class WorkflowEngine {
   }
 
   private async settleAttempt(value: WorkflowRun, commit: boolean, identity?: AttemptIdentity) {
-    const run = runSchema.parse(value);
+    const run = this.hostRun(value);
     this.assertActivity(run);
     return this.recoverAttempt(run, commit, identity);
   }
@@ -1544,7 +1764,15 @@ export class WorkflowEngine {
       const run = structuredClone(this.requireRun(id));
       if (
         !["failed", "cancelled"].includes(run.status) ||
-        [...this.runs.values()].some((candidate) => activeStatuses.has(candidate.status))
+        [...this.runs.values()].some(
+          (candidate) =>
+            activeStatuses.has(candidate.status) &&
+            (!run.automation ||
+              !candidate.automation ||
+              run.automation.workspace === "project" ||
+              candidate.automation.workspace === "project" ||
+              run.automation.root === candidate.automation.root),
+        )
       ) {
         throw new Error("Stop execution before keeping recovery files");
       }
@@ -1569,13 +1797,18 @@ export class WorkflowEngine {
   }
 
   private async executeOperation(value: WorkflowRun, raw: CodeOperation): Promise<unknown> {
-    const run = runSchema.parse(value);
+    return this.inAutomation(value, () => this.executeOperationNow(value, raw));
+  }
+
+  private async executeOperationNow(value: WorkflowRun, raw: CodeOperation): Promise<unknown> {
+    const run = this.hostRun(value);
     this.assertActivity(run);
     if (run.mode !== this.mode) {
       throw new Error("Execution mode mismatch. Restart the server in this run's original mode.");
     }
     if (!run.program) throw new Error("Code effects require a frozen TypeScript workflow");
     const operation = codeOperationSchema.parse(raw);
+    if (operation.kind !== "ai") await consumeAutomationLimit("tools");
     const node = run.plan.nodes.find((node) => node.id === run.cursor)!;
     const bundle = run.blocks[node.block]!;
     if (bundle.definition.executor?.kind !== "code")
@@ -1585,6 +1818,7 @@ export class WorkflowEngine {
     signal.throwIfAborted();
     const emit = (kind: string, message: string) => this.emit(run, kind, message, node.id);
     const operationId = `${run.id}/${context.info.activityId}`;
+    const root = await this.executionRoot(run);
     const record = (value: OperationRecord) => this.recordOperation(run, node.id, value);
     const label =
       operation.kind === "tool"
@@ -1593,7 +1827,9 @@ export class WorkflowEngine {
           ? operation.command
           : operation.kind === "ai"
             ? operation.prompt
-            : operation.path;
+            : operation.kind === "signal"
+              ? operation.signal.signalKind
+              : operation.path;
     emit("operation_start", `${operation.kind}: ${label.slice(0, 6000)}`);
     const identity = {
       id: operationId,
@@ -1618,7 +1854,17 @@ export class WorkflowEngine {
           truncated: label.length > 16_000,
         });
       let result: unknown;
-      if (operation.kind === "tool") {
+      if (operation.kind === "signal") {
+        const destination = run.automation?.automationId ?? operation.automationId;
+        if (
+          !destination ||
+          (run.automation && operation.automationId && destination !== operation.automationId)
+        )
+          throw new Error("Signal destination must be the owning automation");
+        if (!this.signalHandler) throw new Error("Automation signal ingestion is unavailable");
+        await this.signalHandler(destination, operation.signal);
+        result = null;
+      } else if (operation.kind === "tool") {
         if (this.mode === "demo")
           throw new Error(
             "Custom tools require live execution; demo never runs authored tool code",
@@ -1655,8 +1901,9 @@ export class WorkflowEngine {
             request: run.plan.task,
             signal,
             environment: (signal) =>
-              this.environmentFactory({
-                project: this.project,
+              createExecutionEnvironment(this.environmentFactory, {
+                project: root,
+                isolated: !!run.automation,
                 signal,
                 journal,
                 outputDirectory: directory,
@@ -1766,9 +2013,10 @@ export class WorkflowEngine {
           ...(inherited.reference ? { "step-context": inherited.prompt } : inheritedInputs),
           "call-prompt": handoff.prompt,
         };
-        const workspace = await executionWorkspace(this.project, operation.workspace, signal);
-        const isolated =
-          operation.workspace !== undefined && workspace !== (await realpath(this.project));
+        const workspace = await executionWorkspace(root, operation.workspace, signal);
+        if (run.automation && workspace !== root)
+          throw new Error("Automation AI cannot leave its owned workspace");
+        const isolated = !!run.automation || workspace !== (await realpath(this.project));
         const readOnly =
           operation.writablePaths?.length === 0 ||
           operation.protectedPaths?.includes("**/*") ||
@@ -1879,7 +2127,11 @@ export class WorkflowEngine {
       } else if (operation.kind === "exec") {
         const directory = attemptDirectory(this.project, run.id, node.id, run.visits[node.id] ?? 1);
         const journal = await FileJournal.open(directory, this.fileClaims);
-        result = await executeCodeCommand(this.project, run, operation, signal, emit, {
+        if (run.automation && operation.env)
+          throw new Error(
+            "Automations use named environment references, not inline environment overrides",
+          );
+        result = await executeCodeCommand(root, run, operation, signal, emit, {
           environmentFactory: this.environmentFactory,
           journal,
           outputDirectory: directory,
@@ -1898,8 +2150,9 @@ export class WorkflowEngine {
         });
       } else {
         const directory = attemptDirectory(this.project, run.id, node.id, run.visits[node.id] ?? 1);
-        const environment = await this.environmentFactory({
-          project: this.project,
+        const environment = await createExecutionEnvironment(this.environmentFactory, {
+          project: root,
+          isolated: !!run.automation,
           signal,
           journal: await FileJournal.open(directory, this.fileClaims),
           outputDirectory: directory,
@@ -1937,7 +2190,7 @@ export class WorkflowEngine {
                 presentation: {
                   card: "command" as const,
                   command: operation.command.slice(0, 16000),
-                  cwd: this.project,
+                  cwd: root,
                   exitCode: (result as import("../sdk/workflow-sdk.js").ExecResult).exitCode,
                   output: (result as import("../sdk/workflow-sdk.js").ExecResult).output.slice(
                     -32000,
@@ -1978,7 +2231,23 @@ export class WorkflowEngine {
       parentId: string;
     },
     aiContext?: "workflow" | "none",
-  ) {
+  ): Promise<{ result: BlockResult; checks: WorkflowRun["attempts"][number]["checks"] }> {
+    value = this.hostRun(value);
+    if (value.automation) workspace = await this.executionRoot(value);
+    if (value.automation && !automationBoundary.getStore())
+      return this.inAutomation(value, () =>
+        this.executeBlock(
+          value,
+          resultMode,
+          protectedPaths,
+          writablePaths,
+          workspace,
+          tools,
+          capabilities,
+          shared,
+          aiContext,
+        ),
+      );
     const node = value.plan.nodes.find((node) => node.id === value.cursor);
     const scope = await this.usage.ensureRun(value);
     if (
@@ -2077,7 +2346,7 @@ export class WorkflowEngine {
     },
     aiContext?: "workflow" | "none",
   ) {
-    const run = runSchema.parse(value);
+    const run = this.hostRun(value);
     this.assertActivity(run);
     if (run.mode !== this.mode) {
       throw new Error("Execution mode mismatch. Restart the server in this run's original mode.");
@@ -2087,7 +2356,20 @@ export class WorkflowEngine {
     if (!node || !bundle) {
       throw new Error(`Unknown execution node: ${run.cursor}`);
     }
-    const settings = resolveAgentSettings(run.config.agent, bundle.definition.agent, node.agent);
+    const settings = resolveAgentSettings(
+      run.config.agent,
+      bundle.definition.agent,
+      node.agent,
+      run.automation?.execution.modelProfile
+        ? run.program?.models?.[run.automation.execution.modelProfile]
+        : undefined,
+      run.automation?.execution.agent,
+    );
+    if (run.automation)
+      settings.maxToolCalls = Math.min(
+        settings.maxToolCalls,
+        run.automation.execution.maxToolCalls,
+      );
     const context = Context.current();
     const signal = AbortSignal.any([
       context.cancellationSignal,
@@ -2290,7 +2572,7 @@ export class WorkflowEngine {
             const environment =
               this.mode === "demo"
                 ? undefined
-                : await this.environmentFactory({
+                : await createExecutionEnvironment(this.environmentFactory, {
                     project: workspace,
                     signal,
                     journal,

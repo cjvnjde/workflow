@@ -1,3 +1,8 @@
+import {
+  automationBoundary,
+  automationEnvironment,
+  consumeAutomationLimit,
+} from "./automation-boundary.js";
 import { spawn } from "node:child_process";
 import { createCommandCapture } from "./command-output.js";
 import type { CommandOutputRef } from "../contracts/operation-schema.js";
@@ -26,6 +31,13 @@ export async function runProcess(
   } = {},
 ): Promise<ProcessResult> {
   signal.throwIfAborted();
+  if (!automationBoundary.getStore()?.commandReserved) await consumeAutomationLimit("commands");
+  const restricted = automationEnvironment();
+  if (restricted) {
+    for (const name of ["WORKFLOW_INPUT", "WORKFLOW_RESULT", "WORKFLOW_PROJECT"])
+      if (env?.[name] !== undefined) restricted[name] = env[name];
+    env = restricted;
+  }
   if (!argv[0]) throw new Error("Command executable must not be empty");
   const capture = options.captureDirectory
     ? await createCommandCapture(options.captureDirectory)

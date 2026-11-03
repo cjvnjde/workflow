@@ -51,7 +51,7 @@ export const operationRecordSchema = z
     id: z.string(),
     parentId: z.string().optional(),
     name: z.string(),
-    kind: z.enum(["tool", "ai", "exec", "read", "write", "request", "wait"]),
+    kind: z.enum(["tool", "ai", "exec", "read", "write", "request", "wait", "signal"]),
     state: z.enum(["started", "progress", "completed", "failed", "interrupted"]),
     attempt: z.number().int().positive().optional(),
     visit: z.number().int().positive().optional(),

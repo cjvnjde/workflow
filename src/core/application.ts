@@ -41,6 +41,7 @@ import {
 import { rememberStrategySchema } from "../contracts/memory-schema.js";
 import { Triggers } from "./triggers/triggers.js";
 import type { GithubTriggerSource } from "./triggers/github-trigger-source.js";
+import { Automations } from "./automations/automations.js";
 
 import { realpath } from "node:fs/promises";
 import { runDemoBlock, runPiBlock, type BlockRunner } from "./execution/block-runner.js";
@@ -65,6 +66,8 @@ const proposalSchema = z
 export interface ApplicationServices {
   triggerSource?: GithubTriggerSource;
   startTriggers?: boolean;
+  startAutomations?: boolean;
+  automationClock?: () => number;
   catalog?: typeof availableModels;
   generateLibrary?: typeof generateLibraryChanges;
   plan?: typeof createAiPlan;
@@ -100,6 +103,17 @@ export async function attachApplication(
     auth.close();
     throw error;
   });
+  const automations = await Automations.open(engine, { now: services.automationClock }).catch(
+    async (error) => {
+      auth.close();
+      await triggers.close();
+      throw error;
+    },
+  );
+  engine.setSignalHandler(async (automationId, signal) => {
+    await automations.ingest(automationId, { signals: [signal] });
+  });
+  engine.setAutomationAdmissionGuard((runId) => automations.assertRunAdmission(runId));
   const designChats = new DesignChats(
     engine.project,
     catalog,
@@ -126,6 +140,7 @@ export async function attachApplication(
       designChats.close(),
       setupJobs.close(),
       triggers.close(),
+      automations.close(),
     ]);
     throw error;
   }
@@ -168,10 +183,12 @@ export async function attachApplication(
     return task ? { id: task.id, caseId: task.caseId, caseName: task.caseName } : undefined;
   };
   if (services.startTriggers !== false) triggers.start();
+  if ((services.startAutomations ?? services.startTriggers) !== false) automations.start();
   return {
     engine,
     tasks,
     triggers,
+    automations,
     designChats,
     setupJobs,
     startSetup: (value: unknown) => {
@@ -544,8 +561,11 @@ export async function attachApplication(
             designChats.close(),
             setupJobs.close(),
             triggers.close(),
+            automations.close(),
           ]);
         } finally {
+          engine.setSignalHandler(undefined);
+          engine.setAutomationAdmissionGuard(undefined);
           await engine.shutdown();
         }
       })()),
