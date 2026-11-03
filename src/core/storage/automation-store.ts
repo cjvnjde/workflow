@@ -107,6 +107,13 @@ export class AutomationStore {
       .all(limit)
       .map((row) => automationCaseSchema.parse(JSON.parse(row.data)));
   }
+  retainedByCase(runIds: ReadonlySet<string>) {
+    return !!this.db
+      .query(
+        "SELECT 1 FROM cases WHERE json_extract(data,'$.lastRunId') IN (SELECT value FROM json_each(?)) LIMIT 1",
+      )
+      .get(JSON.stringify([...runIds]));
+  }
   case(id: string) {
     const row = this.db
       .query<{ data: string }, [string]>("SELECT data FROM cases WHERE id=?")

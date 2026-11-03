@@ -999,6 +999,7 @@ export class Automations {
           0.8 + (Number.parseInt(hash([job.id, job.attempt]).slice(0, 4), 16) / 65535) * 0.4;
         job.priorRunIds.push(job.runId);
         job.runId = randomUUID();
+        job.runStatus = undefined;
         job.attempt++;
         job.availableAt = this.now() + Math.min(3_600_000, backoff * jitter);
         job.effects = "none";
@@ -1123,9 +1124,7 @@ export class Automations {
           throw new Error("Only terminal jobs can release their workspace");
         const ids = new Set([...job.priorRunIds, job.runId]);
         if (
-          this.store
-            .cases()
-            .some((workCase) => workCase.lastRunId && ids.has(workCase.lastRunId)) ||
+          this.store.retainedByCase(ids) ||
           this.store
             .jobs("pending")
             .some(

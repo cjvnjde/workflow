@@ -810,6 +810,43 @@ test("read-only failures use persisted exponential backoff, retain usage and sto
   assert.equal(ctx.counts().approvals, 3);
 });
 
+for (const scope of ["automation", "global"] as const) {
+  test(`${scope} spending cap admits an accounted read-only retry after restart`, async (t) => {
+    const ctx = await setup(t);
+    if (scope === "global")
+      await ctx.service.settings({ ...ctx.service.state().settings, maxCostUsd: 1 });
+    const automation = await ctx.service.save({
+      config: config({
+        execution: { maxCostUsd: 0.4 },
+        policy: {
+          ...(scope === "automation" ? { maxCostUsd: 1 } : {}),
+          retry: { safe: "read-only", maxAttempts: 2, backoffSeconds: 1 },
+        },
+      }),
+    });
+    const first = await runNow(ctx.service, automation.id);
+    ctx.fail(first, "Temporary read failure after accounted usage", 0.2);
+    await ctx.service.tick();
+    const queued = job(ctx.service, first.id);
+    assert.equal(queued.status, "queued");
+    await ctx.service.close();
+    ctx.service = await ctx.open();
+    ctx.at(Math.ceil(queued.availableAt));
+    await ctx.service.tick();
+    const retry = job(ctx.service, first.id);
+    assert.equal(retry.status, "running", retry.reason ?? "Retry was not admitted");
+    assert.notEqual(retry.runId, first.runId);
+    assert.deepEqual(retry.priorRunIds, [first.runId]);
+    assert.equal(retry.usage!.costUsd, 0.2);
+    ctx.complete(retry, { recovered: true }, 0.3);
+    await ctx.service.tick();
+    const completed = job(ctx.service, first.id);
+    assert.equal(completed.status, "completed");
+    assert.equal(completed.usage!.costUsd, 0.5);
+    assert.equal(ctx.counts().approvals, 2);
+  });
+}
+
 test("read-only retry delay is capped at one hour and an uncertain mutation never retries", async (t) => {
   const ctx = await setup(t);
   const reader = await ctx.service.save({
@@ -1647,13 +1684,14 @@ for (const retireBeforeOutput of [true, false]) {
   });
 }
 
-test("cleanup rejects the last case workspace required by future continuation", async (t) => {
+test("cleanup protects older cases outside visible history until their continuation advances", async (t) => {
   const ctx = await setup(t);
   const automation = await ctx.service.save({
     config: config({
       routes: [
         advanceRoute,
         { id: "feedback", signalKind: "reviewed", revisionPolicy: "current", target: reaction },
+        { id: "observe", signalKind: "observed", revisionPolicy: "advance" },
       ],
     }),
   });
@@ -1663,6 +1701,13 @@ test("cleanup rejects the last case workspace required by future continuation", 
   ctx.complete(parent);
   await ctx.service.tick();
   assert.equal(ctx.service.state().cases[0]!.lastRunId, parent.runId);
+  await ctx.service.ingest(automation.id, {
+    signals: Array.from({ length: 200 }, (_, index) =>
+      signal(`observed-${index}`, { signalKind: "observed" }),
+    ),
+  });
+  await ctx.service.close();
+  ctx.service = await ctx.open();
   await assert.rejects(
     ctx.service.jobAction(parent.id, "cleanup"),
     /case|continuation|depend|workspace.*required/i,
@@ -1675,6 +1720,10 @@ test("cleanup rejects the last case workspace required by future continuation", 
   const next = ctx.service.state().jobs.find((value) => value.targetKey === "route:feedback")!;
   assert.equal(next.status, "running");
   assert.equal(ctx.ownerships.get(next.runId)!.previousRunId, parent.runId);
+  ctx.complete(next);
+  await ctx.service.tick();
+  await ctx.service.jobAction(parent.id, "cleanup");
+  assert.deepEqual(ctx.cleaned, [parent.runId]);
 });
 
 test("cleanup rejects a terminal parent while an unprepared output still needs its workspace", async (t) => {
