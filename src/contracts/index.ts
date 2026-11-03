@@ -11,6 +11,7 @@ export * from "./task-schema.js";
 export * from "./operation-schema.js";
 export * from "./execution-history.js";
 export * from "./trigger-schema.js";
+export * from "./automation-schema.js";
 export * from "./usage-schema.js";
 export * from "./setup-job-schema.js";
 export * from "./evidence-schema.js";

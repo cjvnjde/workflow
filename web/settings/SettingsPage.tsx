@@ -18,6 +18,7 @@ import Capabilities from "./Capabilities.js";
 import ExecutionSettings from "./ExecutionSettings.js";
 import TriggerSettings from "./TriggerSettings.js";
 import MemorySettings from "./MemorySettings.js";
+import AutomationSettings from "./AutomationSettings.js";
 import UsageSummary from "../features/usage/UsageSummary.js";
 import SetupProgress from "../features/setup/SetupProgress.js";
 import type { SetupJobsController } from "../features/setup/use-setup-jobs.js";
@@ -30,6 +31,7 @@ const tabs = [
   ["capabilities", "Skills & MCP"],
   ["execution", "Execution"],
   ["triggers", "Triggers"],
+  ["automations", "Automations"],
   ["memory", "Memory"],
 ] as const;
 type Section = (typeof tabs)[number][0];
@@ -87,6 +89,8 @@ export default function SettingsPage({
   const [modelDirty, setModelDirty] = useState(false);
   const [triggerDirty, setTriggerDirty] = useState(false);
   const [memoryDirty, setMemoryDirty] = useState(false);
+  const [automationDirty, setAutomationDirty] = useState(false);
+  const automationEditor = useRef<EditorHandle>(null);
   const memoryEditor = useRef<EditorHandle>(null);
   const triggerEditor = useRef<EditorHandle>(null);
   const blockEditor = useRef<EditorHandle>(null);
@@ -101,7 +105,13 @@ export default function SettingsPage({
   const executionDirty =
     !!execution && JSON.stringify(execution) !== JSON.stringify(defaults.execution);
   const hasEdits =
-    dirty || executionDirty || blockDirty || modelDirty || triggerDirty || memoryDirty;
+    dirty ||
+    executionDirty ||
+    blockDirty ||
+    modelDirty ||
+    triggerDirty ||
+    memoryDirty ||
+    automationDirty;
   const latest = useRef({ hasEdits, executionDirty });
   useEffect(() => {
     latest.current = { hasEdits, executionDirty };
@@ -209,6 +219,7 @@ export default function SettingsPage({
     modelEditor.current?.discard();
     triggerEditor.current?.discard();
     memoryEditor.current?.discard();
+    automationEditor.current?.discard();
   }
   async function perform(action: () => Promise<void>) {
     setBusy(true);
@@ -248,12 +259,16 @@ export default function SettingsPage({
     }
   }
   function changeTab(id: Section) {
-    if (id !== tab && (blockDirty || modelDirty || triggerDirty || memoryDirty)) {
+    if (
+      id !== tab &&
+      (blockDirty || modelDirty || triggerDirty || memoryDirty || automationDirty)
+    ) {
       if (!window.confirm("Discard unsaved changes in this section?")) return;
       setBlockDirty(false);
       setModelDirty(false);
       setTriggerDirty(false);
       setMemoryDirty(false);
+      setAutomationDirty(false);
     }
     setTab(id);
     setNotice("");
@@ -319,6 +334,13 @@ export default function SettingsPage({
       )}
       {tab === "memory" ? (
         <MemorySettings ref={memoryEditor} onDirty={setMemoryDirty} onBusy={setBusy} />
+      ) : tab === "automations" ? (
+        <AutomationSettings
+          ref={automationEditor}
+          library={library}
+          onDirty={setAutomationDirty}
+          onBusy={setBusy}
+        />
       ) : !state ? (
         <p role="status">Loading settings…</p>
       ) : (

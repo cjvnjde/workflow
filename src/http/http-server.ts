@@ -1,3 +1,11 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+import {
+  saveAutomationSchema,
+  schedulerSettingsSchema,
+  ingestSignalsSchema,
+  automationActionSchema,
+  automationJobActionSchema,
+} from "../contracts/automation-schema.js";
 import { historyQuerySchema } from "../contracts/execution-history.js";
 import Fastify, { type FastifyReply } from "fastify";
 import { z } from "zod";
@@ -140,6 +148,58 @@ export async function createHttpServer(app: WorkflowApplication, port = 4310) {
     app.latestDesign(request.params.scope),
   );
   server.get("/api/tasks", async () => app.tasks.list(true));
+  server.get("/api/automations", () => app.automations.state());
+  server.post("/api/automations", (request) =>
+    app.automations.save(saveAutomationSchema.parse(request.body)),
+  );
+  server.put("/api/automations/settings", (request) =>
+    app.automations.settings(schedulerSettingsSchema.parse(request.body)),
+  );
+  server.post("/api/automations/tick", async () => {
+    await app.automations.tick();
+    return app.automations.state();
+  });
+  server.get<{ Params: { id: string } }>("/api/automation-versions/:id", (request) =>
+    app.automations.version(z.string().uuid().parse(request.params.id)),
+  );
+  server.post<{ Params: { id: string } }>("/api/automations/:id/signals", (request, reply) => {
+    const token = process.env.WORKFLOW_SIGNAL_TOKEN;
+    const authorization = request.headers.authorization;
+    const supplied = authorization?.startsWith("Bearer ") ? authorization.slice(7) : "";
+    // Hash both values to fixed-size buffers so comparison does not leak token length.
+    const expectedDigest = createHash("sha256")
+      .update(token ?? "")
+      .digest();
+    const suppliedDigest = createHash("sha256").update(supplied).digest();
+    if (!token || !supplied || !timingSafeEqual(expectedDigest, suppliedDigest))
+      return reply.code(401).send({ error: "Signal authentication required" });
+    return app.automations.ingest(
+      z.string().uuid().parse(request.params.id),
+      ingestSignalsSchema.parse(request.body),
+    );
+  });
+  server.post<{ Params: { id: string; action: string } }>(
+    "/api/automations/:id/:action",
+    (request) => {
+      const body = z
+        .object({ revision: z.number().int().nonnegative().optional() })
+        .strict()
+        .parse(request.body ?? {});
+      return app.automations.action(
+        z.string().uuid().parse(request.params.id),
+        automationActionSchema.parse(request.params.action),
+        body.revision,
+      );
+    },
+  );
+  server.post<{ Params: { id: string; action: string } }>(
+    "/api/automation-jobs/:id/:action",
+    (request) =>
+      app.automations.jobAction(
+        z.string().uuid().parse(request.params.id),
+        automationJobActionSchema.parse(request.params.action),
+      ),
+  );
   server.get("/api/triggers", () => app.triggers.state());
   server.post("/api/triggers", (request) => app.triggers.save(request.body));
   server.post("/api/triggers/poll", async () => {

@@ -45,6 +45,7 @@ type SettingsContext = {
     | "capabilities"
     | "execution"
     | "triggers"
+    | "automations"
     | "memory";
   blockId?: string;
 };

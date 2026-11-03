@@ -50,6 +50,7 @@ This block returns diagnostics and lets its workflow route feedback to implement
 | `await ctx.exec(command, { timeoutMs?, env? })`            | Bash in the project directory. Returns command status and output.                                    |
 | `await ctx.readFile(path)`                                 | Reads text through the host file tools.                                                              |
 | `await ctx.writeFile(path, text)`                          | Writes text through managed file recovery.                                                           |
+| `await ctx.emitSignal(signal, { automationId? })`          | Durably ingests a normalized work signal; defaults to the run's owning automation. See below.        |
 | `await ctx.log(message)`                                   | Adds a durable activity message.                                                                     |
 | `ctx.summary(markdown)`                                    | Sets the visible result summary.                                                                     |
 | `ctx.artifact(name, text)`                                 | Adds a named text artifact.                                                                          |
@@ -138,6 +139,16 @@ Artifact names start with a lowercase letter, may contain lowercase letters, dig
 Keep outputs concise. A summary is limited to 16,000 characters, a named artifact to 64,000 characters, and combined named artifacts to 128 KB. Larger results can also exceed the workflow snapshot limit. Store large generated files in the project and report their paths instead.
 
 Code blocks default to a 600,000 ms timeout and 100 context operations. Set `timeoutMs` and `maxOperations` in the definition when needed. Model sessions have their own time/tool limits. Step visits and the total workflow step budget remain separate limits.
+
+## Use a block in an automation
+
+Choose a saved library block in **Settings → Automations**, or target `{ kind: "block", blockId }`. The service wraps it through the existing compiler without a planner and captures its source, settings, and selected resources at save time. A later library edit does not alter queued or active jobs. Use a saved full workflow instead when several steps or a bounded repair loop are required.
+
+The wrapper passes automation inputs to the block, including selected `signal`, `case`, `prior`, and `automation` context. Ordinary composed workflows must still forward fields through their step `inputs`; there is no ambient model conversation. `workSignal(...)` and `discoveryResult({ signals, checkpoint? })` from `predictable-workflow/workflow` validate/default provider-neutral observations and discovery results. Discovery returns zero or many signals; routing and durable checkpoint advancement belong to the coordinator.
+
+`await ctx.emitSignal(signal, { automationId? })` is a durable host operation, not an immediate child-run call. An owned automation run cannot redirect emission to another definition. A manual run must name a destination. Explicit IDs, or stable source/resource/kind/revision/fingerprint tuples, make redelivery deduplicate after restart. Do not generate fresh identities on every retry. Emission itself is a side effect, even during an approved test; returned test results are not routed or published.
+
+Commands/file tools run in the owned execution root for managed automation jobs. Environment references, skills/MCP selection, and command/model/tool/step budgets come from the captured execution policy. `maxToolCalls` includes direct code effects and model tool invocations; commands also consume command budget. Failed operations conservatively consume durable counters. Worktrees are not OS sandboxes, and an interrupted mutating block is never made safe by blindly retrying it. See [automation setup and recovery](automations.md).
 
 ## Save a reusable block
 

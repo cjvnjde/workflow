@@ -32,7 +32,7 @@ A terminal `failed` run is different from an `interrupted` run awaiting resume. 
 
 Review mode is the default. Automatic mode can be selected in **Settings → Execution**. Approval captures the current source and configuration and starts that execution; it is not an OS permission prompt for every command.
 
-Only one workflow executes in a project at a time. Paused and interrupted runs retain that ownership. Resume or cancel the existing run before starting another.
+Unmanaged workflows retain exclusive project ownership, including while paused or interrupted. Resume or cancel that owner before competing work. [Automation jobs](automations.md#queue-admission-and-workspace-ownership) can instead execute concurrently in distinct owned Git worktrees within scheduler limits; project-workspace jobs remain exclusive. Approving a linked automation draft does not bypass its scheduler approval, ownership, or budget guards.
 
 Stopping planning cancels model work and prevents a late result from publishing an executable draft. Stopping execution cancels active activities, prevents new steps, and settles each active attempt. It does not undo completed steps or arbitrary shell/Git/network effects.
 
@@ -89,6 +89,16 @@ Recovery is idempotent: repeating it does not undo an already-completed step. `r
 
 The journal does not undo Bash edits, Git operations, check-command effects, external services, or all filesystem metadata. A successful commit/push may remain even if the surrounding activity was interrupted. Inspect those effects before retrying the step.
 
+## Operating automation jobs
+
+Open **Settings → Automations**, terminal `/automations`, or `workflow automation jobs --json`. Jobs have their own queue/admission state and a linked workflow `runStatus`. Inspect the persisted reason before acting: queued work may be waiting for capacity, a case/resource owner, cooldown, enablement, or cost reservations; `waiting` can mean approval or a paused run; `needs_attention` requires inspection.
+
+Pause/disable a definition to stop future scheduling and queued starts, not to cancel running jobs. Pause/cancel individual jobs separately. After a restart, the scheduler reacquires stable run reservations and reconciles recorded results. **Retry** is only failed admission before execution, not a fresh execution of an uncertain mutation. **Resume** of an interrupted run is explicit and can repeat effects from its interrupted attempt. Read-only direct/discovery retries must be explicitly configured and bounded.
+
+Publication is a separate approval-gated output job by default. Check its stable publication key against remote state; use configured read-only **Reconcile**, or explicit **Resolve** only after confirming the outcome. A negative lookup stays human-gated. Nothing merges/deploys automatically. Keep interrupted mutation evidence instead of deleting jobs or resetting the database.
+
+Managed worktree cleanup is explicit and terminal-only; dirty or unpublished commits prevent removal. Paused jobs release compute only after execution stops and retain their case/workspace. See [the automation guide](automations.md) for exact schedule, downtime, budget, and output contracts.
+
 ## Persistence and backups
 
 ```text
@@ -113,11 +123,13 @@ The journal does not undo Bash edits, Git operations, check-command effects, ext
 ├── host.log                  # private background-host startup/runtime log
 ├── server.json               # private host identity and shutdown token
 ├── triggers/                 # SQLite trigger settings, inbox, checkpoints and outbox
+├── automations/              # SQLite definitions, frozen targets, signals, cases, jobs and audit
+├── automation-workspaces/    # owned Git worktrees; preserve dirty/unpublished work
 ├── server-lease/             # live project ownership lease
 └── lock                      # diagnostic owner information
 ```
 
-Back up the whole `.workflow/` directory, including the version archives, attempt journals, and Temporal SQLite/WAL files. Stop the application for a consistent file-copy backup. With an external Temporal service, its history also needs its own backup policy. Credentials are stored separately; see [Configuration](configuration.md#where-settings-live).
+Back up the whole `.workflow/` directory, including automation/trigger state, version archives, attempt journals, and Temporal SQLite/WAL files. Stop the application for a consistent file-copy backup. Managed worktrees also depend on the repository's Git metadata/objects: preserve the repository and relevant worktree data, not only scheduler JSON. With an external Temporal service, its history also needs its own backup policy. Credentials are stored separately; see [Configuration](configuration.md#where-settings-live).
 
 Do not delete Temporal history or version bundles to reset an active run. Local run JSON is a projection and approval record; it cannot replace missing execution history.
 
@@ -155,6 +167,6 @@ Approval first persists a pending start receipt. If a crash occurs before Tempor
 
 The web server and managed Temporal development service bind locally. They are single-user services, not authenticated remote interfaces. Keep them on loopback. Host/origin guards and mutation headers do not turn them into a multi-user service.
 
-AI and command tools have the server user's access. Role instructions do not impose an OS sandbox. Explicit parallel composition exists, but automatic worktree/container isolation, remote sandbox workers, and full rollback of shell/external effects do not.
+AI and command tools have the server user's access. Role instructions and automation-owned Git worktrees do not impose an OS sandbox. Explicit parallel composition and managed automation worktrees exist; container isolation, remote sandbox workers, and full rollback of shell/external effects do not. The authenticated signal-intake endpoint retains the same local host/origin boundary and is not public multi-user hosting.
 
 On Linux and macOS, a verified managed Temporal process left after SIGKILL is adopted on restart. Recovery checks the executable and exact project database, loopback address, and port arguments before reusing or stopping a saved PID; a live PID whose ownership cannot be verified still blocks startup. External Temporal address/namespace selection is supported; Temporal Cloud TLS/API-key onboarding is not implemented.

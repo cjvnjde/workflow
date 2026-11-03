@@ -70,7 +70,9 @@ function contextLabel(context: DesignPageContext) {
           ? "Triggers"
           : context.section === "memory"
             ? "Memory"
-            : designScopes[context.section].title
+            : context.section === "automations"
+              ? "Automations"
+              : designScopes[context.section].title
         : "Settings";
   return context.blockId ? `${section} · ${context.blockId}` : section;
 }

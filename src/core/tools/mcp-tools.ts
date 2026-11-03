@@ -1,3 +1,7 @@
+import {
+  automationEnvironment,
+  consumeAutomationLimit,
+} from "../../infrastructure/automation-boundary.js";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import {
@@ -27,10 +31,12 @@ async function connect(server: McpServer, project: string, signal: AbortSignal) 
     await client.close();
   };
   try {
-    const token = server.tokenEnv ? process.env[server.tokenEnv] : undefined;
+    const environment = automationEnvironment();
+    const token = server.tokenEnv ? (environment ?? process.env)[server.tokenEnv] : undefined;
     if (server.tokenEnv && !token) {
       throw new Error("Configured MCP token environment variable is not set");
     }
+    if (server.transport === "stdio") await consumeAutomationLimit("commands");
     await client.connect(
       server.transport === "http"
         ? new StreamableHttpTransport({
@@ -42,7 +48,8 @@ async function connect(server: McpServer, project: string, signal: AbortSignal) 
             command: server.command,
             args: server.args,
             cwd: project,
-            inheritEnv: true,
+            inheritEnv: environment === undefined,
+            env: environment,
             maxMessageBytes: 1_000_000,
             maxStderrBytes: 8000,
           }),

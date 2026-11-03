@@ -149,6 +149,25 @@ Planning is asynchronous. Poll the returned task ID or subscribe to the stream. 
 
 Events are `issue.opened` or `pull_request.opened`; result destinations are `local` (default) or `github-comment`. Triggers default to disabled. GitHub access uses `GH_TOKEN`, `GITHUB_TOKEN`, or the GitHub CLI's sign-in; no credential is accepted in trigger JSON. See [the trigger guide](triggers.md) for input shape, frozen versions and the background-service example.
 
+### Generic automations
+
+`workflow automation help` lists the grouped commands. Use `list`, `show <id>` and `config <id>` to inspect definitions; `save config.json [id revision]` creates or revises a definition. Lifecycle commands are `enable`, `pause`, `disable`, and `resume`; `run-now` requests work and `test` requests reviewable test work. Each takes an automation ID and optional expected revision. `jobs [automation-id]` lists durable jobs, and `job <id> [action]` inspects or acts on one. Job actions are `approve`, `pause`, `resume`, `cancel`, `retry`, `reconcile`, `resolve`, and `cleanup`; the service rejects actions invalid for the current state. `settings [settings.json]`, `tick`, and `version <version-id>` expose scheduler controls and frozen metadata. All commands support `--json` and the existing `--server` selection.
+
+| Method and route                        | Purpose                                                                      |
+| --------------------------------------- | ---------------------------------------------------------------------------- |
+| `GET /api/automations`                  | Definitions, jobs, cases, observations, audit, usage and scheduler settings. |
+| `POST /api/automations`                 | Save `{config,id?,revision?}` with validated generic configuration.          |
+| `PUT /api/automations/settings`         | Update revisioned scheduler settings.                                        |
+| `POST /api/automations/tick`            | Reconcile and admit eligible durable work; return persisted state.           |
+| `POST /api/automations/:id/:action`     | Definition lifecycle, `run-now`, or `test`; body `{revision?}`.              |
+| `POST /api/automation-jobs/:id/:action` | Explicit job control and recovery.                                           |
+| `GET /api/automation-versions/:id`      | Immutable definition and executable-template metadata.                       |
+| `POST /api/automations/:id/signals`     | Ingest `{signals,checkpoint?}` with bearer authentication.                   |
+
+Signal ingestion additionally requires `Authorization: Bearer <WORKFLOW_SIGNAL_TOKEN>`. Configure the host environment explicitly; an unset token denies all signal requests. `workflow automation signals <id> signals.json` reads the client process's `WORKFLOW_SIGNAL_TOKEN`; SDK consumers pass `signalToken` to `WorkflowClient`. Tokens are not definition fields and are never returned by configuration APIs. Existing loopback-host, origin, and `X-Workflow-Client: 1` checks still apply, including to authenticated ingestion. This is not a public execution endpoint or a provider authentication layer.
+
+In the terminal, `/automations` opens a definition picker with configuration/history, lifecycle controls, jobs, explicit recovery actions and links to ordinary run inspection. Closing a client does not cancel durable work. Existing manual sessions and legacy GitHub triggers remain separate and available.
+
 ### Workflow source and execution
 
 | Method and route                                             | Purpose                                                                                                                    |

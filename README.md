@@ -64,7 +64,7 @@ Finishing a coding task often takes several kinds of work: understand the reques
 - **Keep optional project memory.** Save preferences and compact observations from normal runs. Memory starts disabled, uses descriptions before details, and launches no extra AI jobs. [Control project memory](docs/memory.md).
 - **Turn feedback into a controlled loop.** A test block returns diagnostics; an implementation block fixes the problem. Conditions, explicit outcomes, and visit limits decide what happens next.
 - **Keep progress across interruptions.** Temporal records execution history. Completed work is retained, and interrupted attempts have an explicit recovery and retry path.
-- **React to GitHub events.** Configure new-issue and new-PR triggers against a tested workflow. Persistent polling and a project queue retain work across restarts; results can stay local or be posted as a GitHub comment. [Set up triggers](docs/triggers.md).
+- **Run durable, provider-neutral automations.** Schedule a library block or saved workflow, discover work, route normalized signals, and inspect queued jobs in isolated Git worktrees. Enable explicitly and approve publication separately. [Set up automations](docs/automations.md). Existing [GitHub triggers](docs/triggers.md) remain available with their original behavior.
 
 It is useful when you want a repeatable development process with autonomous execution and inspectable results. For a one-off question, there may be no reason to create a workflow.
 
@@ -192,7 +192,8 @@ Start at **[docs/README.md](docs/README.md)** for reading paths and a complete i
 | Inspect tool calls, timing, historical events, and retained output | [Inspecting execution](docs/execution-inspection.md)                                                       |
 | Follow typed handoffs and exact model context                      | [Inspecting workflow data](docs/inspecting-data.md)                                                        |
 | Understand statuses, retries, recovery, and backups                | [Running and recovering workflows](docs/operations.md)                                                     |
-| Run automatically for new GitHub issues or PRs                     | [GitHub triggers](docs/triggers.md)                                                                        |
+| Schedule blocks/workflows or react to normalized work signals      | [Durable automations](docs/automations.md)                                                                 |
+| Operate or migrate existing GitHub issue/PR triggers               | [Legacy GitHub triggers](docs/triggers.md)                                                                 |
 | Work entirely in a terminal                                        | [Terminal workspace](docs/terminal.md)                                                                     |
 | Embed the engine or build another UI                               | [Engine and clients](docs/clients.md)                                                                      |
 | Use the CLI or local HTTP API                                      | [Command and API reference](docs/reference.md)                                                             |
@@ -202,7 +203,7 @@ Start at **[docs/README.md](docs/README.md)** for reading paths and a complete i
 
 Workflow is a **single-user local application**. AI tools and commands run with the server user's filesystem, environment, and network access. Approval controls when a workflow starts; it is not an OS sandbox. File-tool recovery covers managed writes, while shell commands, Git operations, and external effects need separate inspection before a retry.
 
-One workflow executes per project at a time, with explicit parallelism inside it. Provider errors, failed checks, exhausted limits, and unsuccessful planning can still stop a task. [Operations and current limitations](docs/operations.md) explain what can be resumed and what must be corrected first.
+Unmanaged workflows retain exclusive project ownership. Durable automations can admit concurrent jobs in distinct managed Git worktrees under case/resource locks, concurrency limits, and spending reservations; worktrees are not OS sandboxes. Publication requires approval by default, with no built-in merge/deploy behavior. Provider errors, failed checks, exhausted limits, and unsuccessful planning can still stop a task. [Operations and current limitations](docs/operations.md) explain what can be resumed and what must be inspected first.
 
 Usage totals cover planning, setup, design, and execution, including failed requests and retries. Inspect costs by phase/model in the web UI or with `workflow usage`. Optional task/setup limits complement the execution-only cap; in-flight responses can exceed a remaining limit. See [cost accounting and limits](docs/configuration.md#execution-limits-and-costs).
 

@@ -7,6 +7,7 @@ import { discoverProjectServer } from "../host/host-discovery.js";
 import { exportAttemptEvidence, formatEvidenceExport } from "../core/storage/evidence-export.js";
 import { runMemoryCommand } from "./memory-client.js";
 import { runRememberCommand } from "./strategy-client.js";
+import { runAutomationCommand } from "./automation-client.js";
 
 export const clientCommands = [
   "run",
@@ -28,6 +29,7 @@ export const clientCommands = [
   "data",
   "memory",
   "remember",
+  "automation",
 ];
 export async function readProgram(
   project: string,
@@ -104,11 +106,15 @@ export async function runClientCommand(
       .catch(() => false))
   )
     baseUrl = `http://127.0.0.1:${port}`;
-  const client = new WorkflowClient({ baseUrl });
+  const client = new WorkflowClient({ baseUrl, signalToken: process.env.WORKFLOW_SIGNAL_TOKEN });
   const served = await client.project(AbortSignal.timeout(5000));
   // An explicit endpoint selects that server's project, including over an SSH tunnel.
   if (!options.server && (await realpath(served.project)) !== (await realpath(options.project)))
     throw new Error("The local server belongs to another project");
+  if (command === "automation") {
+    await runAutomationCommand(client, args, options);
+    return;
+  }
   if (command === "memory") {
     await runMemoryCommand(client, args, options);
     return;

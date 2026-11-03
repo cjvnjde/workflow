@@ -391,6 +391,7 @@ export const commands = [
   ["/setup", "Project setup: status, start, resume, cancel, regenerate"],
   ["/data", "Inspect a step visit's inputs, outputs and AI context"],
   ["/memory", "Inspect project memory or turn it on / off"],
+  ["/automations", "Inspect durable automations, jobs, actions and linked runs"],
   ["/remember", "Preview a completed approach; save explicitly with /remember save"],
   ["/login", "Connect a provider"],
   ["/logout", "Disconnect a provider"],

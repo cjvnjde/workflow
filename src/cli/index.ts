@@ -12,6 +12,7 @@ import {
 } from "./terminal-client.js";
 import { waitForRun } from "../client/client.js";
 import { setupCommands, runSetupCommand } from "./setup-client.js";
+import { automationHelp } from "./automation-client.js";
 
 async function main() {
   const { values, positionals } = parseArgs({
@@ -45,6 +46,10 @@ async function main() {
     },
   });
   let command = positionals[0] ?? "start";
+  if (command === "automation" && (values.help || positionals[1] === "help")) {
+    console.log(automationHelp);
+    return;
+  }
   if (values.help || command === "help") {
     console.log(`Usage:
   workflow init [--instructions "Project constraints"]  Create local configuration; no AI call
@@ -68,6 +73,7 @@ async function main() {
   workflow data <run-id> <step-id> [visit] [--json]  Inspect exact saved step data and AI context
   workflow memory [list|on|off|show ID|add entry.json|update ID entry.json|remove ID] [--json]
   workflow remember <run-id> [--save] [--input JSON] [--json]  Preview or explicitly save reusable guidance
+  workflow automation [list|show|config|save|enable|pause|disable|resume|run-now|test|tick|jobs|job|signals|settings|version|help] [--json]
   workflow tasks               List tasks
   workflow task-show <task-id>  Inspect planning, questions, and the linked run
   workflow answer <task-id> "Answer"
@@ -99,6 +105,7 @@ Ctrl+C stops waiting for setup without cancelling it; use setup-cancel to cancel
 exec explicitly approves and executes a TypeScript workflow without an HTTP server or GUI.
 run creates a draft on a running server; inspect it with show, then approve it.
 Client commands accept --port, --server URL (explicitly selects that server's project), and --json.
+automation help lists arguments; signals requires WORKFLOW_SIGNAL_TOKEN in both host and client environments.
 watch/--wait/exec exit 0 on completion, 1 on failure/cancellation, 2 when attention is needed.
 --demo simulates agents/checks. Advanced: --temporal-address host:port --temporal-namespace name.
 Provider credentials belong to Workflow, outside the project; Pi does not need to be installed.`);

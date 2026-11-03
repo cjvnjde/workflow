@@ -6,6 +6,8 @@
 
 Triggers turn newly created GitHub issues and pull requests into runs of a saved workflow. The application polls GitHub in the background, persists matching events, and starts queued runs when the project is available. The browser can be closed. Temporal remains responsible for workflow execution.
 
+This is the **legacy GitHub trigger** feature. Its DB, API, polling, approval, and history behavior remain available unchanged. For provider-neutral schedules, reusable block targets, discovery, correlated signals, and concurrent managed worktrees, use [Durable automations](automations.md). There is no automatic trigger migration.
+
 ## Configure and test
 
 1. Create a TypeScript workflow through **New task → Use a TypeScript workflow**. The [GitHub event report example](../examples/github-event-report.ts) produces a report without a model call or project-file changes and can be saved as a draft without initial event input.
@@ -17,7 +19,7 @@ Triggers turn newly created GitHub issues and pull requests into runs of a saved
 
 New triggers watch items created from their first save time; they do not import the repository's old issues. Disabling pauses polling and queued starts, retaining the checkpoint for catch-up on re-enable. Changing the repository or event type starts a new observation window. Already admitted events retain their original workflow, filters, budget and result destination. Already running workflows and their result delivery continue when a trigger is disabled.
 
-Only one workflow runs per project. Paused or interrupted workflows retain ownership and hold the queue. Resolve, resume, or cancel those runs through the normal workspace. Trigger dispatch never automatically retries an interrupted mutating step.
+Legacy trigger runs retain exclusive project ownership. Paused or interrupted unmanaged workflows hold their queue; managed automation ownership can also prevent exclusive admission. Resolve, resume, or cancel those runs through their normal controls. Trigger dispatch never automatically retries an interrupted mutating step.
 
 ## Event input and outputs
 
@@ -64,6 +66,12 @@ Queued events survive application restarts. The event history shows the latest 1
 Comment publishing uses a persistent outbox and a unique marker. After a lost response, the dispatcher looks for the original comment. If the outcome remains uncertain, it holds delivery rather than posting again. **Check delivery again** reconciles it. If GitHub never accepted the comment, inspect the issue and publish manually as needed; this conservative behavior avoids duplicate comments. No general exactly-once guarantee is made for effects inside user workflow blocks.
 
 Back up the entire `.workflow/` directory with the application stopped, including triggers, execution versions, run files and Temporal state. Do not delete the inbox to clear errors; doing so removes deduplication history. Saved workflows keep the same activity recovery limits described in [Operations](operations.md).
+
+## Moving to generic automations
+
+Recreate the desired source/discovery and target logic explicitly under **Settings → Automations**; do not edit or rename `.workflow/triggers/state.sqlite`. A library block or saved full workflow can be the new target. Generic signals are not the legacy `input.event` shape: adapt authored inputs deliberately. The [GitHub user-code example](../examples/automations/github.ts) illustrates source polling and publication without introducing a provider-specific automation API.
+
+Save disabled, inspect the frozen target, and test with publication disabled or separately gated. Choose an explicit cutover observation window/checkpoint, then disable the old trigger and account for its queued/running events and pending comments before enabling the new source work. The two systems have separate deduplication domains, so overlapping polling windows can process the same item twice. Retain legacy event/run history for audit; no automatic conversion or history deletion is needed.
 
 ## Keep it running
 

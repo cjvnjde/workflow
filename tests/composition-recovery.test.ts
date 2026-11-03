@@ -112,6 +112,8 @@ test("cancelling parallel attempts restores every active managed edit and preser
   }
 });
 
+// A lost checkpoint can consume its 30-second activity timeout before retry;
+// leave room for that durable recovery, worker restart, and cleanup.
 test("restart resumes only the interrupted parallel sibling and retains every attempt's usage", async (t) => {
   const { project, library, cleanup } = await fixture(t);
   await writeFile(path.join(project, "a.txt"), "original-a");
@@ -178,7 +180,7 @@ test("restart resumes only the interrupted parallel sibling and retains every at
   );
   assert.equal(await readFile(path.join(project, "a.txt"), "utf8"), "changed-1");
   assert.equal(await readFile(path.join(project, "b.txt"), "utf8"), "changed-2");
-});
+}, 60_000);
 
 test("nested parallel groups obey the global limit and stop admitted waiters after failure while paused", async (t) => {
   const { project, library, cleanup } = await fixture(t);

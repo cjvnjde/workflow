@@ -43,6 +43,8 @@ export async function executeFlow(options: {
     dependencies: EvidenceDependency[],
   ): Promise<StepResult>;
   group(id: string, state: GroupState): Promise<void>;
+  /** Final typed step envelope, separate from the human-readable completion summary. */
+  completed?(result: StepResult | undefined): void;
 }): Promise<string> {
   const state: State = {
     results: new Map(),
@@ -311,5 +313,6 @@ export async function executeFlow(options: {
       throw new Error("A step requested repeat outside its loop", { cause: error });
     throw error;
   }
+  options.completed?.(state.last);
   return state.last?.summary ?? "Workflow completed.";
 }

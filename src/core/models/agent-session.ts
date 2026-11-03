@@ -1,3 +1,4 @@
+import { automationBoundary } from "../../infrastructure/automation-boundary.js";
 import { ToolConcurrency } from "../tools/tool-concurrency.js";
 import { SessionTiming } from "../execution/session-timing.js";
 import {
@@ -49,6 +50,7 @@ export async function runAgentSession(options: {
   /** Continue a prematurely ended response in the same session and budgets. */
   completion?: { isComplete: () => boolean; prompt: () => string };
 }) {
+  const automation = automationBoundary.getStore();
   const { project, settings, signal, emit } = options;
   signal.throwIfAborted();
   const modelRuntime = await getModelRuntime();
@@ -118,6 +120,7 @@ export async function runAgentSession(options: {
     (value): value is number => value !== undefined,
   );
   const maxCostUsd = limits.length ? Math.min(...limits) : undefined;
+  const cappedAutomation = !!automation && Number.isFinite(maxCostUsd);
   const resourceLoader: ResourceLoader = {
     getExtensions: () => ({
       extensions: [],
@@ -140,6 +143,7 @@ export async function runAgentSession(options: {
   let calls = 0;
   let usage = emptyUsage();
   let modelFailure: Error | undefined;
+  let requestStarted = false;
   let usageWrites = Promise.resolve();
   let operationWrites = Promise.resolve();
   let evidenceWrites = Promise.resolve();
@@ -192,6 +196,7 @@ export async function runAgentSession(options: {
     execute: async (...args: Parameters<ToolDefinition["execute"]>) => {
       await usageWrites;
       combinedSignal.throwIfAborted();
+      await automation?.consume("tools");
       calls += 1;
       if (calls > settings.maxToolCalls) {
         const error = new Error(`Tool-call budget exhausted (${settings.maxToolCalls})`);
@@ -278,7 +283,9 @@ export async function runAgentSession(options: {
     resourceLoader,
     sessionManager: SessionManager.inMemory(project),
     settingsManager: SettingsManager.inMemory({
-      retry: { enabled: true, maxRetries: 2 },
+      // An interrupted response may already be billed despite reporting no usage.
+      // Do not spend a finite automation allowance again on an uncertain retry.
+      retry: { enabled: !cappedAutomation, maxRetries: 2 },
       compaction: { enabled: maxCostUsd === undefined },
     }),
   }).catch(async (error) => {
@@ -295,6 +302,28 @@ export async function runAgentSession(options: {
     timing.start(args[0].provider, args[0].id);
     await operationWrites;
     try {
+      await usageWrites;
+      combinedSignal.throwIfAborted();
+      if (automation && maxCostUsd !== undefined) {
+        // Provider tokenization is not available here. Reserve the model's full
+        // documented context/output bounds rather than claim an estimated prompt
+        // size is a hard spending limit. Include every frozen pricing tier and
+        // priceUsage's one-hour cache-write rate (twice the input rate).
+        const price = options.price ?? model.cost;
+        const rates = [price, ...(price.tiers ?? [])];
+        const inputRate = Math.max(
+          ...rates.flatMap((rate) => [rate.input * 2, rate.cacheRead, rate.cacheWrite]),
+        );
+        const outputRate = Math.max(...rates.map((rate) => rate.output));
+        const reservation =
+          (args[0].contextWindow * inputRate + args[0].maxTokens * outputRate) / 1_000_000;
+        if (!Number.isFinite(reservation) || reservation > maxCostUsd - usage.costUsd)
+          throw new Error(
+            "Automation spending limit cannot reserve this model's maximum request cost; choose a smaller model or increase the per-job cap",
+          );
+      }
+      await automation?.consume("models");
+      requestStarted = true;
       return timing.observe(await stream(...args));
     } catch (error) {
       timing.finish(combinedSignal.aborted ? "interrupted" : "failed");
@@ -309,7 +338,7 @@ export async function runAgentSession(options: {
     // Retain the promise for cleanup while handling its rejection immediately.
     void abortPromise.catch(() => {});
   };
-  const recordUsage = (reported: Usage) => {
+  const recordUsage = (reported: Usage, incomplete = false) => {
     const price = options.price;
     const catalogHasPrice = [
       model.cost.input,
@@ -334,7 +363,7 @@ export async function runAgentSession(options: {
       cacheWriteTokens: reported.cacheWrite,
       costUsd,
       requests: 1,
-      unpricedRequests: price || catalogHasPrice ? 0 : 1,
+      unpricedRequests: incomplete || !(price || catalogHasPrice) ? 1 : 0,
     });
     usage = addUsage(usage, next);
     const snapshot = { ...usage };
@@ -346,7 +375,13 @@ export async function runAgentSession(options: {
       budget.abort(error);
     });
     emit("usage", JSON.stringify(snapshot));
-    if (maxCostUsd !== undefined && (usage.unpricedRequests > 0 || usage.costUsd >= maxCostUsd)) {
+    // An uncertain terminal response already fails the session below. Retain its
+    // provider diagnostic instead of replacing it with a missing-pricing error.
+    if (
+      !incomplete &&
+      maxCostUsd !== undefined &&
+      (usage.unpricedRequests > 0 || usage.costUsd >= maxCostUsd)
+    ) {
       budget.abort(
         new Error(
           usage.unpricedRequests > 0
@@ -402,10 +437,17 @@ export async function runAgentSession(options: {
       emit("text_delta", event.assistantMessageEvent.delta);
     } else if (event.type === "message_end" && event.message.role === "assistant") {
       const reported = event.message.usage;
-      if (combinedSignal.aborted && reported.totalTokens === 0) {
+      const incomplete =
+        cappedAutomation &&
+        requestStarted &&
+        (event.message.stopReason === "error" || event.message.stopReason === "aborted");
+      requestStarted = false;
+      if (combinedSignal.aborted && reported.totalTokens === 0 && !incomplete) {
         return;
       }
-      recordUsage(reported);
+      // Failed responses may contain only partial usage: retain the known lower
+      // bound and its uncertainty, including cancellation after provider dispatch.
+      recordUsage(reported, incomplete);
       const text = event.message.content
         .filter((part) => part.type === "text")
         .map((part) => part.text)
@@ -416,7 +458,7 @@ export async function runAgentSession(options: {
       // Pi retries transient provider failures in the same conversation. Aborting
       // at message_end would cancel that retry before it can even be scheduled.
       modelFailure =
-        event.message.stopReason === "error"
+        event.message.stopReason === "error" || incomplete
           ? new Error(event.message.errorMessage ?? "Model request failed")
           : undefined;
     } else if (event.type === "auto_retry_start") {

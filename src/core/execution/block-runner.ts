@@ -34,6 +34,7 @@ import type {
 import type { ExecutionEnvironment } from "../../sdk/tool-sdk.js";
 import {
   localExecutionEnvironment,
+  createExecutionEnvironment,
   type ExecutionEnvironmentFactory,
 } from "./execution-environment.js";
 import { readCommandOutput } from "../../infrastructure/command-output.js";
@@ -333,14 +334,17 @@ export const runPiBlock: BlockRunner = async (execution) => {
   const finishInstruction = valueMode
     ? "Call submit_result with {value: your result} to return to the TypeScript caller. Follow the supplied value schema exactly. Put review decisions and retry feedback inside that value; the caller handles workflow routing."
     : "Call submit_result to finish this step with an outcome, summary and declared artifacts.";
-  const environment = await (execution.environmentFactory ?? localExecutionEnvironment)({
-    project,
-    signal,
-    journal: execution.journal,
-    protect: protection,
-    isolated: execution.absoluteJournalPaths,
-    outputDirectory: execution.outputDirectory,
-  });
+  const environment = await createExecutionEnvironment(
+    execution.environmentFactory ?? localExecutionEnvironment,
+    {
+      project,
+      signal,
+      journal: execution.journal,
+      protect: protection,
+      isolated: execution.absoluteJournalPaths,
+      outputDirectory: execution.outputDirectory,
+    },
+  );
   const tools: ToolDefinition[] = workspaceTools(
     workspace,
     environment,
@@ -659,12 +663,16 @@ export const runCommandBlock: BlockRunner = async (execution) => {
     name: executor.command,
     kind: "exec" as const,
   };
-  const environment = await (execution.environmentFactory ?? localExecutionEnvironment)({
-    project: execution.project,
-    signal: execution.signal,
-    journal: execution.journal,
-    outputDirectory: execution.outputDirectory,
-  });
+  const environment = await createExecutionEnvironment(
+    execution.environmentFactory ?? localExecutionEnvironment,
+    {
+      project: execution.project,
+      signal: execution.signal,
+      journal: execution.journal,
+      isolated: execution.absoluteJournalPaths,
+      outputDirectory: execution.outputDirectory,
+    },
+  );
   const started = Date.now();
   await execution.operation?.record({
     ...identity,

@@ -1,5 +1,5 @@
 import { runSchema, type WorkflowRun } from "../../contracts/domain.js";
-import { compositionPlan } from "../planning/composition-plan.js";
+import { automationTemplate } from "../execution/automation-template.js";
 import { githubEventSchema, type GithubEvent } from "../../contracts/trigger-schema.js";
 
 /** Keep the frozen executable/configuration, never a previous run's mutable execution state. */
@@ -12,36 +12,7 @@ export async function triggerTemplate(value: WorkflowRun): Promise<WorkflowRun> 
     const suffix = ` · ${previous.data.repository}#${previous.data.number}`;
     if (run.plan.title.endsWith(suffix)) run.plan.title = run.plan.title.slice(0, -suffix.length);
   }
-  const composed =
-    run.program.composition === "structured" && run.program.structure
-      ? await compositionPlan(run.program.structure, run.plan.title, run.plan.task, {
-          config: run.config,
-          blocks: run.program.catalog,
-        })
-      : undefined;
-  const plan =
-    composed?.plan ??
-    (run.program.composition === "graph"
-      ? run.plan
-      : { title: run.plan.title, task: run.plan.task, entry: "start", nodes: [] });
-  return runSchema.parse({
-    id: run.id,
-    revision: 0,
-    createdAt: run.createdAt,
-    updatedAt: run.createdAt,
-    executionVersion: run.executionVersion,
-    executionProtocol: 2,
-    mode: run.mode,
-    status: "draft",
-    plan,
-    program: run.program,
-    config: run.config,
-    blocks: composed?.blocks ?? (run.program.composition === "graph" ? run.blocks : {}),
-    cursor: plan.entry,
-    visits: {},
-    artifacts: {},
-    attempts: [],
-  });
+  return automationTemplate(run);
 }
 
 export async function instantiateTrigger(template: WorkflowRun, id: string, event: GithubEvent) {

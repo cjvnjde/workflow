@@ -5,6 +5,7 @@ import { codeExecutorSchema } from "./code-schema.js";
 import { scriptExecutorSchema } from "./script-schema.js";
 import { programSourceSchema } from "./program-schema.js";
 import { evidenceValueSchema } from "./evidence-value.js";
+import { boundedJSONSchema } from "./automation-signal-schema.js";
 
 export const identifierSchema = z
   .string()
@@ -336,6 +337,35 @@ export const runSchema = z
     temporalWorkflowId: z.string().optional(),
     // Host-only start receipt; omitted from Temporal inputs for archived versions.
     temporalStart: z.enum(["pending", "confirmed"]).optional(),
+    // Host ownership is deliberately omitted from archived Temporal inputs.
+    automation: z
+      .object({
+        automationId: z.string().uuid(),
+        jobId: z.string().uuid(),
+        workspace: z.enum(["worktree", "project"]),
+        root: z.string(),
+        branch: z.string().optional(),
+        reservation: z.string().regex(/^[a-f0-9]{64}$/),
+        execution: z
+          .object({
+            workspace: z.enum(["worktree", "project"]),
+            baseRef: z.string(),
+            environment: z.array(z.string()),
+            resources: z.array(z.string()),
+            skills: z.array(z.string()).optional(),
+            mcpServers: z.array(z.string()).optional(),
+            modelProfile: z.string().optional(),
+            agent: agentOverrideSchema.optional(),
+            maxSteps: z.number().int().positive(),
+            maxCommands: z.number().int().nonnegative(),
+            maxModelCalls: z.number().int().nonnegative(),
+            maxToolCalls: z.number().int().positive(),
+            maxCostUsd: z.number().positive().optional(),
+          })
+          .strict(),
+      })
+      .strict()
+      .optional(),
     approvedAt: z.string().optional(),
     executionVersion: z
       .string()
@@ -366,6 +396,8 @@ export const runSchema = z
       })
       .optional(),
     output: z.string().max(64_000).optional(),
+    outputValue: boundedJSONSchema.optional(),
+    outputValueError: z.enum(["invalid_json", "too_large"]).optional(),
     transitions: z
       .array(
         z

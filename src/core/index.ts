@@ -9,3 +9,4 @@ export type {
 } from "./application.js";
 export { WorkflowEngine } from "./engine.js";
 export { MemoryStore } from "./memory/memory-store.js";
+export { Automations } from "./automations/automations.js";

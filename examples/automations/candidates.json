@@ -1,0 +1,20 @@
+[
+  {
+    "key": "candidate-a",
+    "revision": "1",
+    "title": "Verify first candidate",
+    "observedAt": "2026-11-03T00:00:00Z"
+  },
+  {
+    "key": "candidate-b",
+    "revision": "3",
+    "title": "Verify second candidate independently",
+    "observedAt": "2026-11-03T00:00:01Z"
+  },
+  {
+    "key": "candidate-c",
+    "revision": "2",
+    "title": "Verify third candidate independently",
+    "observedAt": "2026-11-03T00:00:02Z"
+  }
+]

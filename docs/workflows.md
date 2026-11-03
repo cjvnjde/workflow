@@ -149,6 +149,16 @@ Keep declarations deterministic. Place file, process, network, and model effects
 
 Approved workflows retain their source, profiles, block catalog, and configuration. Editing Settings changes future proposals, not active runs. Update a draft's source to change its graph; dragging its visual nodes changes layout only.
 
+## Use a saved workflow as an automation target
+
+Import and inspect the complete workflow, then select its saved run in **Settings → Automations** or use `{ kind: "workflow", runId }` as an automation target. Saving the definition captures the executable and settings; the planner is not involved in scheduled invocations. Later source/library edits require a new saved automation version and never rewrite queued jobs.
+
+Automation input includes configured defaults plus `automation`, and, for reactions, `signal`, `case`, and bounded `prior` references/results. Forward only needed fields to blocks with `inputs: (ctx) => ({ signal: ctx.input.signal, case: ctx.input.case })`; scheduler input is not copied into every step or AI session. A continuation receives evidence, not an inherited conversation.
+
+Return machine JSON from imperative `run(ctx)`; a declarative composition exposes its final typed step's data. The run retains `outputValue` separately from its display summary (bounded to 256,000 UTF-8 bytes). A discovery workflow returns `discoveryResult({ signals, checkpoint? })` from `predictable-workflow/workflow`; its checkpoint and all admitted observations commit together. A workflow can return several candidates rather than choose only one.
+
+Output/publication is a separately configured target, approval-gated by default, with a stable publication key and optional read-only reconciliation workflow. Keep source inspection, mutation, and publication boundaries explicit. [Automations](automations.md) describes schedules, revision routing, managed worktrees, limits, and recovery; [fixture discovery](../examples/automations/fixture.ts) and [nightly verification](../examples/automations/nightly.ts) are runnable through the [bootstrap](../examples/automations/bootstrap.ts).
+
 ## Existing formats
 
 Imperative `workflow({ async run(ctx) { ... } })` is still supported. `await ctx.step(id, block, options)` invokes a block durably; code controls the next step. Await each step sequentially. Use declared `parallel()` composition for concurrent blocks and for a complete graph preview before execution. See [implement-reviewed.ts](../examples/implement-reviewed.ts).

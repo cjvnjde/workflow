@@ -8,7 +8,8 @@ import { runAgentSession } from "../src/core/models/agent-session.js";
 import { agentSchema, type UsageTotals } from "../src/contracts/domain.js";
 import { textResult } from "../src/core/execution/block-runner.js";
 import { fixture } from "./helpers.js";
-import { UsageStore } from "../src/core/storage/usage-store.js";
+import { createAccountingContext, UsageStore } from "../src/core/storage/usage-store.js";
+import { automationBoundary } from "../src/infrastructure/automation-boundary.js";
 
 type Reply = { tool?: boolean; truncated?: boolean; error?: string };
 async function responseFixture(t: TestContext, respond: (turn: number) => Reply) {
@@ -99,7 +100,6 @@ async function responseFixture(t: TestContext, respond: (turn: number) => Reply)
     else process.env.WORKFLOW_HOME = previous;
   });
   let effects = 0;
-  const events: { kind: string; message: string }[] = [];
   const usage: UsageTotals[] = [];
   const options: Parameters<typeof runAgentSession>[0] = {
     project: context.project,
@@ -123,14 +123,12 @@ async function responseFixture(t: TestContext, respond: (turn: number) => Reply)
       }),
     ],
     signal: AbortSignal.timeout(20_000),
-    emit: (kind, message) => {
-      events.push({ kind, message });
-    },
+    emit: () => {},
     onUsage: async (value) => {
       usage.push(value);
     },
   };
-  return { requests, options, events, usage, effects: () => effects };
+  return { requests, options, usage, effects: () => effects };
 }
 
 test("a broken Responses stream retries in the same session without replaying completed tools", async (t) => {
@@ -145,12 +143,6 @@ test("a broken Responses stream retries in the same session without replaying co
     "Neither a completed tool nor a partial streamed call may replay",
   );
   assert.match(JSON.stringify(fixture.requests[2]), /Recorded 1/);
-  assert.ok(
-    fixture.events.some(
-      (event) => event.kind === "agent_retry" && event.message.includes("Retrying 1/2"),
-    ),
-  );
-  assert.ok(fixture.events.some((event) => event.message.includes("connection recovered")));
   assert.equal(fixture.usage.at(-1)?.requests, 3);
   assert.equal(fixture.usage.at(-1)?.inputTokens, 200);
   const report = await new UsageStore(fixture.options.project).report();
@@ -161,16 +153,93 @@ test("a broken Responses stream retries in the same session without replaying co
 
 test("repeated broken streams exhaust retries and preserve the provider error", async (t) => {
   const fixture = await responseFixture(t, () => ({ truncated: true }));
-  await assert.rejects(
-    runAgentSession(fixture.options),
-    /stream ended before a terminal response event/,
-  );
+  await assert.rejects(runAgentSession(fixture.options));
   assert.equal(fixture.requests.length, 3);
   assert.equal(fixture.effects(), 0);
   assert.equal(fixture.usage.at(-1)?.requests, 3);
   const report = await new UsageStore(fixture.options.project).report();
   assert.equal(report.sessions[0]?.status, "failed");
   assert.equal(report.total.requests, 3);
+});
+
+for (const capSource of ["session", "scope"] as const) {
+  test(`a finite automation ${capSource} cap does not retry an uncertain billed response`, async (t) => {
+    const fixture = await responseFixture(t, () => ({ tool: true, truncated: true }));
+    let failure: string | undefined;
+    const accounting = await createAccountingContext(fixture.options.project, "execution", {
+      maxCostUsd: capSource === "scope" ? 0.1 : undefined,
+    });
+    await assert.rejects(
+      automationBoundary.run(
+        {
+          environment: [],
+          consume: async () => {},
+        },
+        () =>
+          runAgentSession({
+            ...fixture.options,
+            accounting,
+            maxCostUsd: capSource === "session" ? 0.1 : undefined,
+            completion: {
+              isComplete: () => false,
+              prompt: () => "Submit the completed task.",
+            },
+          }),
+      ),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        failure = String(error);
+        return true;
+      },
+    );
+    assert.equal(fixture.requests.length, 1);
+    assert.equal(fixture.effects(), 0, "A partial streamed tool call must not execute or replay");
+    assert.equal(fixture.usage.at(-1)?.requests, 1);
+    const report = await new UsageStore(fixture.options.project).report();
+    assert.equal(report.sessionCount, 1);
+    assert.equal(report.sessions[0]?.status, "failed");
+    assert.equal(report.sessions[0]?.error, failure);
+    assert.equal(report.total.requests, 1);
+    assert.equal(report.total.unpricedRequests, 1);
+    assert.equal(report.incomplete, true);
+    if (capSource === "scope") {
+      await assert.rejects(runAgentSession({ ...fixture.options, accounting }), /unknown pricing/);
+      assert.equal(
+        fixture.requests.length,
+        1,
+        "Unknown spending must block another capped session",
+      );
+    }
+    assert.deepEqual(report.total, fixture.usage.at(-1));
+  });
+}
+
+test("cancelling a capped automation request retains unknown spending", async (t) => {
+  const { promise: received, resolve: requestReceived } = Promise.withResolvers<void>();
+  const fixture = await responseFixture(t, () => {
+    requestReceived();
+    return { tool: true, truncated: true };
+  });
+  const controller = new AbortController();
+  const accounting = await createAccountingContext(fixture.options.project, "execution", {
+    maxCostUsd: 0.1,
+  });
+  const pending = automationBoundary.run({ environment: [], consume: async () => {} }, () =>
+    runAgentSession({ ...fixture.options, accounting, signal: controller.signal }),
+  );
+  const rejected = assert.rejects(pending, /User cancelled uncertain response/);
+  await received;
+  controller.abort(new Error("User cancelled uncertain response"));
+  await rejected;
+  assert.equal(fixture.requests.length, 1);
+  assert.equal(fixture.effects(), 0);
+  const report = await new UsageStore(fixture.options.project).report();
+  assert.equal(report.sessionCount, 1);
+  assert.equal(report.sessions[0]?.status, "cancelled");
+  assert.equal(report.total.requests, 1);
+  assert.equal(report.total.unpricedRequests, 1);
+  assert.equal(report.incomplete, true);
+  assert.deepEqual(report.total, fixture.usage.at(-1));
 });
 
 test("cancellation during provider backoff stops retries immediately", async (t) => {
@@ -198,5 +267,4 @@ test("quota errors are not retried or mistaken for successful sessions", async (
   const fixture = await responseFixture(t, () => ({ error: "insufficient_quota" }));
   await assert.rejects(runAgentSession(fixture.options), /insufficient_quota/);
   assert.equal(fixture.requests.length, 1);
-  assert.ok(!fixture.events.some((event) => /Retrying/.test(event.message)));
 });

@@ -1,11 +1,13 @@
 import { z } from "zod";
 import type { FlowNode } from "./composition-sdk.js";
 import type { WorkflowTool } from "./tool-sdk.js";
+import type { workSignalSchema } from "../contracts/automation-signal-schema.js";
 export { defineTool, __workflowTools } from "./tool-sdk.js";
 export type { WorkflowTool, ToolContext, ExecutionEnvironment } from "./tool-sdk.js";
 export { z };
 export { step, sequence, parallel, when, repeatUntil, describeFlow } from "./composition-sdk.js";
 export type { FlowNode, FlowStep, FlowContext, FlowStructure } from "./composition-sdk.js";
+export * from "./automation-sdk.js";
 
 export type Model = {
   provider?: string;
@@ -104,6 +106,11 @@ export interface BlockContext<I> {
     command: string,
     options?: { timeoutMs?: number; env?: Record<string, string> },
   ): Promise<ExecResult>;
+  /** Durably ingest an observation; defaults to this run's owning automation. */
+  emitSignal(
+    signal: z.input<typeof workSignalSchema>,
+    options?: { automationId?: string },
+  ): Promise<void>;
   readFile(path: string): Promise<string>;
   writeFile(path: string, content: string): Promise<void>;
   log(message: string): Promise<void>;
