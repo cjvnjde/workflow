@@ -1,0 +1,244 @@
+:where(.workflow-workspace) .graph-panel > .react-flow {
+  height: calc(100% - 32px);
+  --xy-node-background-color: var(--muted);
+  --xy-node-color: var(--foreground);
+  --xy-handle-background-color: var(--muted-foreground);
+  --xy-connectionline-stroke: var(--muted-foreground);
+  --xy-background-color: var(--background);
+  --xy-edge-stroke: var(--muted-foreground);
+  --xy-edge-stroke-selected: var(--primary);
+  --xy-edge-label-background-color: var(--card);
+  --xy-edge-label-color: var(--foreground);
+  --xy-node-border: 1px solid var(--border);
+  --xy-handle-border-color: var(--background);
+  --xy-selection-background-color: color-mix(in oklch, var(--primary) 10%, transparent);
+  --xy-selection-border: 1px dotted var(--ring);
+  --xy-controls-button-background-color: var(--secondary);
+  --xy-controls-button-background-color-hover: var(--accent);
+  --xy-controls-button-color: var(--secondary-foreground);
+  --xy-controls-button-color-hover: var(--accent-foreground);
+  --xy-controls-button-border-color: var(--border);
+  --xy-attribution-background-color: color-mix(in oklch, var(--background) 75%, transparent);
+}
+:where(.workflow-workspace) .react-flow__node.workflow-node {
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--muted);
+  color: var(--foreground);
+  box-shadow: 0 5px 15px color-mix(in srgb, var(--shadow-color) 18.8%, transparent);
+  text-align: left;
+  cursor: grab;
+}
+:where(.workflow-workspace) .react-flow__node.workflow-node.selected {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12.2%, transparent);
+}
+:where(.workflow-workspace) .graph-label small {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  letter-spacing: 0.1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+:where(.workflow-workspace) .graph-label strong {
+  font-size: 15px;
+  font-weight: 550;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex-shrink: 0;
+  margin: 5px 0;
+}
+:where(.workflow-workspace) .graph-label > span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+:where(.workflow-workspace) .graph-label b {
+  display: inline-block;
+  margin-top: auto;
+  flex-shrink: 0;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--background) 31.4%, transparent);
+  color: var(--muted-foreground);
+  font-size: 9px;
+  font-weight: 450;
+}
+:where(.workflow-workspace) .react-flow__node.workflow-node.active {
+  border: 2px solid var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, var(--background));
+  box-shadow: 0 0 0 5px color-mix(in oklch, var(--primary) 13.3%, transparent);
+  animation: active-block 2s ease-in-out infinite;
+}
+:where(.workflow-workspace) .workflow-node.active b {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--muted-foreground) 31.4%, transparent);
+}
+:where(.workflow-workspace) .workflow-node.pass {
+  border-color: var(--success);
+}
+:where(.workflow-workspace) .workflow-node.pass b {
+  color: var(--success);
+}
+:where(.workflow-workspace) .workflow-node.retry {
+  border-color: var(--warning);
+}
+:where(.workflow-workspace) .react-flow__node.terminal {
+  border-radius: 24px;
+  border-color: var(--muted-foreground);
+  background: var(--muted);
+  color: var(--primary);
+  padding: 10px;
+  font-size: 11px;
+}
+:where(.workflow-workspace) .react-flow__node.terminal.complete {
+  border-color: var(--success);
+  color: var(--success);
+  background: var(--card);
+}
+:where(.workflow-workspace) .react-flow__node.terminal.failed {
+  border-color: var(--destructive);
+  color: var(--destructive);
+  background: var(--card);
+}
+:where(.workflow-workspace) .react-flow__handle {
+  background: var(--muted-foreground);
+  border-color: var(--background);
+}
+:where(.workflow-workspace) .react-flow__controls {
+  box-shadow: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+:where(.workflow-workspace) .react-flow__controls-button {
+  width: 25px;
+  height: 25px;
+  min-height: 0;
+  padding: 5px;
+  border-radius: 0;
+}
+:where(.workflow-workspace) .react-flow__attribution {
+  font-size: 8px;
+}
+:where(.workflow-workspace) .react-flow__attribution a {
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .graph-toolbar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  z-index: 5;
+  max-width: calc(100% - 24px);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+:where(.workflow-workspace) .graph-toolbar span {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  background: var(--background);
+  padding: 4px;
+}
+:where(.workflow-workspace) .graph-toolbar button {
+  font-size: 11px;
+  padding: 6px 9px;
+}
+:where(.workflow-workspace) .react-flow__node.composition-group {
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+:where(.workflow-workspace) .composition-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  padding: 12px 16px;
+  cursor: pointer;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+:where(.workflow-workspace) .composition-heading strong {
+  color: var(--primary);
+  font-size: 15px;
+}
+:where(.workflow-workspace) .composition-heading small {
+  margin-left: auto;
+  font-size: 11px;
+}
+:where(.workflow-workspace) .react-flow__node.composition-junction {
+  background: var(--border);
+  border: 1px solid var(--muted-foreground);
+  border-radius: 50%;
+}
+:where(.workflow-workspace) .workflow-graph .react-flow__edge,
+:where(.workflow-workspace) .workflow-graph .react-flow__edge-interaction {
+  pointer-events: none !important;
+}
+
+:where(.workflow-workspace) .workflow-node .graph-label {
+  height: 100%;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+}
+:where(.workflow-workspace) .composition-heading > span {
+  font-size: 12px;
+}
+:where(.workflow-workspace) .composition-junction .react-flow__handle {
+  opacity: 0;
+}
+:where(.workflow-workspace) .graph-step-navigation {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+:where(.workflow-workspace) .graph-step-navigation select {
+  max-width: min(220px, 48vw);
+  font-size: 12px;
+  padding: 6px;
+  background: var(--background);
+}
+@media (max-width: 700px) {
+  :where(.workflow-workspace) .graph-toolbar span {
+    display: none;
+  }
+}
+:where(.workflow-workspace) .react-flow__node.workflow-node.dragging {
+  cursor: grabbing;
+}
+:where(.workflow-workspace) .react-flow__node.workflow-node.fail {
+  border-color: var(--destructive);
+}
+:where(.workflow-workspace) .workflow-node.fail b {
+  color: var(--destructive);
+}
+@keyframes active-block {
+  50% {
+    box-shadow:
+      0 0 0 8px color-mix(in oklch, var(--primary) 4.7%, transparent),
+      0 0 28px color-mix(in oklch, var(--primary) 14.1%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(.workflow-workspace) .react-flow__node.workflow-node.active {
+    animation: none;
+  }
+}

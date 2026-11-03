@@ -1,4 +1,14 @@
-import { lazy, Suspense, useLayoutEffect, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useId,
+  useLayoutEffect,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   resolveAgentSettings,
@@ -18,6 +28,8 @@ import ActivityFeed from "./ActivityFeed.js";
 import { describeActivity } from "./activity.js";
 import { findGroup } from "../graph/graph-layout.js";
 import { usageCost } from "../usage/usage-presentation.js";
+import { useWorkspaceLocation, type WorkflowView } from "../../app/workspace-location.js";
+import "./RunWorkspace.css";
 
 const WorkflowGraph = lazy(() => import("../graph/WorkflowGraph.js"));
 const PlanEditor = lazy(() => import("../tasks/PlanEditor.js"));
@@ -43,12 +55,6 @@ interface RunWorkspaceProps {
   onSettings: () => void;
 }
 
-type EvidenceSelection = {
-  nodeId: string;
-  visit: number;
-  operationId: string;
-  sessionId?: string;
-};
 const tabs = [
   ["results", "Results", "file"],
   ["workflow", "Workflow", "workflow"],
@@ -58,7 +64,7 @@ const tabs = [
   ["artifacts", "Artifacts", "folder"],
   ["edit", "Editor", "code"],
 ] as const;
-type WorkspaceTab = (typeof tabs)[number][0];
+type WorkspaceTab = WorkflowView;
 
 export default function RunWorkspace(props: RunWorkspaceProps) {
   const [groupedActivity, setGroupedActivity] = useState(false);
@@ -94,15 +100,34 @@ function RunWorkspaceView({
   groupedActivity: boolean;
   onGroupedActivity: (grouped: boolean) => void;
 }) {
-  const [tab, setTab] = useState<WorkspaceTab>(() =>
-    isSourceWorkflow(run) && !run.program?.structure && run.status === "draft"
+  const location = useWorkspaceLocation();
+  const tab =
+    location.workspaceView ??
+    (isSourceWorkflow(run) && !run.program?.structure && run.status === "draft"
       ? "edit"
-      : "workflow",
+      : "workflow");
+  const selected = location.step;
+  const evidenceSelection = useMemo(
+    () =>
+      selected && location.visit !== undefined
+        ? {
+            nodeId: selected,
+            visit: location.visit,
+            operationId: location.operation,
+            sessionId: location.session,
+          }
+        : undefined,
+    [selected, location.visit, location.operation, location.session],
   );
-  const [selected, setSelected] = useState<string>();
-  const [evidenceSelection, setEvidenceSelection] = useState<EvidenceSelection>();
+  const tabId = useId();
+  function setTab(workspaceView: WorkspaceTab) {
+    location.setInspection({ workspaceView });
+  }
+  function setSelected(step: string | undefined) {
+    location.setInspection({ step, visit: undefined, operation: undefined, session: undefined });
+  }
   const [expanded, setExpanded] = useState(false);
-  const [previousStatus, setPreviousStatus] = useState(run.status);
+  const previousStatus = useRef(run.status);
   const [now, setNow] = useState(Date.now);
   const focusDialog = useRef<HTMLDialogElement>(null);
   const expandButton = useRef<HTMLButtonElement>(null);
@@ -116,12 +141,15 @@ function RunWorkspaceView({
     return host;
   });
 
-  if (previousStatus !== run.status) {
-    setPreviousStatus(run.status);
-    if (run.program && previousStatus === "draft" && run.approvedAt && tab === "edit") {
+  const followApproval = useEffectEvent(() => {
+    if (run.program && previousStatus.current === "draft" && run.approvedAt && tab === "edit") {
       setTab("workflow");
     }
-  }
+    previousStatus.current = run.status;
+  });
+  useEffect(() => {
+    followApproval();
+  }, [run.status]);
 
   useEffect(() => {
     if (!["running", "pausing"].includes(run.status)) return;
@@ -152,10 +180,7 @@ function RunWorkspaceView({
       inline.append(workspaceHost);
     }
     if (expanded || mounted) expandButton.current?.focus({ preventScroll: true });
-    const frame =
-      expanded || mounted ? requestAnimationFrame(() => graph.current?.fit()) : undefined;
     return () => {
-      if (frame !== undefined) cancelAnimationFrame(frame);
       if (expanded) {
         dialog.removeEventListener("keydown", closeOnEscape, true);
         document.body.style.overflow = overflow;
@@ -257,10 +282,14 @@ function RunWorkspaceView({
   const selectedAttempt = run.attempts.filter((attempt) => attempt.nodeId === selected).at(-1);
   const advice = recoveryAdvice(run);
 
-  function openEvidence(nodeId: string, visit: number, operationId: string, sessionId?: string) {
-    setSelected(nodeId);
-    setEvidenceSelection({ nodeId, visit, operationId, sessionId });
-    setTab("data");
+  function openEvidence(nodeId: string, visit: number, operationId?: string, sessionId?: string) {
+    location.setInspection({
+      workspaceView: "data",
+      step: nodeId,
+      visit,
+      operation: operationId,
+      session: sessionId,
+    });
   }
   function resume() {
     if (
@@ -273,7 +302,6 @@ function RunWorkspaceView({
     onAction("resume");
   }
   function selectStep(id: string) {
-    setEvidenceSelection(undefined);
     setSelected(
       plan.nodes.some((item) => item.id === id) || findGroup(run.program?.structure, id)
         ? id
@@ -296,13 +324,40 @@ function RunWorkspaceView({
           </span>
         </header>
       )}
-      <nav className="tabs" aria-label="Workflow views">
-        {tabs.map(([id, label, icon]) => (
-          <button key={id} className={tab === id ? "active" : undefined} onClick={() => setTab(id)}>
-            <Icon name={icon} size={15} />
-            {label}
-          </button>
-        ))}
+      <div className="workspace-view-bar">
+        <nav className="tabs" role="tablist" aria-label="Workflow views">
+          {tabs.map(([id, label, icon], index) => (
+            <button
+              key={id}
+              id={`${tabId}-${id}`}
+              role="tab"
+              aria-selected={tab === id}
+              aria-controls={`${tabId}-panel`}
+              tabIndex={tab === id ? 0 : -1}
+              className={tab === id ? "active" : undefined}
+              onClick={() => setTab(id)}
+              onKeyDown={(event) => {
+                const next =
+                  event.key === "Home"
+                    ? 0
+                    : event.key === "End"
+                      ? tabs.length - 1
+                      : event.key === "ArrowRight"
+                        ? (index + 1) % tabs.length
+                        : event.key === "ArrowLeft"
+                          ? (index + tabs.length - 1) % tabs.length
+                          : undefined;
+                if (next === undefined) return;
+                event.preventDefault();
+                setTab(tabs[next]![0]);
+                document.getElementById(`${tabId}-${tabs[next]![0]}`)?.focus();
+              }}
+            >
+              <Icon name={icon} size={15} />
+              {label}
+            </button>
+          ))}
+        </nav>
         <span>
           {running
             ? "Live"
@@ -320,346 +375,342 @@ function RunWorkspaceView({
           <Icon name={expanded ? "close" : "expand"} size={16} />
           <span>{expanded ? "Close" : "Expand"}</span>
         </button>
-      </nav>
-      <Suspense fallback={null}>
-        {tab === "results" && (
-          <div className="results-panel">
-            <div className="card-title">
-              <h2>{finished ? resultTitle : "Results so far"}</h2>
-              <MarkdownActions content={report} filename={`${run.id}-results.md`} />
-            </div>
-            <ExecutionEvidence run={run} events={events} now={now} />
-            {finished && <MarkdownView content={resultSummary} />}
-            {run.attempts.some((attempt) => attempt.checks.length) && (
-              <details className="result-checks">
-                <summary>
-                  Verification checks ·{" "}
-                  {run.attempts.reduce((sum, attempt) => sum + attempt.checks.length, 0)} recorded
-                </summary>
-                {run.attempts.flatMap((attempt) =>
-                  attempt.checks.map((check) => (
-                    <details
-                      key={`${attempt.nodeId}-${attempt.visit}-${check.command}-${check.expected}`}
-                    >
-                      <summary>
-                        {check.matched ? "✓ Met expectation" : "× Did not meet expectation"} ·{" "}
-                        {attempt.nodeId} / visit {attempt.visit} · {check.command} · exit{" "}
-                        {check.exitCode ?? "unknown"}
-                      </summary>
-                      <pre>{check.output}</pre>
-                    </details>
-                  )),
-                )}
-              </details>
-            )}
-            {!artifacts.length && !finished && (
-              <div className="panel-empty">Step results will appear here as the workflow runs.</div>
-            )}
-            {resultArtifacts.map((artifact) => (
-              <article key={`${artifact.nodeId}/${artifact.name}`} className="result-artifact">
-                <div className="card-title">
-                  <h3>
-                    {run.plan.nodes.find((item) => item.id === artifact.nodeId)?.label ??
-                      artifact.nodeId}{" "}
-                    / {artifact.name}
-                  </h3>
-                  <MarkdownActions
-                    content={artifact.content}
-                    filename={`${artifact.nodeId}-${artifact.name}${artifact.name.endsWith(".md") ? "" : ".md"}`}
-                  />
-                </div>
-                <MarkdownView content={artifact.content} />
-              </article>
-            ))}
-          </div>
-        )}
-        {tab === "workflow" && (
-          <div className={`workflow-canvas${node || selectedGroup ? " inspecting" : ""}`}>
-            <div className="graph-panel">
-              {!plan.nodes.length ? (
-                <div className="panel-empty">
-                  <Icon name="code" size={28} />
-                  <p>The graph appears as the TypeScript workflow reaches each step.</p>
-                  <button onClick={() => setTab("edit")}>View TypeScript</button>
-                </div>
-              ) : (
-                <WorkflowGraph
-                  ref={graph}
-                  key={run.id}
-                  run={{ ...run, plan }}
-                  selected={selected}
-                  onSelect={selectStep}
-                />
-              )}
-              <div className="graph-legend">
-                {draft.dirty && draft.validPlan && <strong>Unsaved preview</strong>}
-                {run.program?.structure ? (
-                  <>
-                    <span>― next</span>
-                    <span>┄ repeat until satisfied</span>
-                    <span>Groups show branches and concurrency</span>
-                  </>
-                ) : (
-                  <>
-                    <span>― pass</span>
-                    <span>┄ retry with feedback</span>
-                    <span>― fail</span>
-                  </>
-                )}
+      </div>
+      <div
+        className="workspace-tab-panel"
+        role="tabpanel"
+        id={`${tabId}-panel`}
+        aria-labelledby={`${tabId}-${tab}`}
+        tabIndex={0}
+      >
+        <Suspense fallback={null}>
+          {tab === "results" && (
+            <div className="results-panel">
+              <div className="card-title">
+                <h2>{finished ? resultTitle : "Results so far"}</h2>
+                <MarkdownActions content={report} filename={`${run.id}-results.md`} />
               </div>
+              {(finished || run.output || lastAttempt?.result || lastAttempt?.error) && (
+                <MarkdownView content={resultSummary} />
+              )}
+              <ExecutionEvidence run={run} events={events} now={now}>
+                {!artifacts.length && !finished && (
+                  <div className="panel-empty">
+                    Step results will appear here as the workflow runs.
+                  </div>
+                )}
+                {resultArtifacts.map((artifact) => (
+                  <article key={`${artifact.nodeId}/${artifact.name}`} className="result-artifact">
+                    <div className="card-title">
+                      <h3>
+                        {run.plan.nodes.find((item) => item.id === artifact.nodeId)?.label ??
+                          artifact.nodeId}{" "}
+                        / {artifact.name}
+                      </h3>
+                      <MarkdownActions
+                        content={artifact.content}
+                        filename={`${artifact.nodeId}-${artifact.name}${artifact.name.endsWith(".md") ? "" : ".md"}`}
+                      />
+                    </div>
+                    <MarkdownView content={artifact.content} />
+                  </article>
+                ))}
+              </ExecutionEvidence>
             </div>
-            {node && bundle ? (
-              <aside className="step-inspector">
-                <div className="card-title">
-                  <span className="eyebrow">STEP DETAILS</span>
-                  <button
-                    className="icon-button"
-                    aria-label="Close step details"
-                    onClick={() => setSelected(undefined)}
-                  >
-                    <Icon name="close" />
-                  </button>
-                </div>
-                <h2>{node.label}</h2>
-                <p>{node.goal}</p>
-                {(selectedAttempt?.result || selectedAttempt?.error) && (
-                  <div className="step-result">
-                    <h3>Latest step result · {selectedAttempt.result?.outcome ?? "error"}</h3>
-                    <MarkdownView
-                      content={selectedAttempt.error ?? selectedAttempt.result?.summary ?? ""}
-                    />
-                    <button className="quiet" onClick={() => setTab("results")}>
-                      View results &amp; artifacts
-                    </button>
+          )}
+          {tab === "workflow" && (
+            <div className={`workflow-canvas${node || selectedGroup ? " inspecting" : ""}`}>
+              <div className="graph-panel">
+                {!plan.nodes.length ? (
+                  <div className="panel-empty">
+                    <Icon name="code" size={28} />
+                    <p>The graph appears as the TypeScript workflow reaches each step.</p>
+                    <button onClick={() => setTab("edit")}>View TypeScript</button>
                   </div>
+                ) : (
+                  <WorkflowGraph
+                    ref={graph}
+                    key={run.id}
+                    run={{ ...run, plan }}
+                    selected={selected}
+                    onSelect={selectStep}
+                  />
                 )}
-                <div className="detail-row">
-                  <span>Execution</span>
-                  <strong>
-                    {bundle.definition.executor
-                      ? executionLabel(bundle.definition.executor)
-                      : (agent?.model ?? "Project model")}
-                  </strong>
-                </div>
-                {bundle.definition.executor?.kind === "code" && agent?.model && (
-                  <div className="detail-row">
-                    <span>Default AI model</span>
-                    <strong>
-                      {agent.model} · {agent.thinking}
-                    </strong>
-                  </div>
-                )}
-                {bundle.definition.executor?.kind === "code" && (
-                  <p className="muted">
-                    Calls to ctx.ai inherit this step's model. An explicit model in the block source
-                    takes precedence.
-                  </p>
-                )}
-                <div className="detail-row">
-                  <span>Visits</span>
-                  <strong>
-                    {run.visits[node.id] ?? 0} / {node.maxVisits}
-                  </strong>
-                </div>
-                <h3>Inputs &amp; outputs</h3>
-                <p className="muted">
-                  Review declared sources before execution, then inspect each visit's stored values
-                  and model context.
-                </p>
-                <button
-                  className="quiet"
-                  onClick={() => {
-                    setEvidenceSelection(undefined);
-                    setTab("data");
-                  }}
-                >
-                  Inspect step data
-                </button>
-                <button className="quiet" onClick={() => setTab("timeline")}>
-                  View step timeline
-                </button>
-                {selectedGroup?.step && (
-                  <>
-                    <h3>Outcome actions</h3>
-                    {(["pass", "retry", "fail"] as const).map((outcome) => (
-                      <div key={outcome} className="detail-row">
-                        <span>{outcome}</span>
-                        <strong>
-                          {selectedGroup.step!.options.on?.[outcome] ??
-                            (outcome === "pass" ? "continue" : "stop")}
-                        </strong>
-                      </div>
-                    ))}
-                    {Object.values(selectedGroup.step.options.on ?? {}).includes("repeat") && (
-                      <p className="muted">
-                        Repeat starts the next iteration of the nearest enclosing loop.
-                      </p>
-                    )}
-                  </>
-                )}
-                <button onClick={() => setTab("activity")}>
-                  <Icon name="log" size={15} />
-                  View step activity
-                </button>
-                <details>
-                  <summary>Instructions &amp; tools</summary>
-                  <pre>{bundle.prompt}</pre>
-                  {!bundle.definition.executor && (
-                    <p>
-                      Full file access, Bash, Git and enabled MCP servers. Step instructions define
-                      the work to perform.
-                    </p>
+                <div className="graph-legend">
+                  {draft.dirty && draft.validPlan && <strong>Unsaved preview</strong>}
+                  {run.program?.structure ? (
+                    <>
+                      <span>― next</span>
+                      <span>┄ repeat until satisfied</span>
+                      <span>Groups show branches and concurrency</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>― pass</span>
+                      <span>┄ retry with feedback</span>
+                      <span>― fail</span>
+                    </>
                   )}
-                  <h3>Host checks</h3>
-                  <pre>{JSON.stringify(bundle.definition.checks, null, 2)}</pre>
-                </details>
-              </aside>
-            ) : (
-              selectedGroup && (
+                </div>
+              </div>
+              {node && bundle ? (
                 <aside className="step-inspector">
                   <div className="card-title">
-                    <span className="eyebrow">{selectedGroup.kind}</span>
+                    <span className="eyebrow">STEP DETAILS</span>
                     <button
                       className="icon-button"
-                      aria-label="Close group details"
+                      aria-label="Close step details"
                       onClick={() => setSelected(undefined)}
                     >
                       <Icon name="close" />
                     </button>
                   </div>
-                  <h2>{selectedGroup.label}</h2>
-                  {selectedGroup.concurrency && (
-                    <p>
-                      Runs up to {selectedGroup.concurrency} independent branches at once, then
-                      waits for the group to finish.
+                  <h2>{node.label}</h2>
+                  <p>{node.goal}</p>
+                  {(selectedAttempt?.result || selectedAttempt?.error) && (
+                    <div className="step-result">
+                      <h3>Latest step result · {selectedAttempt.result?.outcome ?? "error"}</h3>
+                      <MarkdownView
+                        content={selectedAttempt.error ?? selectedAttempt.result?.summary ?? ""}
+                      />
+                      <button className="quiet" onClick={() => setTab("results")}>
+                        View results &amp; artifacts
+                      </button>
+                    </div>
+                  )}
+                  <div className="detail-row">
+                    <span>Execution</span>
+                    <strong>
+                      {bundle.definition.executor
+                        ? executionLabel(bundle.definition.executor)
+                        : (agent?.model ?? "Project model")}
+                    </strong>
+                  </div>
+                  {bundle.definition.executor?.kind === "code" && agent?.model && (
+                    <div className="detail-row">
+                      <span>Default AI model</span>
+                      <strong>
+                        {agent.model} · {agent.thinking}
+                      </strong>
+                    </div>
+                  )}
+                  {bundle.definition.executor?.kind === "code" && (
+                    <p className="muted">
+                      Calls to ctx.ai inherit this step's model. An explicit model in the block
+                      source takes precedence.
                     </p>
                   )}
-                  {selectedGroup.maxIterations && (
-                    <p>
-                      Repeats until its condition is true, with at most{" "}
-                      {selectedGroup.maxIterations} iterations. Each step's visit limit still
-                      applies.
-                    </p>
-                  )}
-                  {selectedGroup.condition && (
+                  <div className="detail-row">
+                    <span>Visits</span>
+                    <strong>
+                      {run.visits[node.id] ?? 0} / {node.maxVisits}
+                    </strong>
+                  </div>
+                  <h3>Inputs &amp; outputs</h3>
+                  <p className="muted">
+                    Review declared sources before execution, then inspect each visit's stored
+                    values and model context.
+                  </p>
+                  <button
+                    className="quiet"
+                    onClick={() => {
+                      location.setInspection({
+                        workspaceView: "data",
+                        visit: undefined,
+                        operation: undefined,
+                        session: undefined,
+                      });
+                    }}
+                  >
+                    Inspect step data
+                  </button>
+                  <button className="quiet" onClick={() => setTab("timeline")}>
+                    View step timeline
+                  </button>
+                  {selectedGroup?.step && (
                     <>
-                      <h3>Condition</h3>
-                      <pre>{selectedGroup.condition}</pre>
+                      <h3>Outcome actions</h3>
+                      {(["pass", "retry", "fail"] as const).map((outcome) => (
+                        <div key={outcome} className="detail-row">
+                          <span>{outcome}</span>
+                          <strong>
+                            {selectedGroup.step!.options.on?.[outcome] ??
+                              (outcome === "pass" ? "continue" : "stop")}
+                          </strong>
+                        </div>
+                      ))}
+                      {Object.values(selectedGroup.step.options.on ?? {}).includes("repeat") && (
+                        <p className="muted">
+                          Repeat starts the next iteration of the nearest enclosing loop.
+                        </p>
+                      )}
                     </>
                   )}
-                  <p>{run.groups?.[selectedGroup.id]?.state ?? "Not started"}</p>
-                  <button onClick={() => setTab("edit")}>View TypeScript</button>
+                  <button onClick={() => setTab("activity")}>
+                    <Icon name="log" size={15} />
+                    View step activity
+                  </button>
+                  <details>
+                    <summary>Instructions &amp; tools</summary>
+                    <pre>{bundle.prompt}</pre>
+                    {!bundle.definition.executor && (
+                      <p>
+                        Full file access, Bash, Git and enabled MCP servers. Step instructions
+                        define the work to perform.
+                      </p>
+                    )}
+                    <h3>Host checks</h3>
+                    <pre>{JSON.stringify(bundle.definition.checks, null, 2)}</pre>
+                  </details>
                 </aside>
-              )
-            )}
-          </div>
-        )}
-        {tab === "timeline" && (
-          <ExecutionInspector
-            run={run}
-            events={events}
-            selected={selected}
-            timeline
-            onSelect={setSelected}
-            onEvidence={openEvidence}
-          />
-        )}
-        {tab === "data" && (
-          <DataInspector
-            run={run}
-            events={events}
-            selected={selected}
-            focus={evidenceSelection}
-            onSelect={setSelected}
-            onEditor={() => setTab("edit")}
-            onActivity={() => setTab("activity")}
-          />
-        )}
-        {tab === "activity" && (
-          <div className="inspection-mode" role="group" aria-label="Activity presentation">
-            <button aria-pressed={groupedActivity} onClick={() => onGroupedActivity(true)}>
-              Grouped calls
-            </button>
-            <button aria-pressed={!groupedActivity} onClick={() => onGroupedActivity(false)}>
-              Event history
-            </button>
-          </div>
-        )}
-        {tab === "activity" && groupedActivity && (
-          <ExecutionInspector
-            run={run}
-            events={events}
-            selected={selected}
-            onSelect={setSelected}
-            onEvidence={openEvidence}
-          />
-        )}
-        {tab === "activity" && !groupedActivity && (
-          <ActivityFeed
-            key={run.id}
-            runId={run.id}
-            events={events}
-            nodes={plan.nodes}
-            selected={selected}
-            running={running}
-            liveText={!selected || selected === run.cursor ? liveText : ""}
-            liveResponses={liveResponses}
-            onSelect={setSelected}
-          />
-        )}
-        {tab === "artifacts" && (
-          <div className="artifact-list">
-            <p className="muted">Each step receives only the context selected in the workflow.</p>
-            {artifacts.map((artifact) => (
-              <details key={`${artifact.nodeId}-${artifact.name}`}>
-                <summary>
-                  <Icon name="file" size={16} />
-                  {artifact.nodeId} / {artifact.name}
-                </summary>
-                <MarkdownActions
-                  content={artifact.content}
-                  filename={`${artifact.nodeId}-${artifact.name}${artifact.name.endsWith(".md") ? "" : ".md"}`}
-                />
-                <MarkdownView content={artifact.content} />
-              </details>
+              ) : (
+                selectedGroup && (
+                  <aside className="step-inspector">
+                    <div className="card-title">
+                      <span className="eyebrow">{selectedGroup.kind}</span>
+                      <button
+                        className="icon-button"
+                        aria-label="Close group details"
+                        onClick={() => setSelected(undefined)}
+                      >
+                        <Icon name="close" />
+                      </button>
+                    </div>
+                    <h2>{selectedGroup.label}</h2>
+                    {selectedGroup.concurrency && (
+                      <p>
+                        Runs up to {selectedGroup.concurrency} independent branches at once, then
+                        waits for the group to finish.
+                      </p>
+                    )}
+                    {selectedGroup.maxIterations && (
+                      <p>
+                        Repeats until its condition is true, with at most{" "}
+                        {selectedGroup.maxIterations} iterations. Each step's visit limit still
+                        applies.
+                      </p>
+                    )}
+                    {selectedGroup.condition && (
+                      <>
+                        <h3>Condition</h3>
+                        <pre>{selectedGroup.condition}</pre>
+                      </>
+                    )}
+                    <p>{run.groups?.[selectedGroup.id]?.state ?? "Not started"}</p>
+                    <button onClick={() => setTab("edit")}>View TypeScript</button>
+                  </aside>
+                )
+              )}
+            </div>
+          )}
+          {tab === "timeline" && (
+            <ExecutionInspector
+              run={run}
+              events={events}
+              selected={selected}
+              timeline
+              onSelect={setSelected}
+              onEvidence={openEvidence}
+            />
+          )}
+          {tab === "data" && (
+            <DataInspector
+              run={run}
+              events={events}
+              selected={selected}
+              focus={evidenceSelection}
+              onSelect={setSelected}
+              onEvidence={openEvidence}
+              onEditor={() => setTab("edit")}
+              onActivity={() => setTab("activity")}
+            />
+          )}
+          {tab === "activity" && (
+            <div className="inspection-mode" role="group" aria-label="Activity presentation">
+              <button aria-pressed={groupedActivity} onClick={() => onGroupedActivity(true)}>
+                Grouped calls
+              </button>
+              <button aria-pressed={!groupedActivity} onClick={() => onGroupedActivity(false)}>
+                Event history
+              </button>
+            </div>
+          )}
+          {tab === "activity" && groupedActivity && (
+            <ExecutionInspector
+              run={run}
+              events={events}
+              selected={selected}
+              onSelect={setSelected}
+              onEvidence={openEvidence}
+            />
+          )}
+          {tab === "activity" && !groupedActivity && (
+            <ActivityFeed
+              key={run.id}
+              runId={run.id}
+              events={events}
+              nodes={plan.nodes}
+              selected={selected}
+              running={running}
+              liveText={!selected || selected === run.cursor ? liveText : ""}
+              liveResponses={liveResponses}
+              onSelect={setSelected}
+            />
+          )}
+          {tab === "artifacts" && (
+            <div className="artifact-list">
+              <p className="muted">Each step receives only the context selected in the workflow.</p>
+              {artifacts.map((artifact) => (
+                <details key={`${artifact.nodeId}-${artifact.name}`}>
+                  <summary>
+                    <Icon name="file" size={16} />
+                    {artifact.nodeId} / {artifact.name}
+                  </summary>
+                  <MarkdownActions
+                    content={artifact.content}
+                    filename={`${artifact.nodeId}-${artifact.name}${artifact.name.endsWith(".md") ? "" : ".md"}`}
+                  />
+                  <MarkdownView content={artifact.content} />
+                </details>
+              ))}
+              {!artifacts.length && (
+                <div className="panel-empty">
+                  <Icon name="folder" size={26} />
+                  <p>No artifacts yet.</p>
+                </div>
+              )}
+            </div>
+          )}
+          {tab === "edit" &&
+            (isSourceWorkflow(run) ? (
+              <ProgramEditor
+                run={run}
+                draft={draft}
+                busy={busy}
+                live={live}
+                refining={refining}
+                activity={coordinatorActivity}
+                onSave={onSave}
+                onRefine={onRefine}
+                onCancelRefinement={onCancelRefinement}
+              />
+            ) : (
+              <PlanEditor
+                run={run}
+                draft={draft}
+                busy={busy}
+                live={live}
+                coordinatorActivity={coordinatorActivity}
+                coordinatorText={coordinatorText}
+                refining={refining}
+                onCancelRefinement={onCancelRefinement}
+                onSave={onSave}
+                onRefine={onRefine}
+                onSetup={onSettings}
+              />
             ))}
-            {!artifacts.length && (
-              <div className="panel-empty">
-                <Icon name="folder" size={26} />
-                <p>No artifacts yet.</p>
-              </div>
-            )}
-          </div>
-        )}
-        {tab === "edit" &&
-          (isSourceWorkflow(run) ? (
-            <ProgramEditor
-              run={run}
-              draft={draft}
-              busy={busy}
-              live={live}
-              refining={refining}
-              activity={coordinatorActivity}
-              onSave={onSave}
-              onRefine={onRefine}
-              onCancelRefinement={onCancelRefinement}
-            />
-          ) : (
-            <PlanEditor
-              run={run}
-              draft={draft}
-              busy={busy}
-              live={live}
-              coordinatorActivity={coordinatorActivity}
-              coordinatorText={coordinatorText}
-              refining={refining}
-              onCancelRefinement={onCancelRefinement}
-              onSave={onSave}
-              onRefine={onRefine}
-              onSetup={onSettings}
-            />
-          ))}
-      </Suspense>
+        </Suspense>
+      </div>
     </section>
   );
 

@@ -130,6 +130,7 @@ export class WorkflowEngine {
   private readonly store: RunStore;
   private environment: Awaited<ReturnType<typeof connectTemporal>> | undefined;
   private readonly workers = new Map<string, { worker: Worker; done: Promise<void> }>();
+  private workerStarts = Promise.resolve();
   private readonly versions: WorkflowVersions;
   private currentVersion: WorkflowVersion | undefined;
   private shutdownPromise: Promise<void> | undefined;
@@ -209,6 +210,11 @@ export class WorkflowEngine {
     }
   }
 
+  private assertExecutionMode(run: WorkflowRun) {
+    if (run.mode !== this.mode)
+      throw new Error("Execution mode mismatch. Restart the server in this run's original mode.");
+  }
+
   constructor(
     readonly project: string,
     readonly mode: "demo" | "live",
@@ -236,6 +242,7 @@ export class WorkflowEngine {
     try {
       this.fileClaims = new FileClaims((await Workspace.create(this.project)).root);
       for (const run of await this.store.load()) {
+        if (activeStatuses.has(run.status)) this.assertExecutionMode(run);
         if (run.status === "running" && !run.temporalWorkflowId) {
           run.status = "interrupted";
           run.error =
@@ -308,10 +315,28 @@ export class WorkflowEngine {
     }
   }
 
-  private async startWorker(version?: string) {
+  private startWorker(version?: string) {
+    const operation = this.workerStarts.then(() => this.ensureWorker(version));
+    this.workerStarts = operation.then(
+      () => {},
+      () => {},
+    );
+    return operation;
+  }
+
+  private assertWorker(version: string | undefined, worker: Worker) {
+    if (this.workers.get(version ?? "legacy")?.worker !== worker || worker.getState() !== "RUNNING")
+      throw new Error("Temporal worker is unavailable. Retry to start a new executor.");
+  }
+
+  private async ensureWorker(version?: string) {
+    if (this.shutdownPromise) throw new Error("Workflow engine is shutting down");
     const key = version ?? "legacy";
-    if (this.workers.has(key)) {
-      return;
+    const existing = this.workers.get(key);
+    if (existing?.worker.getState() === "RUNNING") return existing.worker;
+    if (existing) {
+      await existing.done.catch(() => {});
+      if (this.workers.get(key) === existing) this.workers.delete(key);
     }
     if (!this.environment) {
       throw new Error("Temporal is not connected");
@@ -327,8 +352,8 @@ export class WorkflowEngine {
       )
         continue;
       if (entry.worker.getState() === "RUNNING") entry.worker.shutdown();
-      await entry.done;
-      this.workers.delete(other);
+      await entry.done.catch(() => {});
+      if (this.workers.get(other) === entry) this.workers.delete(other);
     }
     const codePath = version
       ? (await this.versions.load(version)).codePath
@@ -357,13 +382,22 @@ export class WorkflowEngine {
       shutdownForceTime: "5 seconds",
     });
     const done = worker.run();
-    this.workers.set(key, { worker, done });
-    void done.catch((error: unknown) => {
+    const entry = { worker, done };
+    this.workers.set(key, entry);
+    const remove = () => {
+      if (this.workers.get(key) === entry) this.workers.delete(key);
+    };
+    void done.then(remove, (error: unknown) => {
+      remove();
       this.coordinatorActivity(
         "worker_error",
         `Temporal worker ${key.slice(0, 12)} stopped: ${String(error)}`,
       );
     });
+    // Observe an executor that fails immediately before admitting any work.
+    await Promise.resolve();
+    this.assertWorker(version, worker);
+    return worker;
   }
 
   private queueFor(version?: string) {
@@ -927,7 +961,9 @@ export class WorkflowEngine {
   }
 
   async refresh(id: string) {
-    await this.startWorker(this.requireRun(id).executionVersion);
+    const run = this.requireRun(id);
+    this.assertExecutionMode(run);
+    await this.startWorker(run.executionVersion);
     const state = runSchema.parse(await this.handle(id).query<WorkflowRun>("state"));
     await this.saveProjection(state);
 
@@ -1495,7 +1531,7 @@ export class WorkflowEngine {
           "A spending limit requires explicit provider/model selections and pricing for every node",
         );
       }
-      await this.startWorker(approved.executionVersion);
+      const worker = await this.startWorker(approved.executionVersion);
       approved.status = "running";
       approved.temporalStart = "pending";
       approved.error = undefined;
@@ -1510,9 +1546,11 @@ export class WorkflowEngine {
             `Could not enroll this run for memory collection: ${String(error)}`,
           ),
         );
+      this.assertWorker(approved.executionVersion, worker);
       await this.store.save(approved);
       this.runs.set(id, approved);
       try {
+        this.assertWorker(approved.executionVersion, worker);
         // Start receipts belong to the host, not the frozen workflow schema.
         const { temporalStart: _receipt, automation: _ownership, ...input } = approved;
         await this.environment.client.workflow.start("executeWorkflow", {
@@ -1521,6 +1559,7 @@ export class WorkflowEngine {
           args: [input],
         });
         await this.confirmStart(id);
+        this.assertWorker(approved.executionVersion, worker);
       } catch (error) {
         try {
           await this.handle(id).describe();
@@ -1623,6 +1662,7 @@ export class WorkflowEngine {
     this.shutdownPromise ??= (async () => {
       // Stop workers, not workflows. Temporal retains paused/running executions for restart.
       try {
+        await this.workerStarts;
         for (const { worker } of this.workers.values()) {
           if (worker.getState() === "RUNNING") {
             worker.shutdown();
@@ -1672,6 +1712,7 @@ export class WorkflowEngine {
   }
 
   private async recoverAttempt(run: WorkflowRun, commit: boolean, identity?: AttemptIdentity) {
+    this.assertExecutionMode(run);
     const attempt = identity
       ? run.attempts.find(
           (attempt) => attempt.nodeId === identity.nodeId && attempt.visit === identity.visit,

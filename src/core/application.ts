@@ -25,6 +25,7 @@ import { BrowserAuth } from "./models/browser-auth.js";
 import { loadOrchestration, saveOrchestration } from "./settings/orchestration-settings.js";
 import { Attachments } from "./tasks/attachments.js";
 import { Tasks } from "./tasks/tasks.js";
+import { sessionHistory } from "./tasks/session-history.js";
 import { type planTask } from "./planning/task-planner.js";
 import { mcpServerSchema } from "../contracts/capability-schema.js";
 import { inspectMcp } from "./tools/mcp-tools.js";
@@ -253,6 +254,8 @@ export async function attachApplication(
       }),
     subscribe: engine.subscribe.bind(engine),
     listRuns: (includeDeleted = true) => engine.list(includeDeleted),
+    sessionHistory: (query: unknown = {}) =>
+      sessionHistory(tasks.list(true), engine.list(true), query),
     getRun: (id: string) => engine.get(id),
     events: (id: string) => engine.events(id),
     commandOutput: (

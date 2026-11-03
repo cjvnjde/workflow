@@ -3,27 +3,10 @@ import { test } from "vitest";
 import { z } from "zod";
 import { type runSchema } from "../src/contracts/domain.js";
 import { createTemplate } from "../src/core/library/templates.js";
-import { mergeEvents, mergeRuns, newerRun } from "../web/features/execution/run-state.js";
+import { mergeEvents, newerRun } from "../web/features/execution/run-state.js";
 import { readPlanDraft } from "../web/features/tasks/plan-draft.js";
 import { request } from "../web/shared/api.js";
 import { fixture } from "./helpers.js";
-
-test("delayed lists preserve newer revisions and newly created runs", () => {
-  const item = {
-    id: "first",
-    status: "draft" as const,
-    title: "Original",
-    task: "Task",
-    mode: "demo" as const,
-    createdAt: "2026-01-01",
-    updatedAt: "2026-01-01",
-    cursor: "work",
-    revision: 1,
-  };
-  const completed = { ...item, status: "completed" as const, title: "Reviewed", revision: 8 };
-  const added = { ...item, id: "second", createdAt: "2026-01-02" };
-  assert.deepEqual(mergeRuns([completed, added], [item]), [added, completed]);
-});
 
 test("run detail updates preserve live usage and the selected run", () => {
   // Detail merging only reads identity, revision and usage.
@@ -84,24 +67,6 @@ test("non-JSON server failures show a useful HTTP error instead of a parsing exc
   } finally {
     globalThis.fetch = original;
   }
-});
-
-test("deletion markers win over delayed lists and remain available across refreshes", () => {
-  const item = {
-    id: "deleted",
-    status: "completed" as const,
-    title: "Finished",
-    task: "Task",
-    mode: "demo" as const,
-    createdAt: "2026-01-01",
-    updatedAt: "2026-01-01",
-    cursor: "$complete",
-    revision: 5,
-  };
-  const removed = { ...item, revision: 6, deletedAt: "2026-01-02" };
-  assert.deepEqual(mergeRuns([removed], [item]), [removed]);
-  assert.deepEqual(mergeRuns([item], [removed]), [removed]);
-  assert.deepEqual(mergeRuns([removed], []), [removed]);
 });
 
 test("bodyless deletion requests do not advertise an empty JSON document", async () => {

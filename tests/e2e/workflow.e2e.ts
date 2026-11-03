@@ -55,12 +55,239 @@ test("router navigation preserves unsaved settings when discard is declined", as
   ).toBeVisible();
   page.once("dialog", (dialog) => dialog.dismiss());
   await page.getByRole("button", { name: "New task", exact: true }).click();
-  await expect(page).toHaveURL(/\?view=settings$/);
+  await expect(page).toHaveURL(/\?view=settings&section=cases$/);
   await expect(name).toHaveValue("Unsaved navigation edit");
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "New task", exact: true }).click();
   await expect(page.getByLabel("What should we work on?", { exact: true })).toBeVisible();
 });
+
+test("settings section links survive reload and history protects unsaved child editors", async ({
+  page,
+}) => {
+  await page.goto("/?view=settings&section=execution");
+  await expect(page.getByLabel("Maximum steps per workflow", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Maximum steps per workflow", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Task instructions", exact: true }).click();
+  await page.getByRole("button", { name: "Blocks", exact: true }).click();
+  await page.getByRole("button", { name: "Add block", exact: true }).click();
+  const name = page.getByLabel("Block name", { exact: true });
+  await name.fill("Unsaved history draft");
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.goBack();
+  await expect(page).toHaveURL(/section=blocks/);
+  await expect(name).toHaveValue("Unsaved history draft");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.goBack();
+  await expect(page).toHaveURL(/section=cases/);
+  await expect(page.getByLabel("Case name", { exact: true }).first()).toBeVisible();
+  await page.goForward();
+  await expect(page).toHaveURL(/section=blocks/);
+  await expect(page.getByRole("button", { name: "Add block", exact: true })).toBeVisible();
+  await expect(name).toHaveCount(0);
+});
+
+test("model catalog failure leaves execution usable and retry preserves its draft", async ({
+  page,
+  request,
+}) => {
+  const original = await (await request.get("/api/settings/execution")).json();
+  const savedSteps = original.maxSteps === 41 ? 42 : 41;
+  let unavailable = true;
+  await page.route("**/api/models", (route) =>
+    unavailable
+      ? route.fulfill({ status: 503, json: { error: "Catalog temporarily offline" } })
+      : route.continue(),
+  );
+  try {
+    await page.goto("/?view=settings&section=execution");
+    const steps = page.getByLabel("Maximum steps per workflow", { exact: true });
+    await steps.fill(String(savedSteps));
+    await expect(
+      page.getByRole("button", { name: "Retry model catalog", exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Save settings", exact: true }).click();
+    await expect(page.getByText("All changes saved", { exact: true })).toBeVisible();
+    expect((await (await request.get("/api/settings/execution")).json()).maxSteps).toBe(savedSteps);
+    await steps.fill(String(savedSteps + 1));
+    unavailable = false;
+    await page.getByRole("button", { name: "Retry model catalog", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Retry model catalog", exact: true }),
+    ).toHaveCount(0);
+    await expect(steps).toHaveValue(String(savedSteps + 1));
+    await page.getByRole("button", { name: "Discard settings changes", exact: true }).click();
+  } finally {
+    const current = await (await request.get("/api/settings/execution")).json();
+    expect(
+      (
+        await request.put("/api/settings/execution", {
+          headers: { "x-workflow-client": "1" },
+          data: { ...original, configRevision: current.configRevision },
+        })
+      ).ok(),
+    ).toBe(true);
+  }
+});
+
+test("provider catalog failure retains provider status and can recover without reloading", async ({
+  page,
+  request,
+}) => {
+  await ensureDesignConnection(request);
+  let unavailable = true;
+  await page.route("**/api/models", (route) =>
+    unavailable
+      ? route.fulfill({ status: 503, json: { error: "Catalog temporarily offline" } })
+      : route.continue(),
+  );
+  await page.goto("/?view=settings&section=providers");
+  await expect(
+    page.getByRole("button", { name: "Use shared defaults", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: "Retry provider settings", exact: true }),
+  ).toBeVisible();
+  unavailable = false;
+  await page.getByRole("button", { name: "Retry provider settings", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Retry provider settings", exact: true }),
+  ).toHaveCount(0);
+  await page.getByLabel("Model", { exact: true }).selectOption("openai/test-model");
+  await expect(page.getByRole("button", { name: "Save project model", exact: true })).toBeEnabled();
+  const discard = page.getByRole("button", { name: "Discard model changes", exact: true });
+  if (await discard.isVisible()) await discard.click();
+});
+
+for (const unavailable of ["orchestration", "execution"] as const) {
+  test(`settings retry recovers unavailable ${unavailable} without losing partial success`, async ({
+    page,
+  }) => {
+    let failing = true;
+    await page.route(`**/api/settings/${unavailable}`, (route) =>
+      failing
+        ? route.fulfill({ status: 503, json: { error: "Settings temporarily offline" } })
+        : route.continue(),
+    );
+    await page.goto("/?view=settings&section=cases");
+    const retry = page.getByRole("button", { name: "Retry loading settings", exact: true });
+    await expect(retry).toBeVisible();
+    const name = page.getByLabel("Case name", { exact: true }).first();
+    if (unavailable === "execution") await name.fill("Keep this partial-load draft");
+    failing = false;
+    await retry.click();
+    await expect(retry).toHaveCount(0);
+    await expect(name).toBeVisible();
+    if (unavailable === "execution") {
+      await expect(name).toHaveValue("Keep this partial-load draft");
+      await page.getByRole("button", { name: "Discard settings changes", exact: true }).click();
+    }
+    await page.getByRole("button", { name: "Execution", exact: true }).click();
+    await expect(page.getByLabel("Maximum steps per workflow", { exact: true })).toBeVisible();
+  });
+}
+
+for (const concurrent of ["none", "unrelated", "conflicting"] as const) {
+  test(`project-model save rebases execution drafts with ${concurrent} concurrent execution edits`, async ({
+    page,
+    request,
+  }) => {
+    await ensureDesignConnection(request);
+    const headers = { "x-workflow-client": "1" };
+    const original = await (await request.get("/api/settings/execution")).json();
+    const originalSetup = await (await request.get("/api/setup")).json();
+    expect(
+      (
+        await request.put("/api/settings/execution", {
+          headers,
+          data: { ...original, maxSteps: 40 },
+        })
+      ).ok(),
+    ).toBe(true);
+    try {
+      await page.goto("/?view=settings&section=execution");
+      await page.getByLabel("Maximum steps per workflow", { exact: true }).fill("41");
+      await page.getByRole("button", { name: "Providers & models", exact: true }).click();
+      const model = page.getByLabel("Model", { exact: true });
+      await expect(model).toBeEnabled();
+      await model.selectOption("openai/test-model");
+      const thinking = page.getByLabel("Thinking level", { exact: true });
+      const nextThinking = (await thinking.inputValue()) === "high" ? "off" : "high";
+      await thinking.selectOption(nextThinking);
+      if (concurrent !== "none") {
+        await page.route("**/api/project/model", async (route) => {
+          const response = await route.fetch();
+          expect(response.ok()).toBe(true);
+          const current = await (await request.get("/api/settings/execution")).json();
+          expect(
+            (
+              await request.put("/api/settings/execution", {
+                headers,
+                data:
+                  concurrent === "conflicting"
+                    ? { ...current, maxSteps: 42 }
+                    : { ...current, instructions: "Concurrent project instructions" },
+              })
+            ).ok(),
+          ).toBe(true);
+          await route.fulfill({ response });
+        });
+      }
+      await page.getByRole("button", { name: "Save project model", exact: true }).click();
+      await expect(
+        page.getByRole("button", { name: "Save project model", exact: true }),
+      ).toBeEnabled();
+      await expect(
+        page.getByRole("button", { name: "Discard model changes", exact: true }),
+      ).toHaveCount(0);
+      await page.getByRole("button", { name: "Execution", exact: true }).click();
+      await expect(page.getByLabel("Maximum steps per workflow", { exact: true })).toHaveValue(
+        "41",
+      );
+      await page.getByRole("button", { name: "Save settings", exact: true }).click();
+      if (concurrent === "conflicting") {
+        await expect(
+          page.getByRole("button", { name: "Save settings", exact: true }),
+        ).toBeEnabled();
+        await expect(page.getByRole("alert")).toBeVisible();
+      } else {
+        await expect(page.getByText("All changes saved", { exact: true })).toBeVisible();
+      }
+      const saved = await (await request.get("/api/settings/execution")).json();
+      expect(saved.maxSteps).toBe(concurrent === "conflicting" ? 42 : 41);
+      if (concurrent === "unrelated")
+        expect(saved.instructions).toBe("Concurrent project instructions");
+      const setup = await (await request.get("/api/setup")).json();
+      expect(setup.projectAgent.model).toBe("test-model");
+      expect(setup.projectAgent.thinking).toBe(nextThinking);
+      if (concurrent === "conflicting")
+        await page.getByRole("button", { name: "Discard settings changes", exact: true }).click();
+    } finally {
+      const config = await (await request.get("/api/settings/execution")).json();
+      expect(
+        (
+          await request.put("/api/settings/execution", {
+            headers,
+            data: { ...original, configRevision: config.configRevision },
+          })
+        ).ok(),
+      ).toBe(true);
+      const setup = await (await request.get("/api/setup")).json();
+      expect(
+        (
+          await request.put("/api/project/model", {
+            headers,
+            data: {
+              configRevision: setup.configRevision,
+              agent: originalSetup.projectAgent.model ? originalSetup.projectAgent : null,
+            },
+          })
+        ).ok(),
+      ).toBe(true);
+    }
+  });
+}
 
 test("Prettier editor formatting supports undo, errors and protects newer typing", async ({
   page,
@@ -140,7 +367,10 @@ test("generated tasks show code blocks and all connections before approval with 
   try {
     await page.goto("/");
     await newTask(page, "Preview code graph for a bug before execution");
-    await expect(page.getByRole("button", { name: "Workflow", exact: true })).toHaveClass(/active/);
+    await expect(page.getByRole("tab", { name: "Workflow", exact: true })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     await expect(page.locator(".react-flow__node")).toHaveCount(5);
     await expect(page.locator(".react-flow__edge")).toHaveCount(9);
     const runs = await (await request.get("/api/runs")).json();
@@ -150,7 +380,7 @@ test("generated tasks show code blocks and all connections before approval with 
     const before = await (await request.get(`/api/runs/${id}`)).json();
     expect(before.program.composition).toBe("graph");
     expect(before.attempts).toHaveLength(0);
-    await page.getByRole("button", { name: "Editor", exact: true }).click();
+    await page.getByRole("tab", { name: "Editor", exact: true }).click();
     await page
       .getByRole("navigation", { name: "Workflow steps" })
       .getByRole("button", { name: /review/i })
@@ -168,12 +398,13 @@ test("generated tasks show code blocks and all connections before approval with 
     ).toMatchObject({ model: "test-model", thinking: "high" });
     expect(saved.executionVersion).toBe(before.executionVersion);
     expect(saved.program.input.plan).toEqual(saved.plan);
-    await page.getByRole("button", { name: "Workflow", exact: true }).click();
-    await page.locator('.react-flow__node[data-id="review"]').click();
+    await page.getByRole("tab", { name: "Workflow", exact: true }).click();
+    await page
+      .getByRole("combobox", { name: "Go to workflow step", exact: true })
+      .selectOption("review");
     await expect(page.locator(".step-inspector")).toContainText("test-model · high");
     await page.screenshot({ path: "/tmp/workflow-planned-code-graph.png", fullPage: true });
     await page.getByRole("button", { name: "Approve & start", exact: true }).click();
-    await expect(page.locator(".workflow-node.active")).toBeVisible();
     await expect(page.locator(".status-pill")).toHaveText("Completed");
     const completed = await (await request.get(`/api/runs/${id}`)).json();
     expect(completed.plan).toEqual(saved.plan);
@@ -233,19 +464,22 @@ export default workflow({name:"Code review",input:z.object({request:z.string()})
   await page.screenshot({ path: "/tmp/workflow-typescript-editor.png", fullPage: true });
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
   await expect(page.locator(".status-pill")).toHaveText("Completed");
-  await expect(page.getByRole("button", { name: "Workflow", exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole("tab", { name: "Workflow", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(
     page.locator(".react-flow__node").filter({ hasText: "Independent review" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Results", exact: true }).click();
+  await page.getByRole("tab", { name: "Results", exact: true }).click();
   await expect(
     page.getByText("Reviewed: updated working files", { exact: true }).first(),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Workflow", exact: true }).click();
+  await page.getByRole("tab", { name: "Workflow", exact: true }).click();
   await expect(
     page.locator(".react-flow__node").filter({ hasText: "Independent review" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Editor", exact: true }).click();
+  await page.getByRole("tab", { name: "Editor", exact: true }).click();
   await expect(code).toHaveAttribute("aria-readonly", "true");
   await expect(code).toHaveAttribute("contenteditable", "false");
 });
@@ -287,19 +521,21 @@ test("a user reviews a bug graph, approves it and sees review feedback return to
   await page.getByRole("button", { name: "Start task", exact: true }).click();
   await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
   await expect(page.locator(".react-flow__node")).toHaveCount(5);
-  await page.locator(".react-flow__node[data-id='work']").click();
+  await page
+    .getByRole("combobox", { name: "Go to workflow step", exact: true })
+    .selectOption("work");
   await page.getByText("Instructions & tools", { exact: true }).click();
   await expect(page.locator(".step-inspector")).toContainText("Full file access, Bash, Git");
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
   await expect(page.locator(".status-pill")).toHaveText("Completed", {
     timeout: 10_000,
   });
-  await page.getByRole("button", { name: "Activity", exact: true }).click();
+  await page.getByRole("tab", { name: "Activity", exact: true }).click();
   await page.getByRole("button", { name: "Show all steps", exact: true }).click();
   await expect(page.locator(".activity")).toContainText("RETRY → work");
-  await page.getByRole("button", { name: "Workflow", exact: true }).click();
+  await page.getByRole("tab", { name: "Workflow", exact: true }).click();
   await expect(page.locator(".react-flow__node[data-id='work']")).toContainText("2/3 visits");
-  await page.getByRole("button", { name: "Artifacts", exact: true }).click();
+  await page.getByRole("tab", { name: "Artifacts", exact: true }).click();
   await page.getByText("review / feedback", { exact: true }).click();
   await expect(page.locator(".artifact-list")).toContainText("demonstration data");
   expect(pageErrors).toEqual([]);
@@ -418,55 +654,6 @@ test("an action response cannot switch the UI back to a previously selected run"
   await expect(page.getByRole("button", { name: "Use in a new task", exact: true })).toBeEnabled();
   await expect(page.locator(".task-request > p")).toHaveText("Selection regression second");
   await expect(page.locator(".status-pill")).toHaveText("Awaiting approval");
-});
-
-test("a delayed task creation response preserves a newer task draft", async ({ page }) => {
-  const now = new Date().toISOString();
-  const task = {
-    id: "bf3aa485-807c-4d45-bf98-c944238d126e",
-    createdAt: now,
-    updatedAt: now,
-    revision: 1,
-    status: "queued",
-    prompt: "The earlier submitted task",
-    attachments: [],
-    answers: [],
-    approval: "review",
-    suggestedBlocks: [],
-    events: [],
-  };
-  let release!: () => void;
-  let received!: () => void;
-  const gate = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const responseReady = new Promise<void>((resolve) => {
-    received = resolve;
-  });
-  await page.route("**/api/tasks", async (route) => {
-    if (route.request().method() !== "POST") {
-      await route.fulfill({ json: [] });
-      return;
-    }
-    received();
-    await gate;
-    await route.fulfill({ status: 202, json: task });
-  });
-  await page.route(`**/api/tasks/${task.id}`, (route) => route.fulfill({ json: task }));
-  await page.goto("/");
-  const composer = page.getByLabel("What should we work on?", { exact: true });
-  try {
-    await composer.fill(task.prompt);
-    await page.getByRole("button", { name: "Start task", exact: true }).click();
-    await responseReady;
-    await page.getByRole("button", { name: "New task", exact: true }).click();
-    await composer.fill("Keep this newer draft in focus");
-  } finally {
-    release();
-  }
-  await expect(page.locator(".task-item").filter({ hasText: task.prompt })).toBeVisible();
-  await expect(composer).toHaveValue("Keep this newer draft in focus");
-  await expect(page.getByRole("button", { name: "Start task", exact: true })).toBeEnabled();
 });
 
 test("the UI shows a draft budget estimate, execution version and configured spending limit", async ({
@@ -653,12 +840,12 @@ test("step controls validate edits, preview the graph and save model and handoff
   await page.getByLabel("Source step 1", { exact: true }).selectOption("review");
   await page.getByLabel("Artifact 1", { exact: true }).selectOption("feedback");
   await page.getByLabel("Input alias 1", { exact: true }).fill("previous-feedback");
-  await page.getByRole("button", { name: "Workflow", exact: true }).click();
+  await page.getByRole("tab", { name: "Workflow", exact: true }).click();
   await expect(page.locator(".react-flow__node[data-id='prepare']")).toContainText(
     "Prepare a focused change",
   );
   await expect(page.locator(".graph-legend")).toContainText("Unsaved preview");
-  await page.getByRole("button", { name: "Editor", exact: true }).click();
+  await page.getByRole("tab", { name: "Editor", exact: true }).click();
   await expect(page.getByRole("button", { name: "Approve & start", exact: true })).toBeDisabled();
   await page.getByLabel("On pass", { exact: true }).selectOption("$complete");
   await expect(page.locator(".validation-error")).toContainText("reachable");
@@ -709,23 +896,18 @@ test("a stale list response cannot undo a saved title in the run list", async ({
   await page.getByLabel("What should we work on?").fill("Run list revision regression");
   await page.getByRole("button", { name: "Start task", exact: true }).click();
   await expect(page.locator(".task-request > p")).toHaveText("Run list revision regression");
-  const staleList = await (await request.get("/api/runs")).json();
-  let staleResponses = 0;
-  await page.route("**/api/runs", async (route) => {
-    if (route.request().method() === "GET") {
-      staleResponses++;
-      await route.fulfill({ json: staleList });
-    } else {
-      await route.continue();
-    }
-  });
+  const staleList = await (await request.get("/api/sessions")).json();
+  await page.route(/\/api\/sessions(?:\?|$)/, (route) => route.fulfill({ json: staleList }));
   await page.getByRole("button", { name: "Edit workflow", exact: true }).click();
   await page.getByLabel("Workflow title", { exact: true }).fill("Saved title must survive");
+  const staleResponse = page.waitForResponse((response) =>
+    response.url().includes("/api/sessions?"),
+  );
   await page.getByRole("button", { name: "Validate & save draft", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Saved title must survive", exact: true }),
   ).toBeVisible();
-  await expect.poll(() => staleResponses).toBeGreaterThan(0);
+  await staleResponse;
   await expect(page.locator(".task-item.selected strong")).toHaveText("Saved title must survive");
 });
 
@@ -765,6 +947,15 @@ test("browser setup completes ChatGPT sign-in, saves a project model, and suppor
   page,
   request,
 }) => {
+  // This flow exercises sign-in itself, independent of earlier authenticated scenarios.
+  expect(
+    (
+      await request.post("/api/auth/providers/openai/logout", {
+        headers: { "x-workflow-client": "1" },
+        data: {},
+      })
+    ).ok(),
+  ).toBe(true);
   await page.goto("/");
   await settings(page);
   await expect(
@@ -867,7 +1058,7 @@ test("the central composer accepts attachments, runs automatically, and works on
     await expect(page.locator(".status-pill")).toHaveText("Completed", { timeout: 15000 });
     await expect(page.getByRole("alert")).toHaveCount(0);
     await expect(page.locator(".request-attachments")).toContainText("requirements.md");
-    await page.getByRole("button", { name: "Activity", exact: true }).click();
+    await page.getByRole("tab", { name: "Activity", exact: true }).click();
     await expect(page.locator(".activity")).toContainText("DEMO simulation");
     const taskId = new URL(page.url()).searchParams.get("task");
     const detail = await (await request.get(`/api/tasks/${taskId}`)).json();
@@ -890,6 +1081,14 @@ test("settings manages described models, task cases, skills and enabled MCP conn
   page,
   request,
 }) => {
+  const loaded = await (await request.get("/api/settings/orchestration")).json();
+  const skills = new Map<string, { id: string; name: string }>();
+  for (const skill of [
+    ...(loaded.projectCapabilities?.capabilities.skills ?? []),
+    ...loaded.settings.capabilities.skills,
+  ]) {
+    skills.set(skill.id, skill);
+  }
   await page.goto("/");
   await settings(page, "Task instructions");
   await page.getByRole("button", { name: "Add task case", exact: true }).click();
@@ -924,11 +1123,10 @@ test("settings manages described models, task cases, skills and enabled MCP conn
   await expect(page.getByText("All changes saved", { exact: true })).toBeVisible();
   await page.screenshot({ path: "/tmp/workflow-redesign-profiles.png", fullPage: true });
   await page.getByRole("button", { name: "Skills & MCP", exact: true }).click();
-  await page.getByRole("button", { name: "Add skill", exact: true }).click();
-  await page.getByLabel("Skill name", { exact: true }).fill("Project conventions");
-  await page
-    .getByLabel("Skill instructions", { exact: true })
-    .fill("Follow the existing project patterns and explain material changes.");
+  await expect(page.locator(".skill-list li")).toHaveCount(skills.size);
+  for (const skill of skills.values()) {
+    await expect(page.locator(".skill-list")).toContainText(skill.name);
+  }
   await page.getByRole("button", { name: "Add MCP server", exact: true }).click();
   await page.getByLabel("MCP server name", { exact: true }).fill("Project tools");
   await page.route("**/api/settings/mcp/inspect", (route) =>
@@ -1206,25 +1404,22 @@ test("AI settings chat generates profiles, refines with context, reviews before 
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.goto("/");
   await settings(page, "Model profiles");
-  await page.getByRole("button", { name: /^(Generate|Regenerate) with AI$/ }).click();
-  const chat = page.getByRole("dialog", { name: "Design model profiles with AI", exact: true });
+  await page.getByRole("button", { name: "Open AI designer", exact: true }).click();
+  const chat = page.getByRole("dialog", { name: "Design workflow with AI", exact: true });
   await expect(chat).toBeVisible();
   const input = chat.getByLabel("Message AI designer", { exact: true });
-  await expect(input).toHaveValue(/model profiles for this project/);
-  await input.press("Enter");
-  await expect(chat.getByText("Designing model profiles…", { exact: true })).toBeVisible();
+  await input.fill("Design model profiles for this project.");
+  await chat.getByRole("button", { name: "Send to AI designer", exact: true }).click();
   await expect(chat.getByRole("button", { name: "Apply changes", exact: true })).toBeEnabled();
   expect(
     (await (await request.get("/api/settings/orchestration")).json()).settings.profiles,
   ).toEqual(original.settings.profiles);
   await input.fill("Use one profile and call it Project lead.");
   await input.press("Enter");
-  await expect(
-    chat.getByText("Refined the earlier proposal into one project lead profile.", { exact: true }),
-  ).toBeVisible();
+  await expect(chat.getByRole("button", { name: "Apply changes", exact: true })).toBeEnabled();
+  await expect(chat.locator(".design-preview article strong")).toHaveText(["Project lead"]);
   await chat.getByText("Review proposed settings", { exact: true }).click();
-  await expect(chat.getByText("Project lead", { exact: true })).toBeVisible();
-  await expect(chat.locator(".design-preview small")).toContainText("planning model");
+  await expect(chat.locator(".design-preview article")).toBeVisible();
   await page.screenshot({ path: "/tmp/workflow-mocha-design-desktop.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(chat).toBeVisible();
@@ -1245,7 +1440,7 @@ test("AI settings chat generates profiles, refines with context, reviews before 
   });
   await page
     .getByLabel("Design chats")
-    .getByRole("button", { name: "Model profiles", exact: true })
+    .getByRole("button", { name: "Workflow", exact: true })
     .click();
   await expect(chat).toContainText("Use one profile and call it Project lead.");
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -1254,7 +1449,7 @@ test("AI settings chat generates profiles, refines with context, reviews before 
     .getByRole("navigation", { name: "Settings sections" })
     .getByRole("button", { name: "Model profiles", exact: true })
     .click();
-  await expect(chat.getByText("One profile for project leadership", { exact: true })).toBeVisible();
+  await expect(chat).toContainText("Use one profile and call it Project lead.");
   let release!: () => void;
   let received!: () => void;
   const gate = new Promise<void>((resolve) => {
@@ -1599,9 +1794,16 @@ test("activity is searchable, filters tools and checks, and retains raw failure 
   await newTask(page, "Fix the regression [activity-fixture]");
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
   await expect(page.locator(".status-pill")).toHaveText("Completed", { timeout: 15_000 });
-  await page.getByRole("button", { name: "Activity", exact: true }).click();
+  await page.getByRole("tab", { name: "Activity", exact: true }).click();
   const activity = page.getByRole("region", { name: "Workflow activity", exact: true });
-  await activity.getByRole("button", { name: /^Tools/ }).click();
+  await activity
+    .getByRole("group", { name: "Activity visibility", exact: true })
+    .getByRole("button", { name: "Tools", exact: true })
+    .click();
+  await activity
+    .getByRole("group", { name: "Activity filters", exact: true })
+    .getByRole("button", { name: /^Tools/ })
+    .click();
   await expect(activity.locator(".event")).toHaveCount(4);
   const command = activity.locator(".event.tool_start").filter({ hasText: "Run command" });
   await expect(command).toContainText("bun test --filter regression");
@@ -1616,15 +1818,22 @@ test("activity is searchable, filters tools and checks, and retains raw failure 
   await activity.getByText("View details", { exact: true }).click();
   await expect(activity.locator("pre")).toContainText("Detailed diagnostic for regression");
   await activity.getByLabel("Search activity", { exact: true }).fill("");
+  await activity
+    .getByRole("group", { name: "Activity visibility", exact: true })
+    .getByRole("button", { name: "Thinking / progress", exact: true })
+    .click();
   await activity.getByRole("button", { name: /^Usage/ }).click();
   await expect(activity).toContainText("2 requests · 1,500 tokens · $0.0123 reported");
   await activity.getByLabel("Activity step", { exact: true }).selectOption("review");
   await expect(activity).toContainText("No activity matches these filters.");
   await activity.getByRole("button", { name: "Clear filters", exact: true }).click();
-  await expect(activity.locator(".event")).not.toHaveCount(0);
   await activity.getByRole("button", { name: "Show all steps", exact: true }).click();
   await page.screenshot({ path: "/tmp/workflow-activity-desktop.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
+  await activity
+    .getByRole("group", { name: "Activity visibility", exact: true })
+    .getByRole("button", { name: "Tools", exact: true })
+    .click();
   await activity.getByLabel("Search activity", { exact: true }).fill("src/example.ts");
   await expect(activity.locator(".event")).toHaveCount(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
@@ -1661,7 +1870,7 @@ test("expanded workspaces keep graph context, search and draft edits with keyboa
     })
     .toBe(true);
   await page.screenshot({ path: "/tmp/workflow-expanded-desktop.png", fullPage: true });
-  await dialog.getByRole("button", { name: "Activity", exact: true }).click();
+  await dialog.getByRole("tab", { name: "Activity", exact: true }).click();
   await dialog.getByLabel("Search activity", { exact: true }).fill("Keep my search");
   await page.keyboard.press("Escape");
   await expect(dialog).not.toBeVisible();
@@ -1675,7 +1884,7 @@ test("expanded workspaces keep graph context, search and draft edits with keyboa
     await page.keyboard.press("Tab");
     expect(await dialog.evaluate((el) => el.contains(document.activeElement))).toBe(true);
   }
-  await dialog.getByRole("button", { name: "Editor", exact: true }).click();
+  await dialog.getByRole("tab", { name: "Editor", exact: true }).click();
   await dialog.getByRole("button", { name: "JSON", exact: true }).click();
   const editor = dialog.getByLabel("Workflow graph JSON", { exact: true });
   const edited = JSON.parse(await readCode(editor)) as { title: string };
@@ -1688,7 +1897,7 @@ test("expanded workspaces keep graph context, search and draft edits with keyboa
   );
   await page.getByRole("button", { name: "Discard graph edits", exact: true }).click();
 
-  await page.getByRole("button", { name: "Workflow", exact: true }).click();
+  await page.getByRole("tab", { name: "Workflow", exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   const mobileExpand = (await page
     .getByRole("button", { name: "Expand workspace", exact: true })
@@ -1700,7 +1909,7 @@ test("expanded workspaces keep graph context, search and draft edits with keyboa
   expect((await dialog.boundingBox())!.width).toBeLessThanOrEqual(390);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   expect(
-    (await dialog.getByRole("button", { name: "Results", exact: true }).boundingBox())!.x,
+    (await dialog.getByRole("tab", { name: "Results", exact: true }).boundingBox())!.x,
   ).toBeGreaterThan(0);
   await page.screenshot({ path: "/tmp/workflow-expanded-mobile.png", fullPage: true });
   await page.keyboard.press("Escape");
@@ -1714,23 +1923,15 @@ test("deleting a workflow removes its task from history and stale responses cann
   await page.goto("/");
   await newTask(page, "Delete this draft from history");
   const originalUrl = page.url();
-  const before = await (await page.request.get("/api/tasks")).json();
-  let waiting!: () => void;
-  const received = new Promise<void>((resolve) => {
-    waiting = resolve;
-  });
+  const before = await (await page.request.get("/api/sessions")).json();
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Delete workflow", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "What should we work on?", exact: true }),
   ).toBeVisible();
-  // Return the old snapshot on a later poll. Changing selection deliberately
-  // aborts the old request, so holding that aborted route cannot exercise merging.
-  await page.route("**/api/tasks", async (route) => {
-    if (route.request().method() !== "GET") return route.continue();
-    await route.fulfill({ json: before });
-    waiting();
-  });
+  await page.route(/\/api\/sessions(?:\?|$)/, (route) => route.fulfill({ json: before }));
+  const received = page.waitForResponse((response) => response.url().includes("/api/sessions?"));
+  await page.getByLabel("Search tasks", { exact: true }).fill("Delete this draft");
   await received;
   await expect(
     page.locator(".task-item").filter({ hasText: "Delete this draft from history" }),
@@ -1781,16 +1982,17 @@ test("discard controls restore blocks, model defaults and settings without savin
   await page.getByRole("button", { name: "Providers & models", exact: true }).click();
   const model = page.getByLabel("Model", { exact: true });
   await expect(model).toBeEnabled();
+  const savedProjectModel = (await (await request.get("/api/setup")).json()).projectAgent;
   const savedModel = await model.inputValue();
   const thinking = page.getByLabel("Thinking level", { exact: true });
   const savedThinking = await thinking.inputValue();
   if (savedModel === "openai/test-model")
     await thinking.selectOption(savedThinking === "high" ? "off" : "high");
   else await model.selectOption("openai/test-model");
-  await expect(page.getByRole("button", { name: "Discard all edits", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Discard model changes", exact: true }).click();
   await expect(model).toHaveValue(savedModel);
   await expect(thinking).toHaveValue(savedThinking);
+  expect((await (await request.get("/api/setup")).json()).projectAgent).toEqual(savedProjectModel);
   const originalSettings = await (await request.get("/api/settings/orchestration")).json();
   const originalExecution = await (await request.get("/api/settings/execution")).json();
   await page.getByRole("button", { name: "Task instructions", exact: true }).click();

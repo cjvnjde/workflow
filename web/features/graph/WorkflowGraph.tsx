@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useImperativeHandle, useMemo, useState, type Ref } from "react";
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type Ref,
+} from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -23,6 +31,7 @@ import { resolveAgentSettings, type WorkflowRun } from "../../../src/contracts/i
 import { compositionLayout, routedPositions, type LayoutEdge } from "./graph-layout.js";
 import { stepState } from "../execution/workflow-status.js";
 import { executionLabel, isSourceWorkflow } from "../execution/execution-label.js";
+import "./WorkflowGraph.css";
 
 type Point = { x: number; y: number };
 type Positions = Record<string, Point>;
@@ -173,7 +182,10 @@ function GraphCanvas({ run, selected, onSelect, ref }: WorkflowGraphProps) {
   const [presentation, setPresentation] = useState<
     Record<string, Pick<GraphNode, "measured" | "dragging">>
   >({});
-  const [fitRequest, setFitRequest] = useState<{ nodes?: string[] }>({});
+  const [fitRequest, setFitRequest] = useState<
+    { nodes?: string[]; readable?: boolean } | undefined
+  >(() => ({ nodes: [selected ?? run.cursor ?? run.plan.nodes[0]!.id], readable: true }));
+  const handledFit = useRef<typeof fitRequest>(undefined);
   const { fitView } = useReactFlow<GraphNode, WorkflowEdge>();
   const width = useStore((state) => state.width);
   const height = useStore((state) => state.height);
@@ -188,14 +200,17 @@ function GraphCanvas({ run, selected, onSelect, ref }: WorkflowGraphProps) {
   const fit = useCallback(() => setFitRequest({}), []);
   useImperativeHandle(ref, () => ({ fit }), [fit]);
 
-  // React Flow measures both nodes and its container. Refit after either becomes
-  // ready, and when an inspector or expanded workspace changes the canvas size.
+  // Initial navigation is readable, not an overview. Only explicit navigation
+  // requests change the viewport; inspector and window resizes preserve zoom/pan.
   useEffect(() => {
-    if (!width || !height || !initialized) return;
+    if (!width || !height || !initialized || !fitRequest || handledFit.current === fitRequest)
+      return;
+    handledFit.current = fitRequest;
     void fitView({
       nodes: fitRequest.nodes?.map((id) => ({ id })),
       padding: fitRequest.nodes ? 0.3 : composed ? 0.07 : 0.18,
-      maxZoom: 1.1,
+      minZoom: fitRequest.readable ? 1 : 0.1,
+      maxZoom: fitRequest.readable ? 1 : 1.1,
       duration: motionDuration(),
     });
   }, [width, height, initialized, fitView, fitRequest, composed]);
@@ -439,7 +454,7 @@ function GraphCanvas({ run, selected, onSelect, ref }: WorkflowGraphProps) {
       .filter((node) => stepState(run, node.id) === "running")
       .map((node) => node.id);
     if (active.length === 1) onSelect(active[0]!);
-    setFitRequest({ nodes: active });
+    setFitRequest({ nodes: active, readable: true });
   }
 
   return (
@@ -449,12 +464,10 @@ function GraphCanvas({ run, selected, onSelect, ref }: WorkflowGraphProps) {
       edges={edges}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
-      fitView
-      fitViewOptions={{ padding: layout ? 0.07 : 0.18, maxZoom: 1.1 }}
       nodesDraggable
       deleteKeyCode={null}
       nodesConnectable={false}
-      minZoom={0.25}
+      minZoom={0.1}
       maxZoom={1.5}
       onNodeClick={(_event, node) => onSelect(node.id)}
       onNodesChange={onNodesChange}
@@ -463,7 +476,26 @@ function GraphCanvas({ run, selected, onSelect, ref }: WorkflowGraphProps) {
       <Background gap={22} color="var(--border)" />
       <Controls showInteractive={false} />
       <div className="graph-toolbar">
-        <span>Drag blocks to arrange</span>
+        <label className="graph-step-navigation">
+          <span>Go to step</span>
+          <select
+            aria-label="Go to workflow step"
+            value={run.plan.nodes.some((node) => node.id === selected) ? selected : ""}
+            onChange={(event) => {
+              const id = event.target.value;
+              if (!id) return;
+              onSelect(id);
+              setFitRequest({ nodes: [id], readable: true });
+            }}
+          >
+            <option value="">Select a step…</option>
+            {run.plan.nodes.map((node) => (
+              <option key={node.id} value={node.id}>
+                {node.label}
+              </option>
+            ))}
+          </select>
+        </label>
         {run.plan.nodes.some((node) => stepState(run, node.id) === "running") && (
           <button onClick={focusActive}>
             Focus active {(run.activeNodes?.length ?? 1) > 1 ? "steps" : "step"}

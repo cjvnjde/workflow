@@ -32,6 +32,8 @@ A terminal `failed` run is different from an `interrupted` run awaiting resume. 
 
 Review mode is the default. Automatic mode can be selected in **Settings → Execution**. Approval captures the current source and configuration and starts that execution; it is not an OS permission prompt for every command.
 
+Browser task submissions pin the approval policy displayed by that composer. Another client's settings change does not retroactively change that submission's approval decision. Reloading the page reads the current project default.
+
 Unmanaged workflows retain exclusive project ownership, including while paused or interrupted. Resume or cancel that owner before competing work. [Automation jobs](automations.md#queue-admission-and-workspace-ownership) can instead execute concurrently in distinct owned Git worktrees within scheduler limits; project-workspace jobs remain exclusive. Approving a linked automation draft does not bypass its scheduler approval, ownership, or budget guards.
 
 Stopping planning cancels model work and prevents a late result from publishing an executable draft. Stopping execution cancels active activities, prevents new steps, and settles each active attempt. It does not undo completed steps or arbitrary shell/Git/network effects.
@@ -43,6 +45,10 @@ Deleting a settled workflow removes it and its linked task from the visible hist
 Pause lets active steps finish before admitting more work. For a parallel group, all active branches drain. Queued branches wait. Closing the browser or TUI does not pause or cancel execution. `workflow` and `workflow start` open the TUI, using a host that outlives clients. `workflow --background` starts or reuses that host without opening the TUI. `workflow --web` opens the browser and runs a new host in the foreground until Ctrl+C; an existing host is reused.
 
 `workflow status` reports the running host. `workflow stop` requests authenticated shutdown, waits for the application and project lease to close, and stops its worker and managed local Temporal process, while execution history remains on disk. `workflow serve` is the explicit foreground alternative and also stops on Ctrl+C. Restart in the same project and mode. Completed recorded operations are replayed from history rather than executed again. An activity that was in progress when its worker disappeared may leave the run interrupted.
+
+Startup refuses an active, paused, or interrupted run saved under a different execution mode before starting its workers. Reopen in the original mode to settle it. File recovery, including explicit recovery requests, also requires the original mode; demo mode cannot restore a live run's journaled task files.
+
+Shutdown stops admitting new planning requests and drains submissions, answers, and retries already in flight before releasing project ownership. Accepted requests that have not started planning are saved as cancelled rather than stranded in a queued state. Failed Temporal workers are removed from available executors; approval requires a healthy worker and reports an admission failure instead of silently accepting work that cannot progress.
 
 An explicit resume of an interrupted run retries the affected step in a fresh attempt. It consumes another visit and total step, and can repeat effects from that attempt. Completed siblings and earlier steps are retained. It does not continue in the middle of an unfinished model request.
 

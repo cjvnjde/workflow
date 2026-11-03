@@ -130,8 +130,8 @@ test("timeline selects historical visits and opens persisted call details", asyn
     });
   });
   await page
-    .getByRole("navigation", { name: "Workflow views" })
-    .getByRole("button", { name: "Timeline", exact: true })
+    .getByRole("tablist", { name: "Workflow views" })
+    .getByRole("tab", { name: "Timeline", exact: true })
     .click();
   const inspector = page.getByRole("region", {
     name: "Execution inspector",
@@ -183,8 +183,8 @@ test("timeline selects historical visits and opens persisted call details", asyn
   await expect(data).toContainText("Inspection fixture · visit 1");
   await page.setViewportSize({ width: 390, height: 844 });
   await page
-    .getByRole("navigation", { name: "Workflow views" })
-    .getByRole("button", { name: "Timeline", exact: true })
+    .getByRole("tablist", { name: "Workflow views" })
+    .getByRole("tab", { name: "Timeline", exact: true })
     .click();
   await expect(inspector).toBeVisible();
   expect(
@@ -234,8 +234,8 @@ test("raw history loads earlier records beyond the live event tail", async ({ pa
   });
   await page.goto(`/#run=${run.id}`);
   await page
-    .getByRole("navigation", { name: "Workflow views" })
-    .getByRole("button", { name: "Activity", exact: true })
+    .getByRole("tablist", { name: "Workflow views" })
+    .getByRole("tab", { name: "Activity", exact: true })
     .click();
   await expect(
     page.locator(".activity-feed .event").filter({ hasText: "Historical update" }).first(),

@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test, vi } from "vitest";
+import { setImmediate as immediate } from "node:timers/promises";
 import { createApplication } from "../src/core/application.js";
 import { createHttpServer } from "../src/http/http-server.js";
 import { WorkflowClient, waitForRun } from "../src/client/client.js";
 import type { RunEvent } from "../src/contracts/index.js";
 import { fixture, passingRunner } from "./helpers.js";
+import { Attachments } from "../src/core/tasks/attachments.js";
 
 const source = `import { workflow, block, step } from "workflow";
 const check = block({
@@ -134,4 +136,69 @@ test("headless application shutdown cancels pending coordinator work", async (t)
   } finally {
     await app.close();
   }
+});
+
+test("application shutdown owns task admission until attachment loading settles", async (t) => {
+  const { project, cleanup } = await fixture(t);
+  let plans = 0;
+  const app = await createApplication({
+    project,
+    mode: "live",
+    runner: passingRunner,
+    catalog: async () => ({ models: [], warnings: [] }),
+    taskPlanner: async () => {
+      plans++;
+      throw new Error("Rejected admission must not plan");
+    },
+  });
+  cleanup(() => app.close());
+  const attachment = await new Attachments(project).add({
+    name: "request.txt",
+    mimeType: "text/plain",
+    data: Buffer.from("Service requirements").toString("base64"),
+  });
+  let entered!: () => void;
+  const reading = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const originalGet = Attachments.prototype.get;
+  const get = vi.spyOn(Attachments.prototype, "get").mockImplementation(async function (
+    this: Attachments,
+    id,
+  ) {
+    entered();
+    await gate;
+    return originalGet.call(this, id);
+  });
+  cleanup(async () => {
+    release();
+    get.mockRestore();
+  });
+  const rejected = assert.rejects(
+    app.tasks.create({ prompt: "Connect the service", attachments: [attachment.id] }),
+    /shutting down/,
+  );
+  await reading;
+  let closed = false;
+  const closing = app.close().then(() => {
+    closed = true;
+  });
+  await immediate();
+  assert.equal(
+    closed,
+    false,
+    "Application close must wait for task admission before releasing ownership",
+  );
+  release();
+  await rejected;
+  await closing;
+  assert.equal(plans, 0);
+  assert.equal(app.tasks.list().length, 0);
+  const reopened = await createApplication({ project, mode: "demo", runner: passingRunner });
+  cleanup(() => reopened.close());
+  assert.equal(reopened.tasks.list().length, 0, "Rejected admission must not publish a task later");
 });

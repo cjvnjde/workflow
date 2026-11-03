@@ -131,12 +131,18 @@ test("Results show evidence older than 500 events after completion and browser r
   expect(evidence.total).toBeGreaterThan(600);
   for (const reload of [false, true]) {
     if (reload) await page.reload();
-    await page.getByRole("button", { name: "Results", exact: true }).click();
+    await page.getByRole("tab", { name: "Results", exact: true }).click();
     const results = page.locator(".results-panel");
     await expect(results).toContainText("fixture/early-model");
     await expect(results).toContainText("early-decision");
     await expect(results).toContainText("Early capability warning retained in Results");
     await expect(results).toContainText("17 protected files verified unchanged");
+    const detail = results.locator("details.result-checks");
+    await expect(detail).not.toHaveAttribute("open", "");
+    await expect(
+      results.getByText("Early capability warning retained in Results", { exact: true }),
+    ).toBeVisible();
+    await detail.locator(":scope > summary").click();
     await results.getByText("prepare · 1 files changed", { exact: true }).click();
     await expect(results).toContainText("early-evidence.ts");
     await expect(results).not.toContainText("No file-change snapshots recorded");
@@ -150,7 +156,7 @@ test("loading failures never claim evidence is absent and can be retried", async
   await page.route("**/report-evidence", (route) => {
     pending = route;
   });
-  await page.getByRole("button", { name: "Results", exact: true }).click();
+  await page.getByRole("tab", { name: "Results", exact: true }).click();
   await expect.poll(() => !!pending).toBe(true);
   const results = page.locator(".results-panel");
   await expect(results.getByRole("status")).toHaveText("Loading complete saved evidence…");

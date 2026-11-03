@@ -1,23 +1,34 @@
-import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from "react";
 import { useBlocker, useNavigate, useRouter, useSearch } from "@tanstack/react-router";
 import {
   libraryProposalSchema,
   orchestrationStateSchema,
-  runListSchema,
   runSchema,
-  taskListSchema,
   taskSchema,
   type DesignScope,
   type ProgramSource,
+  type SessionSummary,
 } from "../src/contracts/index.js";
 import { useWorkflowData } from "./app/use-workflow-data.js";
+import type { SettingsSection } from "./app/workspace-location.js";
 import type { DesignRequest } from "./features/design/design-types.js";
 import { isSourceWorkflow } from "./features/execution/execution-label.js";
 import RunWorkspace from "./features/execution/RunWorkspace.js";
 import { statusLabel } from "./features/execution/workflow-status.js";
 import { ProgramComposerReact } from "./features/programs/ProgramComposerReact.js";
+import { useProgramDraft } from "./features/programs/use-program-draft.js";
 import SessionSwitcher from "./features/sessions/SessionSwitcher.js";
 import { parseSessionLocation, sessionLink } from "./features/sessions/session-location.js";
+import { useSessionHistory } from "./features/sessions/use-session-history.js";
 import SetupProgress from "./features/setup/SetupProgress.js";
 import { useSetupJobs } from "./features/setup/use-setup-jobs.js";
 import { TaskComposerReact } from "./features/tasks/TaskComposerReact.js";
@@ -26,7 +37,7 @@ import { useDraft } from "./features/tasks/use-draft.js";
 import { useTaskDraft } from "./features/tasks/use-task-draft.js";
 import { useTasks } from "./features/tasks/use-tasks.js";
 import UsageSummary from "./features/usage/UsageSummary.js";
-import { apiUrl, request } from "./shared/api.js";
+import { apiUrl, client, request } from "./shared/api.js";
 import Icon from "./shared/Icon.js";
 
 const SettingsPage = lazy(() => import("./settings/SettingsPage.js"));
@@ -37,24 +48,8 @@ type Workspace = {
   composerKey: number;
 };
 type SettingsContext = {
-  section:
-    | "providers"
-    | "profiles"
-    | "cases"
-    | "blocks"
-    | "capabilities"
-    | "execution"
-    | "triggers"
-    | "automations"
-    | "memory";
+  section: SettingsSection;
   blockId?: string;
-};
-type HistoryEntry = {
-  id: string;
-  runId: string | undefined;
-  title: string;
-  status: string;
-  createdAt: string;
 };
 const activeStatuses: Record<string, true> = {
   queued: true,
@@ -76,23 +71,13 @@ type ResolvedSession = { selectedTask: string | undefined; runId: string | undef
 async function resolveSession(value: string, signal?: AbortSignal): Promise<ResolvedSession> {
   signal?.throwIfAborted();
   const session = parseSessionLocation(value);
-  const [knownTasks, knownRuns] = await Promise.all([
-    request("/api/tasks", taskListSchema, { signal }),
-    request("/api/runs", runListSchema, { signal }),
-  ]);
-  signal?.throwIfAborted();
-  const foundTask =
-    session.kind !== "run" && knownTasks.find((item) => item.id === session.id && !item.deletedAt);
-  const foundRun =
-    session.kind !== "task" && knownRuns.find((item) => item.id === session.id && !item.deletedAt);
-  if (!foundTask && !foundRun) {
-    throw new Error(
-      "Session not found in this project. Check the full ID and the project server you connected to.",
-    );
-  }
+  const resolved = await client.resolveSession(
+    `${session.kind ? `${session.kind}:` : ""}${session.id}`,
+    signal,
+  );
   return {
-    selectedTask: foundTask ? foundTask.id : undefined,
-    runId: foundTask ? foundTask.runId : session.id,
+    selectedTask: resolved.kind === "task" ? resolved.id : undefined,
+    runId: resolved.kind === "run" ? resolved.id : undefined,
   };
 }
 
@@ -111,7 +96,6 @@ export default function App() {
   const {
     project,
     run,
-    runs,
     selectedId,
     selectRun,
     applyRun,
@@ -134,12 +118,11 @@ export default function App() {
     setCoordinatorActivity,
   } = data;
   const {
-    tasks,
     task,
     apply: applyTask,
     error: taskError,
     setError: setTaskError,
-  } = useTasks(selectedTask);
+  } = useTasks(selectedTask, connected);
   const draft = useDraft(run);
   const [pendingActions, setPendingActions] = useState(0);
   const [resolvedSession, setResolvedSession] = useState<string>();
@@ -165,6 +148,8 @@ export default function App() {
   const [designChatCount, setDesignChatCount] = useState(0);
   const [sidebar, setSidebar] = useState(false);
   const [filter, setFilter] = useState("");
+  const historySearch = useDeferredValue(filter);
+  const history = useSessionHistory(historySearch, connected);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [dismissedNotice, setDismissedNotice] = useState("");
   const [copied, setCopied] = useState({ id: "", message: "" });
@@ -178,6 +163,7 @@ export default function App() {
     clear: clearTaskDraft,
     clearSubmitted,
   } = useTaskDraft(project?.project);
+  const programDraft = useProgramDraft(project?.project);
   const setupJobs = useSetupJobs({
     revision: `${setupRevision}:${settingsRevision}:${JSON.stringify(project?.config.agent)}`,
     completed: async () => {
@@ -260,10 +246,19 @@ export default function App() {
     replace = false,
   ) {
     const target = {
+      ...search,
       view: next === "settings" ? ("settings" as const) : undefined,
       task: selection ? selection.selectedTask : search.task,
       run: selection ? (selection.selectedTask ? undefined : selection.runId) : search.run,
     };
+    if (!search.session && (target.task !== search.task || target.run !== search.run)) {
+      target.workspaceView = undefined;
+      target.step = undefined;
+      target.visit = undefined;
+      target.operation = undefined;
+      target.evidenceSession = undefined;
+    }
+    target.session = undefined;
     await routeNavigate({ to: "/", search: target, hash: "", replace });
     const current = router.state.location.search;
     if (
@@ -283,15 +278,15 @@ export default function App() {
   }, [selectedTask, task?.runId, search.run, selectRun]);
   const reconcileSelection = useEffectEvent(() => {
     if (
-      (selectedTask && tasks.some((item) => item.id === selectedTask && item.deletedAt)) ||
-      (selectedId && runs.some((item) => item.id === selectedId && item.deletedAt))
+      (selectedTask && task?.id === selectedTask && task.deletedAt) ||
+      (selectedId && run?.id === selectedId && run.deletedAt)
     ) {
       void navigate("task", { selectedTask: undefined, runId: undefined }, undefined, true);
     }
   });
   useEffect(() => {
     reconcileSelection();
-  }, [tasks, runs, task?.runId]);
+  }, [task?.deletedAt, run?.deletedAt, task?.runId]);
 
   function newTask(text?: string) {
     if (
@@ -325,33 +320,7 @@ export default function App() {
     }
   }
 
-  const linked = new Set(tasks.map((item) => item.runId));
-  const executions = new Map(runs.map((item) => [item.id, item]));
-  const entries: HistoryEntry[] = [
-    ...tasks
-      .filter((item) => !item.deletedAt && !executions.get(item.runId ?? "")?.deletedAt)
-      .map((item) => {
-        const execution = executions.get(item.runId ?? "");
-        return {
-          id: item.id,
-          runId: item.runId,
-          title: execution?.title ?? item.prompt,
-          status: execution?.status ?? item.status,
-          createdAt: item.createdAt,
-        };
-      }),
-    ...runs
-      .filter((item) => !item.deletedAt && !linked.has(item.id))
-      .map((item) => ({
-        id: `run:${item.id}`,
-        runId: item.id,
-        title: item.title,
-        status: item.status,
-        createdAt: item.createdAt,
-      })),
-  ]
-    .filter((item) => item.title.toLowerCase().includes(filter.toLowerCase()))
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const entries = history.entries;
   const groups = [
     {
       label: "Active",
@@ -365,7 +334,25 @@ export default function App() {
     },
   ];
   const selectedEntry = selectedTask ?? (selectedId ? `run:${selectedId}` : "");
-  const selectedItem = entries.find((item) => item.id === selectedEntry);
+  const selectedItem =
+    entries.find((item) => item.id === selectedEntry) ??
+    (task?.id === selectedTask && task
+      ? {
+          id: task.id,
+          runId: task.runId,
+          title: run && run.id === task.runId ? run.plan.title : task.prompt,
+          status: run && run.id === task.runId ? run.status : task.status,
+          createdAt: task.createdAt,
+        }
+      : !selectedTask && run?.id === selectedId && run
+        ? {
+            id: `run:${run.id}`,
+            runId: run.id,
+            title: run.plan.title,
+            status: run.status,
+            createdAt: run.createdAt,
+          }
+        : undefined);
   const projectName = project?.project.split("/").filter(Boolean).at(-1) ?? "Workspace";
   const sessionId = selectedTask ?? selectedId;
   const copiedSession = copied.id === sessionId ? copied.message : "";
@@ -377,7 +364,7 @@ export default function App() {
     return { key: `${identity}:${occurrence}`, value: answer };
   });
 
-  function deleteEntry(item: HistoryEntry) {
+  function deleteEntry(item: Pick<SessionSummary, "id" | "runId" | "title" | "status">) {
     if (busy || cannotDelete(item.status)) return;
     if (
       !window.confirm(
@@ -443,14 +430,14 @@ export default function App() {
       });
     }
   }
-  function selectEntry(item: HistoryEntry) {
+  function selectEntry(item: SessionSummary) {
     void navigate("task", {
       selectedTask: item.id.startsWith("run:") ? undefined : item.id,
       runId: item.runId,
     });
   }
   function openNotice(id: string) {
-    const linkedTask = tasks.find((item) => item.runId === id);
+    const linkedTask = entries.find((item) => item.runId === id && !item.id.startsWith("run:"));
     void navigate("task", { selectedTask: linkedTask?.id, runId: id });
     markNoticesRead();
     setNotificationsOpen(false);
@@ -461,7 +448,7 @@ export default function App() {
     const signal = actionSignal();
     const created = await request("/api/tasks", taskSchema, {
       method: "POST",
-      body: { prompt, attachments },
+      body: { prompt, attachments, approval: automatic ? "automatic" : "review" },
       signal,
     });
     signal?.throwIfAborted();
@@ -482,12 +469,14 @@ export default function App() {
     signal: AbortSignal,
   ) {
     const combined = actionSignal(signal);
+    const submittedDraft = programDraft.draft;
     const created = await request("/api/programs", runSchema, {
       method: "POST",
       body: value,
       signal: combined,
     });
     combined?.throwIfAborted();
+    programDraft.clearSubmitted(submittedDraft);
     await navigate("task", { selectedTask: undefined, runId: created.id });
     applyRun(created);
     await refreshRuns();
@@ -650,12 +639,26 @@ export default function App() {
           <Icon name="search" size={15} />
           <input
             value={filter}
+            maxLength={200}
             onChange={(event) => setFilter(event.currentTarget.value)}
             aria-label="Search tasks"
             placeholder="Search tasks"
           />
         </div>
         <div className="task-history">
+          {history.isPending && (
+            <p className="sidebar-empty" role="status">
+              Loading task history…
+            </p>
+          )}
+          {history.error && (
+            <div className="sidebar-empty" role="alert">
+              {history.error.message}
+              <button className="quiet" onClick={() => void history.refetch()}>
+                Retry history
+              </button>
+            </div>
+          )}
           {groups.map((group) => (
             <section key={group.label}>
               <div className="history-heading">
@@ -690,9 +693,20 @@ export default function App() {
                   </button>
                 </div>
               ))}
-              {!group.items.length && <p className="sidebar-empty">{group.empty}</p>}
+              {!group.items.length && !history.isPending && (
+                <p className="sidebar-empty">{group.empty}</p>
+              )}
             </section>
           ))}
+          {history.hasNextPage && (
+            <button
+              className="quiet"
+              disabled={history.isFetchingNextPage}
+              onClick={() => void history.fetchNextPage()}
+            >
+              {history.isFetchingNextPage ? "Loading older tasks…" : "Load older tasks"}
+            </button>
+          )}
         </div>
         <div className="sidebar-bottom">
           <div className="workspace-label">
@@ -843,7 +857,14 @@ export default function App() {
                   onSettings={() => navigate("settings")}
                 />
               )}
-              <ProgramComposerReact onSubmit={submitProgram} />
+              {project && (
+                <ProgramComposerReact
+                  draft={programDraft.draft}
+                  onChange={programDraft.set}
+                  onDiscard={programDraft.clear}
+                  onSubmit={submitProgram}
+                />
+              )}
               {project?.mode === "demo" && (
                 <p className="demo-note">
                   Demo mode simulates planning, agents and checks. Task files stay unchanged.

@@ -92,13 +92,15 @@ Or, for an implementation:
 2. The coordinator selects task instructions and composes a graph. It asks a follow-up only when essential information is missing.
 3. Read the rationale, steps, model choices, and connections. Repository investigation belongs to the execution steps, so planning does not need to inspect your codebase.
 4. Use **Edit workflow** to change the TypeScript or ask AI to refine the draft. **Format** or **Shift + Alt + F** formats code with Prettier. Save before approving.
-5. Select **Approve & start**. In automatic mode, selected in **Settings → Execution**, an accepted workflow starts without this click.
+5. Select **Approve & start**. In automatic mode, selected in **Settings → Execution**, an accepted workflow starts without this click. Each browser submission records the approval policy shown beside its composer; changing the project default in another client cannot silently turn a review-mode request into automatic execution.
 
-During execution, active blocks are highlighted. Select a block for its inputs, visits, and activity. Drag graph blocks to arrange them, use **Fit workflow**, or expand the workspace. Layout changes do not change execution order.
+During execution, active blocks are highlighted. The graph opens at a readable step scale; pan through it or use **Go to step** to inspect another block. **Fit workflow** switches to a whole-graph overview, which may reduce text size. Resizing the page or opening step details preserves your zoom and pan. Drag graph blocks to arrange them, or expand the workspace. Layout changes do not change execution order.
 
 Unsent task text and uploaded attachment references are saved per project in this browser. Opening Settings, switching sessions, or refreshing the page preserves the draft. **New task** returns to it; **Discard task draft** clears it. Successful submission clears only the submitted draft, preserving any newer edits. File bytes remain in the project's attachment store. If browser storage is disabled, the draft still survives navigation within the open page.
 
-The outcome appears above the graph. **Results** contains rendered summaries, checks, and artifacts; **Activity** contains detailed events and command output. Copy or download Markdown from results. Active and previous tasks remain in the sidebar.
+The outcome appears above the graph. **Results** presents the summary, acceptance status, warnings, and artifacts before expandable detailed execution evidence; **Activity** contains detailed events and command output. Copy or download Markdown from results. The sidebar loads recent sessions in bounded pages; select **Load older tasks** for more. Search covers saved session titles across the project, not only loaded pages. Live events refresh history and task details; polling is a fallback while the event stream is disconnected.
+
+Settings sections and workflow inspection views are recorded in the URL. Refresh, Back, Forward, and copied session links preserve the selected view and applicable step, visit, and evidence context. Workflow view tabs support Left/Right arrows, Home, and End. A failed settings or model-catalog read exposes a retry; a catalog failure does not block unrelated execution settings.
 
 ## Attachments
 
@@ -115,6 +117,8 @@ PDF and general binary document extraction are not implemented. Image requests n
 ## Import a workflow you wrote
 
 Choose **New task → Use a TypeScript workflow** to paste or import a `.ts` file and provide a JSON input object. The source is typechecked and a declared composition gets a graph preview before approval.
+
+The TypeScript composer saves its name, imported filename, source, and input JSON per project in this browser. Navigation and refresh preserve these fields. **Discard TypeScript draft** clears them; successful creation clears only the submitted draft. When browser storage is disabled, fields still survive navigation within the open page, but not a browser reload.
 
 You can also save source inside your project and use a second terminal while its Workflow server is running:
 

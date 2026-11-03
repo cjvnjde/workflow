@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { useForm, useStore } from "@tanstack/react-form";
+import { useBlocker } from "@tanstack/react-router";
 import type { z } from "zod";
 import {
   modelCatalogSchema,
@@ -10,6 +11,7 @@ import {
   type OrchestrationState,
 } from "../../src/contracts/index.js";
 import { request } from "../shared/api.js";
+import { useWorkspaceLocation, type SettingsSection } from "../app/workspace-location.js";
 import ModelSettings from "./ModelSettings.js";
 import ModelProfiles from "./ModelProfiles.js";
 import TaskCases from "./TaskCases.js";
@@ -34,7 +36,7 @@ const tabs = [
   ["automations", "Automations"],
   ["memory", "Memory"],
 ] as const;
-type Section = (typeof tabs)[number][0];
+type Section = SettingsSection;
 type EditorHandle = { discard: () => void };
 type ExecutionConfig = z.infer<typeof executionSettingsSchema>;
 type SettingsValues = {
@@ -68,7 +70,7 @@ export default function SettingsPage({
   onDirty,
   onContext,
 }: SettingsPageProps) {
-  const [tab, setTab] = useState<Section>("providers");
+  const { section: tab, setSettingsSection } = useWorkspaceLocation();
   const [selectedBlock, setSelectedBlock] = useState("");
   const [defaults, setDefaults] = useState<SettingsValues>({
     state: undefined,
@@ -82,6 +84,10 @@ export default function SettingsPage({
   });
   const { state, execution } = useStore(form.store, (state) => state.values);
   const [models, setModels] = useState<AvailableModel[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -99,6 +105,7 @@ export default function SettingsPage({
   const [editorRevision, setEditorRevision] = useState(0);
   const [staleSettings, setStaleSettings] = useState(false);
   const requests = useRef<{ controller: AbortController | undefined }>({ controller: undefined });
+  const catalogRequest = useRef<AbortController | undefined>(undefined);
   const lifetime = useRef<AbortController | undefined>(undefined);
   const dirty =
     !!state && JSON.stringify(state.settings) !== JSON.stringify(defaults.state?.settings);
@@ -112,10 +119,10 @@ export default function SettingsPage({
     triggerDirty ||
     memoryDirty ||
     automationDirty;
-  const latest = useRef({ hasEdits, executionDirty });
+  const latest = useRef({ hasEdits, dirty, executionDirty });
   useEffect(() => {
-    latest.current = { hasEdits, executionDirty };
-  }, [hasEdits, executionDirty]);
+    latest.current = { hasEdits, dirty, executionDirty };
+  }, [hasEdits, dirty, executionDirty]);
   const refreshingDesign = loadedDesignRevision !== designRevision;
 
   const emitContext = useEffectEvent((value: SettingsContext) => onContext?.(value));
@@ -149,9 +156,36 @@ export default function SettingsPage({
     return () => {
       session.abort();
       pending.controller?.abort();
+      catalogRequest.current?.abort();
       window.removeEventListener("beforeunload", warn);
     };
   }, []);
+
+  const loadCatalog = useCallback(async () => {
+    catalogRequest.current?.abort();
+    const lookup = new AbortController();
+    catalogRequest.current = lookup;
+    setCatalogLoading(true);
+    setCatalogError("");
+    try {
+      const catalog = await request("/api/models", modelCatalogSchema, { signal: lookup.signal });
+      if (!lookup.signal.aborted) setModels(catalog.models);
+    } catch (failure) {
+      if (!lookup.signal.aborted) setCatalogError(String(failure));
+    } finally {
+      if (!lookup.signal.aborted) setCatalogLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    let disposed = false;
+    void Promise.resolve().then(() => {
+      if (!disposed) return loadCatalog();
+    });
+    return () => {
+      disposed = true;
+      catalogRequest.current?.abort();
+    };
+  }, [loadCatalog]);
 
   const load = useCallback(
     async (revision: number, force = false) => {
@@ -159,31 +193,39 @@ export default function SettingsPage({
       pending.controller?.abort();
       const lookup = new AbortController();
       pending.controller = lookup;
+      setLoading(true);
+      setLoadError("");
       try {
         const options = { signal: lookup.signal };
-        const [loaded, catalog, config] = await Promise.all([
+        const [loaded, config] = await Promise.allSettled([
           request("/api/settings/orchestration", orchestrationStateSchema, options),
-          request("/api/models", modelCatalogSchema, options),
           request("/api/settings/execution", executionSettingsSchema, options),
         ]);
         if (lookup.signal.aborted) return;
-        if (!force && latest.current.hasEdits) {
-          setStaleSettings(true);
-          return;
+        const preserveState = !force && latest.current.dirty;
+        const preserveExecution = !force && latest.current.executionDirty;
+        if (loaded.status === "fulfilled" && !preserveState) {
+          setDefaults((current) => ({ ...current, state: loaded.value }));
+          form.setFieldValue("state", loaded.value);
         }
-        const next = { state: loaded, execution: config };
-        setDefaults(next);
-        form.reset(next);
-        setModels(catalog.models);
-        setStaleSettings(false);
-        setEditorRevision((value) => value + 1);
-      } catch (failure) {
-        if (!lookup.signal.aborted) throw failure;
+        if (config.status === "fulfilled" && !preserveExecution) {
+          setDefaults((current) => ({ ...current, execution: config.value }));
+          form.setFieldValue("execution", config.value);
+        }
+        const failures = [loaded, config].flatMap((result) =>
+          result.status === "rejected" ? [String(result.reason)] : [],
+        );
+        setLoadError(failures.join("\n"));
+        setStaleSettings(preserveState || preserveExecution);
+        if (force || !latest.current.hasEdits) setEditorRevision((value) => value + 1);
       } finally {
-        if (!lookup.signal.aborted) setLoadedDesignRevision(revision);
+        if (!lookup.signal.aborted) {
+          setLoading(false);
+          setLoadedDesignRevision(revision);
+        }
       }
     },
-    [form, setModels, setStaleSettings, setEditorRevision, setLoadedDesignRevision, setDefaults],
+    [form],
   );
   useEffect(() => {
     let disposed = false;
@@ -258,30 +300,71 @@ export default function SettingsPage({
       setNotice("Execution settings saved.");
     }
   }
-  function changeTab(id: Section) {
-    if (
-      id !== tab &&
-      (blockDirty || modelDirty || triggerDirty || memoryDirty || automationDirty)
-    ) {
-      if (!window.confirm("Discard unsaved changes in this section?")) return;
+  useBlocker({
+    shouldBlockFn: ({ current, next }) => {
+      if (
+        !("view" in current.search) ||
+        current.search.view !== "settings" ||
+        !("view" in next.search) ||
+        next.search.view !== "settings" ||
+        current.search.section === next.search.section ||
+        !(blockDirty || modelDirty || triggerDirty || memoryDirty || automationDirty)
+      )
+        return false;
+      if (!window.confirm("Discard unsaved changes in this section?")) return true;
       setBlockDirty(false);
       setModelDirty(false);
       setTriggerDirty(false);
       setMemoryDirty(false);
       setAutomationDirty(false);
-    }
-    setTab(id);
+      return false;
+    },
+    enableBeforeUnload: false,
+  });
+  function changeTab(id: Section) {
+    setSettingsSection(id);
     setNotice("");
   }
   async function providersSaved() {
     const signal = lifetime.current?.signal;
-    setModels((await request("/api/models", modelCatalogSchema, { signal })).models);
-    // Provider defaults share config.json with execution settings. Preserve local edits.
-    if (!latest.current.executionDirty) {
-      const config = await request("/api/settings/execution", executionSettingsSchema, { signal });
+    const baseline = defaults.execution;
+    const config = await request("/api/settings/execution", executionSettingsSchema, { signal });
+    if (signal?.aborted) return;
+    const draft = form.state.values.execution;
+    const fields = ["instructions", "commands", "maxSteps", "budget"] as const;
+    const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
+    const conflicts =
+      baseline && draft
+        ? fields.filter(
+            (field) =>
+              !same(draft[field], baseline[field]) &&
+              !same(config[field], baseline[field]) &&
+              !same(draft[field], config[field]),
+          )
+        : [];
+    if (conflicts.length) {
+      // Keep the original revision so a save cannot overwrite a concurrent execution edit.
+      setStaleSettings(true);
+      setError(
+        `Execution settings changed elsewhere (${conflicts.join(", ")}). Your edits are preserved; reload saved settings before saving.`,
+      );
+    } else {
+      const rebased =
+        baseline && draft
+          ? {
+              ...config,
+              instructions: same(draft.instructions, baseline.instructions)
+                ? config.instructions
+                : draft.instructions,
+              commands: same(draft.commands, baseline.commands) ? config.commands : draft.commands,
+              maxSteps: same(draft.maxSteps, baseline.maxSteps) ? config.maxSteps : draft.maxSteps,
+              budget: same(draft.budget, baseline.budget) ? config.budget : draft.budget,
+            }
+          : config;
       setDefaults((current) => ({ ...current, execution: config }));
-      form.setFieldValue("execution", config);
+      form.setFieldValue("execution", rebased);
     }
+    await loadCatalog();
     await onSaved();
     await setupController.refresh();
   }
@@ -314,6 +397,25 @@ export default function SettingsPage({
           </button>
         ))}
       </nav>
+      {loadError && (
+        <div className="inline-error" role="alert">
+          Settings could not be fully loaded: {loadError}{" "}
+          <button
+            disabled={loading || busy || applyingDesign}
+            onClick={() => void load(designRevision)}
+          >
+            Retry loading settings
+          </button>
+        </div>
+      )}
+      {catalogError && (
+        <div className="inline-error" role="alert">
+          Model catalog unavailable: {catalogError}. Other settings are still available.{" "}
+          <button disabled={catalogLoading} onClick={() => void loadCatalog()}>
+            Retry model catalog
+          </button>
+        </div>
+      )}
       {error && (
         <div className="inline-error" role="alert">
           {error}
@@ -342,7 +444,11 @@ export default function SettingsPage({
           onBusy={setBusy}
         />
       ) : !state ? (
-        <p role="status">Loading settings…</p>
+        <p role="status">
+          {loading
+            ? "Loading settings…"
+            : "Settings are unavailable. Retry loading settings to recover."}
+        </p>
       ) : (
         <fieldset
           className="settings-fields"
@@ -392,6 +498,13 @@ export default function SettingsPage({
               onChange={(capabilities) => updateSettings({ ...state.settings, capabilities })}
               projectCapabilities={state.projectCapabilities}
             />
+          )}
+          {tab === "execution" && !execution && (
+            <p role="status">
+              {loading
+                ? "Loading execution settings…"
+                : "Execution settings are unavailable. Retry loading settings to recover."}
+            </p>
           )}
           {tab === "execution" && execution && (
             <>

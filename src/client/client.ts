@@ -6,6 +6,8 @@ import {
   runSchema,
   taskListSchema,
   taskSchema,
+  sessionHistoryPageSchema,
+  type SessionHistoryQuery,
   usageReportSchema,
   commandOutputPageSchema,
   historyPageSchema,
@@ -98,14 +100,24 @@ export class WorkflowClient {
       throw new Error("Use a full task or run ID, optionally prefixed with task: or run:.");
     const id = match[2]!.toLowerCase();
     const kind = match[1]?.toLowerCase();
-    const [tasks, runs] = await Promise.all([
-      kind === "run" ? [] : this.tasks(signal),
-      kind === "task" ? [] : this.runs(signal),
+    const results = await Promise.allSettled([
+      kind === "run" ? Promise.resolve(undefined) : this.task(id, signal),
+      kind === "task" ? Promise.resolve(undefined) : this.run(id, signal),
     ]);
-    if (tasks.some((task) => task.id === id && !task.deletedAt)) return { kind: "task", id };
-    if (runs.some((run) => run.id === id && !run.deletedAt)) return { kind: "run", id };
+    for (const [index, result] of results.entries()) {
+      if (result.status === "fulfilled" && result.value && !result.value.deletedAt)
+        return { kind: index === 0 ? "task" : "run", id };
+    }
+    for (const result of results) {
+      if (
+        result.status === "rejected" &&
+        (!(result.reason instanceof WorkflowApiError) || ![404, 409].includes(result.reason.status))
+      ) {
+        throw result.reason;
+      }
+    }
     throw new Error(
-      `Session ${id} was not found in this project. Use /sessions to see available sessions.`,
+      `Session ${id} was not found in this project. Check the full ID and the project server you connected to.`,
     );
   }
   private headers(options: RequestOptions = {}) {
@@ -237,6 +249,12 @@ export class WorkflowClient {
   }
   runs(signal?: AbortSignal) {
     return this.request("/api/runs", runListSchema, { signal });
+  }
+  sessions(query: SessionHistoryQuery = {}, signal?: AbortSignal) {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query))
+      if (value !== undefined) params.set(key, String(value));
+    return this.request(`/api/sessions?${params}`, sessionHistoryPageSchema, { signal });
   }
   run(id: string, signal?: AbortSignal) {
     return this.request(`/api/runs/${encodeURIComponent(id)}`, runSchema, { signal });

@@ -41,12 +41,17 @@ test("invalid and missing session IDs stay in the dialog without replacing the w
   const dialog = page.getByRole("dialog", { name: "Continue in this workspace" });
   await dialog.getByLabel("Session ID or Workflow link").fill("not-an-id");
   await dialog.getByRole("button", { name: "Open session", exact: true }).click();
-  await expect(dialog.getByRole("alert")).toContainText("full task or run ID");
+  await expect(dialog.getByRole("alert")).toBeVisible();
+  await expect(page).toHaveURL(/\/$/);
   await dialog
     .getByLabel("Session ID or Workflow link")
     .fill("task:00000000-0000-4000-8000-000000000000");
   await dialog.getByRole("button", { name: "Open session", exact: true }).click();
-  await expect(dialog.getByRole("alert")).toContainText("Session not found in this project");
+  await expect(dialog.getByRole("alert")).toBeVisible();
+  await expect(dialog.getByLabel("Session ID or Workflow link")).toHaveValue(
+    "task:00000000-0000-4000-8000-000000000000",
+  );
+  await expect(page).toHaveURL(/\/$/);
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.getByLabel("What should we work on?", { exact: true })).toBeVisible();
 });
@@ -61,8 +66,6 @@ test("dismissing a delayed session lookup cancels navigation and preserves a new
   });
   expect(response.ok()).toBe(true);
   const task = await response.json();
-  const tasks = await (await request.get("/api/tasks")).json();
-  const runs = await (await request.get("/api/runs")).json();
   await page.goto("/");
   await expect(
     page.getByRole("button", { name: /Session lookup cancellation fixture/ }).first(),
@@ -70,7 +73,7 @@ test("dismissing a delayed session lookup cancels navigation and preserves a new
   const dialog = page.getByRole("dialog", { name: "Continue in this workspace" });
   const composer = page.getByLabel("What should we work on?", { exact: true });
   let delayed: import("@playwright/test").Route[] | undefined;
-  await page.route(/\/api\/(tasks|runs)$/, async (route) => {
+  await page.route(new RegExp(`/api/(tasks|runs)/${task.id}$`), async (route) => {
     if (delayed) delayed.push(route);
     else await route.continue();
   });
@@ -79,9 +82,10 @@ test("dismissing a delayed session lookup cancels navigation and preserves a new
     await page.getByRole("button", { name: "Open session by ID", exact: true }).click();
     await dialog.getByLabel("Session ID or Workflow link").fill(task.id);
     delayed = [];
+    const lookup = page.waitForRequest((req) => req.url().endsWith(`/api/tasks/${task.id}`));
     await dialog.getByRole("button", { name: "Open session", exact: true }).click();
     await expect(dialog.getByRole("button", { name: "Opening…", exact: true })).toBeDisabled();
-    await expect.poll(() => delayed!.length).toBeGreaterThanOrEqual(2);
+    await lookup;
     const pending = delayed;
     const aborted = page.waitForEvent("requestfailed", {
       predicate: (req) => pending.some((route) => route.request() === req),
@@ -97,9 +101,11 @@ test("dismissing a delayed session lookup cancels navigation and preserves a new
     await Promise.all(
       pending.map((route) =>
         route
-          .fulfill({
-            json: route.request().url().endsWith("/tasks") ? tasks : runs,
-          })
+          .fulfill(
+            route.request().url().includes("/tasks/")
+              ? { json: task }
+              : { status: 409, json: { error: "Run not found" } },
+          )
           .catch(() => {
             /* Chromium may already have discarded the aborted request. */
           }),

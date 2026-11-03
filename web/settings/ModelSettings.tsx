@@ -57,6 +57,8 @@ export default function ModelSettings({ onSaved, onBusy, onDirty, ref }: ModelSe
   const [warnings, setWarnings] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [notice, setNotice] = useState("");
   const controller = useRef<AbortController | null>(null);
   const values = useStore(form.store, (state) => state.values);
@@ -97,24 +99,42 @@ export default function ModelSettings({ onSaved, onBusy, onDirty, ref }: ModelSe
   }
   useImperativeHandle(ref, () => ({ discard }));
 
-  useEffect(() => {
+  const load = useCallback(async () => {
+    controller.current?.abort();
     const active = new AbortController();
     controller.current = active;
-    void Promise.all([
+    setLoading(true);
+    setLoadError("");
+    const [loaded, catalog] = await Promise.allSettled([
       request("/api/setup", setupSchema, { signal: active.signal }),
       request("/api/models", modelCatalogSchema, { signal: active.signal }),
-    ])
-      .then(([value, catalog]) => {
-        if (active.signal.aborted) return;
-        resetForm(setupForm(value));
-        setModels(catalog.models);
-        setWarnings(catalog.warnings);
-      })
-      .catch((failure: unknown) => {
-        if (!active.signal.aborted) setError(String(failure));
-      });
-    return () => active.abort();
-  }, [resetForm]);
+    ]);
+    if (active.signal.aborted) return;
+    if (loaded.status === "fulfilled") {
+      if (hasChanges(form.state.values)) form.setFieldValue("setup", loaded.value);
+      else resetForm(setupForm(loaded.value));
+    }
+    if (catalog.status === "fulfilled") {
+      setModels(catalog.value.models);
+      setWarnings(catalog.value.warnings);
+    }
+    setLoadError(
+      [loaded, catalog]
+        .flatMap((result) => (result.status === "rejected" ? [String(result.reason)] : []))
+        .join("\n"),
+    );
+    setLoading(false);
+  }, [form, resetForm]);
+  useEffect(() => {
+    let disposed = false;
+    void Promise.resolve().then(() => {
+      if (!disposed) return load();
+    });
+    return () => {
+      disposed = true;
+      controller.current?.abort();
+    };
+  }, [load]);
 
   async function perform(action: (signal: AbortSignal) => Promise<void>) {
     const active = controller.current;
@@ -211,6 +231,14 @@ export default function ModelSettings({ onSaved, onBusy, onDirty, ref }: ModelSe
         Start with ChatGPT, or connect another provider using an API key. Choose a default model to
         plan new requests and generate your project library.
       </p>
+      {loadError && (
+        <div className="error-banner" role="alert">
+          Provider settings could not be fully loaded: {loadError}{" "}
+          <button disabled={loading || busy} onClick={() => void load()}>
+            Retry provider settings
+          </button>
+        </div>
+      )}
       {error && (
         <div className="error-banner" role="alert">
           {error}
@@ -234,7 +262,11 @@ export default function ModelSettings({ onSaved, onBusy, onDirty, ref }: ModelSe
             onConnected={() => perform(refresh)}
           />
           {!setup ? (
-            <p role="status">Loading provider status…</p>
+            <p role="status">
+              {loading
+                ? "Loading provider status…"
+                : "Provider status is unavailable. Retry provider settings to recover."}
+            </p>
           ) : setup.providers.length ? (
             <ul className="provider-list">
               {setup.providers.map((provider) => (

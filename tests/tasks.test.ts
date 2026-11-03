@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { setTimeout as delay } from "node:timers/promises";
+import { setImmediate as immediate, setTimeout as delay } from "node:timers/promises";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fixture, passingRunner, passingResult } from "./helpers.js";
@@ -14,7 +14,7 @@ import {
 import { bundleSchema, validatePlan, type Library } from "../src/contracts/domain.js";
 import { Attachments } from "../src/core/tasks/attachments.js";
 import { createServer } from "../src/http/server.js";
-import { taskSchema } from "../src/contracts/task-schema.js";
+import { taskSchema, type TaskRequest } from "../src/contracts/task-schema.js";
 import { executionSettingsSchema } from "../src/contracts/setup-schema.js";
 
 async function until(check: () => boolean | Promise<boolean>) {
@@ -131,6 +131,93 @@ test("cancelled planning creates no run and server restart exposes interrupted p
   assert.equal(restored.get(task.id).status, "failed");
   assert.match(restored.get(task.id).error!, /interrupted/);
 });
+
+for (const operation of ["create", "answer", "retry"] as const) {
+  test(`shutdown drains a persisted ${operation} admission without leaving queued planning`, async (t) => {
+    const { project, cleanup } = await fixture(t);
+    const engine = new WorkflowEngine(project, "live", passingRunner);
+    cleanup(() => engine.shutdown());
+    let plans = 0;
+    const tasks = new Tasks(
+      engine,
+      async () => ({ models: [], warnings: [] }),
+      async () => {
+        plans++;
+        if (operation === "answer") {
+          return {
+            kind: "question",
+            question: { question: "Which service?", options: [] },
+          };
+        }
+        throw new Error("Planning could not complete");
+      },
+    );
+    await tasks.initialize();
+    cleanup(() => tasks.close());
+    let previous: TaskRequest | undefined;
+    if (operation !== "create") {
+      const created = await tasks.create({ prompt: "Connect the service" });
+      await until(() => ["needs_input", "failed"].includes(tasks.get(created.id).status));
+      await tasks["queue"];
+      previous = tasks.get(created.id);
+    }
+    const initialPlans = plans;
+    let entered!: () => void;
+    const persisting = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    cleanup(async () => {
+      release();
+    });
+    const save = tasks["save"].bind(tasks);
+    tasks["save"] = async (task) => {
+      await save(task);
+      if (task.status === "queued") {
+        entered();
+        await gate;
+      }
+    };
+    const admission =
+      operation === "create"
+        ? tasks.create({ prompt: "Connect the service" })
+        : operation === "answer"
+          ? tasks.answer(previous!.id, { revision: previous!.revision, answer: "Internal" })
+          : tasks.retry(previous!.id);
+    await persisting;
+    let closed = false;
+    const closing = tasks.close().then(() => {
+      closed = true;
+    });
+    let closedAgain = false;
+    const closingAgain = tasks.close().then(() => {
+      closedAgain = true;
+    });
+    await immediate();
+    assert.equal(closed, false, "Shutdown must retain ownership of the pending admission");
+    assert.equal(closedAgain, false, "Concurrent close calls must share the admission drain");
+    await assert.rejects(tasks.create({ prompt: "Too late" }), /shutting down/);
+    release();
+    const accepted = await admission;
+    await Promise.all([closing, closingAgain]);
+    const stopped = tasks.get(accepted.id);
+    assert.equal(stopped.status, "cancelled");
+    assert.equal(stopped.question, undefined);
+    assert.equal(stopped.runId, undefined);
+    assert.equal(plans, initialPlans, "Shutdown must not start the admitted planning job");
+    if (operation === "answer") {
+      assert.deepEqual(stopped.answers, [{ question: "Which service?", answer: "Internal" }]);
+    }
+    const restored = new Tasks(engine);
+    await restored.initialize();
+    cleanup(() => restored.close());
+    assert.equal(restored.get(accepted.id).status, "cancelled");
+    assert.deepEqual(restored.get(accepted.id).answers, stopped.answers);
+  });
+}
 
 test("cancellation during draft creation discards the late draft and never automatically approves it", async (t) => {
   const { project, library, cleanup } = await fixture(t);

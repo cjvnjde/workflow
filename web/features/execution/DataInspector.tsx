@@ -17,9 +17,10 @@ import "./DataInspector.css";
 type Props = {
   run: WorkflowRun;
   selected?: string;
-  focus?: { nodeId: string; visit: number; operationId: string; sessionId?: string };
+  focus?: { nodeId: string; visit: number; operationId?: string; sessionId?: string };
   events: RunEvent[];
   onSelect?: (id: string) => void;
+  onEvidence?: (nodeId: string, visit: number, operationId?: string, sessionId?: string) => void;
   onEditor?: () => void;
   onActivity?: () => void;
 };
@@ -32,7 +33,7 @@ function preview(value: PlannedValue | undefined) {
       : "No value (undefined)";
 }
 export default function DataInspector(props: Props) {
-  const { run, selected, focus, onSelect, onEditor } = props;
+  const { run, selected, focus, onSelect, onEditor, onEvidence } = props;
   const node =
     run.plan.nodes.find((item) => item.id === selected) ??
     run.plan.nodes.find((item) => item.id === run.activeNodes?.[0]) ??
@@ -51,14 +52,7 @@ export default function DataInspector(props: Props) {
     setSelection({
       runId: run.id,
       nodeId: node?.id,
-      visit:
-        focus !== selection.focus && focus?.nodeId === node?.id
-          ? focus?.visit
-          : selection.nodeId === node?.id && selection.runId === run.id
-            ? selection.visit
-            : focus?.nodeId === node?.id
-              ? focus?.visit
-              : undefined,
+      visit: focus?.nodeId === node?.id ? focus?.visit : undefined,
       focus,
     });
   const visit = selection.visit ?? visits[0]?.visit;
@@ -76,7 +70,8 @@ export default function DataInspector(props: Props) {
       visit: dependency.producerVisit,
       focus,
     });
-    if (node?.id !== dependency.producerNodeId) onSelect?.(dependency.producerNodeId);
+    if (onEvidence) onEvidence(dependency.producerNodeId, dependency.producerVisit);
+    else if (node?.id !== dependency.producerNodeId) onSelect?.(dependency.producerNodeId);
   }
   const label = (id: string) => run.plan.nodes.find((item) => item.id === id)?.label ?? id;
   const [refresh, setRefresh] = useState(0);
@@ -99,7 +94,11 @@ export default function DataInspector(props: Props) {
           <select
             value={visit ?? ""}
             disabled={!visits.length}
-            onChange={(event) => setSelection({ ...selection, visit: Number(event.target.value) })}
+            onChange={(event) => {
+              const nextVisit = Number(event.target.value);
+              setSelection({ ...selection, visit: nextVisit });
+              if (node) onEvidence?.(node.id, nextVisit);
+            }}
           >
             {!visits.length && <option value="">Not started</option>}
             {visits.map((item) => (
@@ -235,6 +234,7 @@ function VisitEvidence({
   events,
   focus,
   onActivity,
+  onEvidence,
   node,
   visit,
   refresh,
@@ -448,11 +448,26 @@ function VisitEvidence({
                 (focus.sessionId
                   ? focus.sessionId === session.sessionId
                   : focus.operationId === session.operationId ||
-                    focus.operationId.startsWith(session.operationId + "/"))
+                    focus.operationId?.startsWith(session.operationId + "/"))
               }
               aria-label={`AI session ${session.sessionId}`}
             >
-              <summary>
+              <summary
+                onClick={
+                  onEvidence
+                    ? (event) => {
+                        event.preventDefault();
+                        const open = (event.currentTarget.parentElement as HTMLDetailsElement).open;
+                        onEvidence(
+                          node.id,
+                          visit,
+                          open ? undefined : session.operationId,
+                          open ? undefined : session.sessionId,
+                        );
+                      }
+                    : undefined
+                }
+              >
                 <strong>
                   {session.usage
                     ? `${session.usage.provider}/${session.usage.model}`
@@ -574,7 +589,7 @@ function VisitEvidence({
                     <article
                       key={tool.callId}
                       className={
-                        focus?.operationId.endsWith("/" + tool.callId) ? "focused-call" : undefined
+                        focus?.operationId?.endsWith("/" + tool.callId) ? "focused-call" : undefined
                       }
                     >
                       <h4>

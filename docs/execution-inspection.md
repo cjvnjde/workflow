@@ -4,13 +4,15 @@
 
 Use **Timeline** to follow a run from step visits through model requests and tool calls. Select a step in the graph, open Timeline, and choose a visit or operation. **Open exact evidence** opens the corresponding Data inspector. A repeated step visit and an automatic activity retry remain separate records.
 
+The graph starts at a readable step scale. **Go to step** navigates to a selected step without shrinking the whole plan; **Fit workflow** is an explicit overview. User zoom and pan survive inspector and window-size changes. The selected workspace view, step, visit, and exact-evidence context are URL-owned, so refresh and browser history restore the inspection location. Use arrow keys, Home, or End on the workflow view tabs.
+
 The timeline uses saved start and completion records. Switch between wall-clock placement and operation sequence, zoom, or select a time range to focus the operation list. Unknown timing remains unavailable; an interrupted operation without a completion does not acquire an invented duration. Model-session duration includes tools and retries, while request spans describe individual provider invocations. Nested durations overlap and must not be summed as total elapsed time.
 
 Tool calls consolidate start, progress, and result events. Expand parents to inspect child effects. Commands expose exit status and recorded output; file cards show captured lines or before/after text; unknown tools retain their structured input and output. Tool completion, a command's exit status, and workflow acceptance remain distinct.
 
 ## History and evidence
 
-Results loads model sessions, decisions, workspaces, file changes, ownership records, and capability warnings from the complete saved history, independently of the live feed. Loading, failed reads, and unavailable logs are shown explicitly; they are not treated as evidence that no records exist.
+Results shows the result summary, acceptance status, important warnings, and deliverables first. **Detailed execution evidence** is collapsed below the deliverables and loads model sessions, decisions, workspaces, file changes, ownership records, and capability warnings from the complete saved history, independently of the live feed. Loading, failed reads, and unavailable logs are shown explicitly; they are not treated as evidence that no records exist. Workflow completion remains distinct from verified task acceptance.
 
 Activity offers grouped tool calls and raw event history. Older events load through append-order cursors, independently of the live 500-event feed. Timeline summaries cover the saved run's operation records; exact payloads load when a call is selected. Search explicitly covers operation summaries or the loaded raw-history window, rather than claiming to search unrequested file contents.
 

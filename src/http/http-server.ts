@@ -148,6 +148,7 @@ export async function createHttpServer(app: WorkflowApplication, port = 4310) {
     app.latestDesign(request.params.scope),
   );
   server.get("/api/tasks", async () => app.tasks.list(true));
+  server.get("/api/sessions", (request) => app.sessionHistory(request.query));
   server.get("/api/automations", () => app.automations.state());
   server.post("/api/automations", (request) =>
     app.automations.save(saveAutomationSchema.parse(request.body)),

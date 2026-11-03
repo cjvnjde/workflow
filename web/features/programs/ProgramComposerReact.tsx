@@ -1,49 +1,31 @@
-import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useForm, useStore } from "@tanstack/react-form";
 import { Input } from "../../components/ui/input.js";
 import { Button } from "../../components/ui/button.js";
 import { programSourceSchema, type ProgramSource } from "../../../src/contracts/index.js";
+import { emptyProgramDraft, type ProgramDraft } from "./use-program-draft.js";
 
 type ProgramComposerProps = {
+  draft: ProgramDraft;
+  onChange: (draft: ProgramDraft) => void;
+  onDiscard: () => void;
   onSubmit: (
     value: ProgramSource & { title: string; task: string },
     signal: AbortSignal,
   ) => Promise<void>;
 };
 
-const template = `import { workflow, block, z } from "workflow";
-
-const inspect = block({
-  output: z.object({ output: z.string(), exitCode: z.number().nullable() }),
-  async run(ctx) {
-    const result = await ctx.exec("git status --short");
-    ctx.summary(result.output || "Working tree is clean.");
-    return { output: result.output, exitCode: result.exitCode };
-  },
-});
-
-export default workflow({
-  name: "Project check",
-  async run(ctx) {
-    const result = await ctx.step("inspect", inspect);
-    if (result.exitCode !== 0) throw new Error(result.output);
-    return result.output || "Working tree is clean.";
-  },
-});
-`;
-const initialInput = '{\n  "request": "Inspect the working tree"\n}';
-
 const CodeEditor = lazy(() => import("../../shared/CodeEditor.js"));
 
-export function ProgramComposerReact({ onSubmit }: ProgramComposerProps) {
+export function ProgramComposerReact({
+  draft,
+  onChange,
+  onDiscard,
+  onSubmit,
+}: ProgramComposerProps) {
   const editorId = useId();
   const form = useForm({
-    defaultValues: {
-      title: "My workflow",
-      filename: "workflow.ts",
-      source: template,
-      input: initialInput,
-    },
+    defaultValues: draft,
     onSubmit: ({ value }) => submit(value),
   });
   const { title, filename, source, input } = useStore(form.store, (state) => state.values);
@@ -55,9 +37,26 @@ export function ProgramComposerReact({ onSubmit }: ProgramComposerProps) {
   const controller = useRef<AbortController | null>(null);
 
   useEffect(() => () => controller.current?.abort(), []);
+  useLayoutEffect(() => {
+    const current = form.state.values;
+    if (
+      current.title !== draft.title ||
+      current.filename !== draft.filename ||
+      current.source !== draft.source ||
+      current.input !== draft.input
+    ) {
+      form.reset(draft);
+    }
+  }, [draft, form]);
+
+  function edit(field: keyof ProgramDraft, value: string) {
+    form.setFieldValue(field, value);
+    onChange({ ...form.state.values, [field]: value });
+  }
 
   function discard() {
-    form.reset();
+    form.reset(emptyProgramDraft());
+    onDiscard();
     setError("");
     if (panel.current) panel.current.open = false;
     setOpen(false);
@@ -75,6 +74,7 @@ export function ProgramComposerReact({ onSubmit }: ProgramComposerProps) {
     try {
       form.setFieldValue("source", await file.text());
       form.setFieldValue("filename", file.name);
+      onChange(form.state.values);
       setError("");
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
@@ -147,7 +147,7 @@ export function ProgramComposerReact({ onSubmit }: ProgramComposerProps) {
               <Input
                 value={title}
                 maxLength={200}
-                onChange={(event) => form.setFieldValue("title", event.currentTarget.value)}
+                onChange={(event) => edit("title", event.currentTarget.value)}
               />
             </label>
             <div className="flex flex-wrap items-center gap-3">
@@ -182,7 +182,7 @@ export function ProgramComposerReact({ onSubmit }: ProgramComposerProps) {
                     id={`${editorId}-source`}
                     label="New workflow TypeScript"
                     readOnly={busy}
-                    onChange={(value) => form.setFieldValue("source", value)}
+                    onChange={(value) => edit("source", value)}
                   />
                 </Suspense>
               </div>
@@ -203,7 +203,7 @@ export function ProgramComposerReact({ onSubmit }: ProgramComposerProps) {
                     minLines={3}
                     maxLines={12}
                     readOnly={busy}
-                    onChange={(value) => form.setFieldValue("input", value)}
+                    onChange={(value) => edit("input", value)}
                   />
                 </Suspense>
               </div>

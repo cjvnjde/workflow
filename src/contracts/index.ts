@@ -8,6 +8,7 @@ export * from "./orchestration-schema.js";
 export * from "./program-schema.js";
 export * from "./setup-schema.js";
 export * from "./task-schema.js";
+export * from "./session-schema.js";
 export * from "./operation-schema.js";
 export * from "./execution-history.js";
 export * from "./trigger-schema.js";

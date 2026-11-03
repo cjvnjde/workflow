@@ -19,8 +19,10 @@ export class Tasks {
   private readonly records = new Map<string, TaskRequest>();
   private readonly controllers = new Map<string, AbortController>();
   private readonly writes = new Map<string, Promise<void>>();
+  private readonly admissions = new Set<Promise<unknown>>();
   private queue = Promise.resolve();
   private closed = false;
+  private closing: Promise<void> | undefined;
   constructor(
     private readonly engine: WorkflowEngine,
     private readonly catalog = availableModels,
@@ -97,13 +99,28 @@ export class Tasks {
       task.events = task.events.slice(-200);
     }
   }
-  async create(value: unknown) {
-    return withProjectSettingsSnapshot(this.engine.project, () => this.createFromSnapshot(value));
-  }
-  private async createFromSnapshot(value: unknown) {
+  private assertOpen() {
     if (this.closed) {
       throw new Error("Server is shutting down");
     }
+  }
+  private async admit<T>(operation: () => Promise<T>): Promise<T> {
+    this.assertOpen();
+    const admission = operation();
+    this.admissions.add(admission);
+    try {
+      return await admission;
+    } finally {
+      this.admissions.delete(admission);
+    }
+  }
+  async create(value: unknown) {
+    return this.admit(() =>
+      withProjectSettingsSnapshot(this.engine.project, () => this.createFromSnapshot(value)),
+    );
+  }
+  private async createFromSnapshot(value: unknown) {
+    this.assertOpen();
     const input = newTaskSchema.parse(value);
     const sourceRun = input.sourceRunId ? this.engine.get(input.sourceRunId) : undefined;
     const sourceTask = sourceRun
@@ -140,6 +157,8 @@ export class Tasks {
       answers: structuredClone(sourceTask?.answers ?? []),
       approval: sourceRun ? "review" : (input.approval ?? settings.approval),
     });
+    // Before accounting is published, shutdown can still reject this request entirely.
+    this.assertOpen();
     const usage = new UsageStore(this.engine.project);
     const inheritedScope = sourceRun ? await usage.ensureRun(sourceRun) : undefined;
     await usage.ensureScope({
@@ -305,46 +324,44 @@ export class Tasks {
       });
   }
   async answer(id: string, value: unknown) {
-    if (this.closed) {
-      throw new Error("Server is shutting down");
-    }
-    const input = z
-      .object({ answer: z.string().trim().min(1).max(8000), revision: z.number().int() })
-      .strict()
-      .parse(value);
-    const task = this.records.get(id);
-    if (
-      !task ||
-      task.deletedAt ||
-      task.status !== "needs_input" ||
-      !task.question ||
-      task.revision !== input.revision
-    ) {
-      throw new Error("This question has already changed or been answered. Refresh the task.");
-    }
-    task.answers.push({ question: task.question.question, answer: input.answer });
-    task.question = undefined;
-    task.status = "queued";
-    await this.save(task);
-    this.enqueue(id);
-    return this.get(id);
+    return this.admit(async () => {
+      const input = z
+        .object({ answer: z.string().trim().min(1).max(8000), revision: z.number().int() })
+        .strict()
+        .parse(value);
+      const task = this.records.get(id);
+      if (
+        !task ||
+        task.deletedAt ||
+        task.status !== "needs_input" ||
+        !task.question ||
+        task.revision !== input.revision
+      ) {
+        throw new Error("This question has already changed or been answered. Refresh the task.");
+      }
+      task.answers.push({ question: task.question.question, answer: input.answer });
+      task.question = undefined;
+      task.status = "queued";
+      await this.save(task);
+      this.enqueue(id);
+      return this.get(id);
+    });
   }
   async retry(id: string) {
-    if (this.closed) {
-      throw new Error("Server is shutting down");
-    }
-    const task = this.records.get(id);
-    if (!task || task.deletedAt || !["failed", "cancelled"].includes(task.status) || task.runId) {
-      throw new Error("Only failed planning requests can be retried");
-    }
-    if (this.controllers.has(id)) {
-      throw new Error("Planning is still stopping. Retry once cancellation has finished.");
-    }
-    task.status = "queued";
-    task.error = undefined;
-    await this.save(task);
-    this.enqueue(id);
-    return this.get(id);
+    return this.admit(async () => {
+      const task = this.records.get(id);
+      if (!task || task.deletedAt || !["failed", "cancelled"].includes(task.status) || task.runId) {
+        throw new Error("Only failed planning requests can be retried");
+      }
+      if (this.controllers.has(id)) {
+        throw new Error("Planning is still stopping. Retry once cancellation has finished.");
+      }
+      task.status = "queued";
+      task.error = undefined;
+      await this.save(task);
+      this.enqueue(id);
+      return this.get(id);
+    });
   }
   async cancel(id: string) {
     const task = this.records.get(id);
@@ -362,11 +379,24 @@ export class Tasks {
     return this.get(id);
   }
   async close() {
+    return (this.closing ??= this.drain());
+  }
+  private async drain() {
     this.closed = true;
     for (const controller of this.controllers.values()) {
       controller.abort(new Error("Server closing"));
     }
+    // Admissions can append planning work after their final persistence await.
+    await Promise.allSettled(this.admissions);
     await this.queue;
+    for (const task of this.records.values()) {
+      if (task.status === "queued") {
+        task.status = "cancelled";
+        task.question = undefined;
+        task.error = "Planning stopped.";
+        await this.save(task);
+      }
+    }
     await Promise.allSettled(this.writes.values());
   }
   async remove(id: string) {

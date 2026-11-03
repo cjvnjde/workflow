@@ -7,12 +7,15 @@ import { ApplicationFailure, asyncLocalStorage, type Context } from "@temporalio
 import { WorkflowEngine } from "../src/core/engine.js";
 import { emptyUsage } from "../src/core/execution/budget.js";
 import { bundleSchema, runSchema, type WorkflowRun } from "../src/contracts/domain.js";
+import { attemptDirectory } from "../src/core/storage/attempt-store.js";
+import { FileJournal } from "../src/core/storage/recovery.js";
+import { Workspace } from "../src/core/storage/workspace.js";
 import { fixture, passingResult } from "./helpers.js";
 
-async function setup(t: TestContext, program = false) {
+async function setup(t: TestContext, program = false, mode: "live" | "demo" = "live") {
   const { project, library, cleanup } = await fixture(t);
   let executions = 0;
-  const engine = new WorkflowEngine(project, "live", async (execution) => {
+  const engine = new WorkflowEngine(project, mode, async (execution) => {
     executions++;
     return passingResult(execution);
   });
@@ -72,7 +75,7 @@ async function setup(t: TestContext, program = false) {
     cancellationSignal: new AbortController().signal,
     heartbeat: () => {},
   } as unknown as Context;
-  return { project, engine, run, activity, executions: () => executions };
+  return { project, engine, run, activity, cleanup, executions: () => executions };
 }
 
 function unapproved(error: unknown) {
@@ -321,3 +324,71 @@ test("activities without a Temporal identity cannot execute even an approved sna
   assert.deepEqual(engine.get(run.id), run);
   assert.deepEqual(await engine.events(run.id), []);
 });
+
+for (const mode of ["live", "demo"] as const) {
+  test(`${mode} recovery cannot settle files owned by an execution in the other mode`, async (t) => {
+    const { project, engine, run, activity, cleanup } = await setup(t, false, mode);
+    run.mode = mode === "live" ? "demo" : "live";
+    engine["runs"].set(run.id, structuredClone(run));
+    const filename = path.join(project, "recovery-mode.txt");
+    await writeFile(filename, "original");
+    const directory = attemptDirectory(project, run.id, "work", 1);
+    const journal = await FileJournal.open(directory);
+    const workspace = await Workspace.create(project, { journal });
+    await workspace.write("recovery-mode.txt", "execution changes");
+    const journalFile = path.join(directory, "files.json");
+    const unsettled = await readFile(journalFile, "utf8");
+
+    await asyncLocalStorage.run(activity, async () => {
+      for (const commit of [false, true])
+        await assert.rejects(engine["settleAttempt"](run, commit), /Execution mode mismatch/);
+    });
+    run.status = "failed";
+    run.attempts[0]!.error = "Execution failed";
+    run.attempts[0]!.recovery = {
+      status: "conflict",
+      restored: [],
+      conflicts: ["recovery-mode.txt"],
+    };
+    engine["runs"].set(run.id, structuredClone(run));
+    await assert.rejects(engine.recover(run.id), /Execution mode mismatch/);
+    await assert.rejects(engine.keepRecoveryFiles(run.id), /Execution mode mismatch/);
+    assert.equal(await readFile(filename, "utf8"), "execution changes");
+    assert.equal(await readFile(journalFile, "utf8"), unsettled);
+    assert.deepEqual(engine.get(run.id), run);
+
+    // The same journal remains recoverable by the original execution mode.
+    const original = new WorkflowEngine(project, run.mode, async (execution) =>
+      passingResult(execution),
+    );
+    cleanup(() => original.shutdown());
+    original["runs"].set(run.id, structuredClone(run));
+    const recovered = await original.recover(run.id);
+    assert.equal(recovered.recovery.status, "restored");
+    assert.equal(await readFile(filename, "utf8"), "original");
+  });
+
+  for (const status of ["running", "pausing", "paused", "interrupted"] as const) {
+    test(`${mode} startup rejects an active ${status} execution from the other mode before starting workers`, async (t) => {
+      const { project, engine, run } = await setup(t, false, mode);
+      run.mode = mode === "live" ? "demo" : "live";
+      run.status = status;
+      const filename = path.join(project, "startup-mode.txt");
+      await writeFile(filename, "original");
+      const directory = attemptDirectory(project, run.id, "work", 1);
+      const journal = await FileJournal.open(directory);
+      await (
+        await Workspace.create(project, { journal })
+      ).write("startup-mode.txt", "execution changes");
+      await engine["store"].save(run);
+      const journalFile = path.join(directory, "files.json");
+      const unsettled = await readFile(journalFile, "utf8");
+
+      await assert.rejects(engine.initialize(), /Execution mode mismatch/);
+      assert.equal(engine["environment"], undefined);
+      assert.equal(engine["workers"].size, 0);
+      assert.equal(await readFile(filename, "utf8"), "execution changes");
+      assert.equal(await readFile(journalFile, "utf8"), unsettled);
+    });
+  }
+}

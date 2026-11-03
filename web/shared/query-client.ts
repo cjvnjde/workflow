@@ -2,10 +2,9 @@ import { QueryClient } from "@tanstack/react-query";
 
 export const workflowQueryKeys = {
   project: ["project"] as const,
-  runs: ["runs"] as const,
+  sessions: ["sessions"] as const,
   run: (id: string | undefined) => ["run", id] as const,
   events: (id: string | undefined) => ["run-events", id] as const,
-  tasks: ["tasks"] as const,
   taskDetails: ["task"] as const,
   task: (id: string | undefined) => ["task", id] as const,
   setup: ["setup"] as const,

@@ -45,8 +45,8 @@ async function completed(page: Page, request: APIRequestContext, prompt?: string
     timeout: 20000,
   });
   await page
-    .getByRole("navigation", { name: "Workflow views" })
-    .getByRole("button", { name: "Data", exact: true })
+    .getByRole("tablist", { name: "Workflow views" })
+    .getByRole("tab", { name: "Data", exact: true })
     .click();
   const inspector = page.getByRole("region", {
     name: "Step data inspector",
@@ -74,7 +74,9 @@ test("data inspector shows planned sources, parallel named inputs and exact hist
     if (/\/attempts\/[^/]+\/\d+\/content\//.test(request.url())) contentRequests++;
   });
   await page.goto(`/#run=${run.id}`);
-  await page.locator('.workflow-node[data-id="report"]').click();
+  await page
+    .getByRole("combobox", { name: "Go to workflow step", exact: true })
+    .selectOption("report");
   await page.getByRole("button", { name: "Inspect step data", exact: true }).click();
   const inspector = page.getByRole("region", {
     name: "Step data inspector",
@@ -101,6 +103,16 @@ test("data inspector shows planned sources, parallel named inputs and exact hist
     }),
   ).toBeVisible();
   expect(contentRequests).toBe(0);
+  await expect(page).toHaveURL(/visit=1/);
+  await page.reload();
+  await expect(page.getByRole("tab", { name: "Data", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(inspector.getByRole("combobox", { name: "Step", exact: true })).toHaveValue(
+    "report",
+  );
+  await expect(inspector.getByRole("combobox", { name: "Visit", exact: true })).toHaveValue("1");
   const raw = value(inspector, "Raw inputs"),
     effective = value(inspector, "Effective inputs");
   await raw.locator("summary").click();
@@ -306,6 +318,15 @@ test("AI session context loads lazily and full search, copy and download survive
   await expect(session).toContainText("explicit context only");
   await expect(session).toContainText("high thinking · 1 request · 400 tokens");
   expect(fetched).toBe(0);
+  expect(new URL(page.url()).searchParams.get("operation")).toBe("report/ai-1");
+  expect(new URL(page.url()).searchParams.get("evidenceSession")).toBe(sessionId);
+  await page.goBack();
+  await expect(session).not.toHaveAttribute("open", "");
+  await page.goForward();
+  await expect(session).toHaveAttribute("open", "");
+  await page.reload();
+  await expect(session).toHaveAttribute("open", "");
+  await expect(inspector.getByRole("combobox", { name: "Visit", exact: true })).toHaveValue("2");
   const original = value(session, "Original call prompt");
   await original.locator("summary").click();
   await expect(original).toContainText("Preview: characters");

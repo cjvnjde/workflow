@@ -1,0 +1,314 @@
+:where(.workflow-workspace) .details-panel {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--background);
+}
+:where(.workflow-workspace) .tabs {
+  display: flex;
+  align-items: center;
+  padding: 0 18px;
+  gap: 22px;
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+  overflow-x: auto;
+}
+:where(.workflow-workspace) .tabs button {
+  flex-shrink: 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 15px 2px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+:where(.workflow-workspace) .tabs button.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+:where(.workflow-workspace) .workspace-view-bar > span {
+  font-size: 9px;
+  color: var(--muted-foreground);
+  margin-left: auto;
+  white-space: nowrap;
+}
+:where(.workflow-workspace) .workflow-canvas {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+:where(.workflow-workspace) .workflow-canvas.inspecting {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 24%);
+}
+:where(.workflow-workspace) .graph-panel {
+  height: clamp(470px, 58vh, 800px);
+  position: relative;
+  min-width: 0;
+  background: var(--background);
+}
+:where(.workflow-workspace) .graph-legend {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 18px;
+  position: absolute;
+  bottom: 14px;
+  left: 60px;
+  right: 20px;
+  pointer-events: none;
+  font-size: 9px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .graph-legend span:first-of-type {
+  color: var(--success);
+}
+:where(.workflow-workspace) .graph-legend span:nth-of-type(2) {
+  color: var(--warning);
+}
+:where(.workflow-workspace) .step-inspector {
+  padding: 19px;
+  border-left: 1px solid var(--border);
+  overflow: auto;
+  max-height: 470px;
+  background: var(--muted);
+}
+:where(.workflow-workspace) .step-inspector h2 {
+  font-size: 15px;
+}
+:where(.workflow-workspace) .step-inspector p {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .step-inspector .eyebrow {
+  margin: 0;
+}
+:where(.workflow-workspace) .step-inspector details {
+  margin-top: 18px;
+}
+:where(.workflow-workspace) .step-inspector pre {
+  padding: 10px;
+  background: var(--background);
+}
+:where(.workflow-workspace) .detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+  margin: 10px 0;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .detail-row strong {
+  color: var(--muted-foreground);
+  font-weight: 400;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+:where(.workflow-workspace) .step-inspector > button {
+  margin-top: 10px;
+}
+:where(.workflow-workspace) .workspace-view-bar .expand-workspace {
+  padding: 7px 9px;
+  margin-left: auto;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--muted-foreground);
+}
+:where(.workflow-workspace) .workflow-dialog {
+  position: fixed;
+  inset: 16px;
+  margin: 0;
+  width: calc(100vw - 32px);
+  height: calc(100dvh - 32px);
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  color: var(--foreground);
+  background: var(--background);
+  box-shadow: 0 24px 100px color-mix(in oklch, var(--shadow-color) 70.2%, transparent);
+}
+:where(.workflow-workspace) .workflow-dialog::backdrop {
+  background: color-mix(in oklch, var(--shadow-color) 83.1%, transparent);
+  backdrop-filter: blur(5px);
+}
+:where(.workflow-workspace) .workflow-dialog .details-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 0;
+  border-radius: 0;
+}
+:where(.workflow-workspace) .expanded-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 18px 22px 6px;
+}
+:where(.workflow-workspace) .expanded-heading .eyebrow {
+  margin-bottom: 5px;
+  font-size: 9px;
+}
+:where(.workflow-workspace) .expanded-heading h2 {
+  margin: 0;
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+:where(.workflow-workspace) .workflow-dialog .tabs {
+  flex-shrink: 0;
+}
+:where(.workflow-workspace) .workflow-dialog .workflow-canvas {
+  flex: 1;
+  min-height: 0;
+}
+:where(.workflow-workspace) .workflow-dialog .graph-panel {
+  height: 100%;
+  min-height: 0;
+}
+:where(.workflow-workspace) .workflow-dialog .step-inspector {
+  max-height: 100%;
+  overflow: auto;
+}
+:where(.workflow-workspace) .workflow-dialog .activity,
+:where(.workflow-workspace) .workflow-dialog .artifact-list,
+:where(.workflow-workspace) .workflow-dialog .results-panel,
+:where(.workflow-workspace) .workflow-dialog .plan-editor {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+:where(.workflow-workspace) .workflow-dialog .artifact-list,
+:where(.workflow-workspace) .workflow-dialog .results-panel,
+:where(.workflow-workspace) .workflow-dialog .plan-editor {
+  overflow: auto;
+}
+@media (max-width: 1000px) {
+  :where(.workflow-workspace) .workflow-dialog .workflow-canvas.inspecting {
+    grid-template-rows: minmax(220px, 1fr) minmax(0, 40%);
+  }
+}
+@media (max-width: 780px) {
+  :where(.workflow-workspace) .workflow-dialog {
+    inset: 6px;
+    width: calc(100vw - 12px);
+    height: calc(100dvh - 12px);
+    border-radius: 10px;
+  }
+  :where(.workflow-workspace) .expanded-heading {
+    padding: 14px 14px 6px;
+    gap: 12px;
+  }
+  :where(.workflow-workspace) .expanded-heading h2 {
+    font-size: 15px;
+  }
+  :where(.workflow-workspace) .workspace-view-bar .expand-workspace {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    background: var(--background);
+    box-shadow: -8px 0 8px var(--background);
+  }
+  :where(.workflow-workspace) .workspace-view-bar .expand-workspace > span {
+    display: none;
+  }
+}
+:where(.workflow-workspace) .results-panel {
+  padding: 24px;
+}
+:where(.workflow-workspace) .results-panel h2 {
+  margin: 0;
+  font-size: 18px;
+}
+:where(.workflow-workspace) .result-artifact {
+  padding: 24px 0;
+  border-top: 1px solid var(--border);
+  margin-top: 20px;
+}
+:where(.workflow-workspace) .result-artifact h3 {
+  margin: 0;
+  font-size: 14px;
+}
+:where(.workflow-workspace) .step-result {
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 0 14px;
+}
+:where(.workflow-workspace) .result-checks {
+  padding: 16px 0;
+}
+:where(.workflow-workspace) .result-checks > details,
+:where(.workflow-workspace) .result-checks details {
+  margin: 12px 0;
+}
+
+:where(.workflow-workspace) .workspace-view-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  padding-right: 12px;
+  min-width: 0;
+}
+:where(.workflow-workspace) .workspace-view-bar .tabs {
+  flex: 1;
+  min-width: 0;
+  border-bottom: 0;
+}
+:where(.workflow-workspace) .workspace-tab-panel {
+  min-width: 0;
+}
+:where(.workflow-workspace) .workflow-dialog .workspace-tab-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+@media (max-width: 1000px) {
+  :where(.workflow-workspace) .workflow-canvas.inspecting {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  :where(.workflow-workspace) .step-inspector {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    max-height: none;
+  }
+}
+@media (max-width: 700px) {
+  :where(.workflow-workspace) .graph-panel {
+    height: 430px;
+  }
+  :where(.workflow-workspace) .graph-legend {
+    gap: 10px;
+    left: 45px;
+    right: 10px;
+    font-size: 10px;
+  }
+  :where(.workflow-workspace) .tabs {
+    padding: 0 11px;
+    gap: 16px;
+  }
+  :where(.workflow-workspace) .tabs button {
+    font-size: 12px;
+    gap: 5px;
+  }
+  :where(.workflow-workspace) .workspace-view-bar > span {
+    display: none;
+  }
+  :where(.workflow-workspace) .results-panel {
+    padding: 16px;
+  }
+  :where(.workflow-workspace) .results-panel .card-title {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 480px) {
+  :where(.workflow-workspace) .tabs {
+    gap: 12px;
+  }
+  :where(.workflow-workspace) .tabs > button > svg {
+    display: none;
+  }
+}

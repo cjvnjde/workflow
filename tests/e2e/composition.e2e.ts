@@ -68,7 +68,11 @@ test("composition previews loop and parallel boundaries, exposes conditions, and
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await createComposition(page);
-  await expect(page.getByRole("button", { name: "Workflow", exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole("tab", { name: "Workflow", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await page.getByRole("button", { name: "Fit workflow", exact: true }).click();
   await expect(page.locator(".workflow-node")).toHaveCount(6);
   await expect(page.locator(".composition-group")).toHaveCount(3);
   await expect(page.locator(".composition-group")).toContainText([
@@ -88,6 +92,7 @@ test("composition previews loop and parallel boundaries, exposes conditions, and
   const frontend = page.locator('.workflow-node[data-id="frontend"]');
   const transform = () => frontend.evaluate((node) => (node as HTMLElement).style.transform);
   const originalTransform = await transform();
+  await frontend.scrollIntoViewIfNeeded();
   const box = await frontend.boundingBox();
   expect(box).not.toBeNull();
   await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
@@ -140,12 +145,24 @@ test("parallel steps highlight together, loops show rounds, and final results ar
   await expect(page.locator(".results-panel")).toContainText("false → repeat");
   await expect(page.getByRole("heading", { name: "Ready to publish", exact: true })).toBeVisible();
   await expect(page.locator(".results-panel")).toContainText("Both changes passed review.");
+  const evidence = page.locator(".results-panel > details.result-checks");
+  await expect(evidence).not.toHaveAttribute("open", "");
+  await expect(page.getByText(/No explicit acceptance result recorded/)).toBeVisible();
+  expect(
+    await page
+      .locator(".result-artifact")
+      .first()
+      .evaluate((artifact) => {
+        const details = artifact.parentElement!.querySelector("details.result-checks")!;
+        return !!(artifact.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING);
+      }),
+  ).toBe(true);
   expect(errors).toEqual([]);
 });
 
 test("saving composition source refreshes the reviewed graph before approval", async ({ page }) => {
   await createComposition(page);
-  await page.getByRole("button", { name: "Editor", exact: true }).click();
+  await page.getByRole("tab", { name: "Editor", exact: true }).click();
   const revised = composition.replace(
     'concurrency: 2, label: "Independent changes"',
     'concurrency: 1, label: "Limited concurrency"',
@@ -154,7 +171,8 @@ test("saving composition source refreshes the reviewed graph before approval", a
   await expect(page.getByRole("button", { name: "Approve & start", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Typecheck & save draft", exact: true }).click();
   await expect(page.getByRole("button", { name: "Approve & start", exact: true })).toBeEnabled();
-  await page.getByRole("button", { name: "Workflow", exact: true }).click();
+  await page.getByRole("tab", { name: "Workflow", exact: true }).click();
+  await page.getByRole("button", { name: "Fit workflow", exact: true }).click();
   await expect(
     page.locator(".composition-group").filter({ hasText: "Limited concurrency" }),
   ).toBeVisible();
@@ -180,7 +198,7 @@ test("parallel live responses stay with their own step when a sibling finishes",
     ]) });`;
   await createComposition(page, source, "[parallel-stream-fixture] Keep responses separate");
   await page.getByRole("button", { name: "Approve & start", exact: true }).click();
-  await page.getByRole("button", { name: "Activity", exact: true }).click();
+  await page.getByRole("tab", { name: "Activity", exact: true }).click();
   const streams = page.locator(".live-output");
   await expect(streams).toHaveCount(2);
   await expect(streams.filter({ hasText: "Frontend stream" })).toContainText(
@@ -203,4 +221,71 @@ test("parallel live responses stay with their own step when a sibling finishes",
     timeout: 15_000,
   });
   await expect(streams).toHaveCount(0);
+});
+
+for (const width of [1280, 390]) {
+  test(`graph navigation remains readable at ${width}px and preserves zoom across inspection`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await createComposition(page);
+    const zoom = () =>
+      page
+        .locator(".react-flow__viewport")
+        .evaluate((element) => new DOMMatrix(getComputedStyle(element).transform).a);
+    await expect.poll(zoom).toBeGreaterThanOrEqual(0.99);
+    await page
+      .getByRole("combobox", { name: "Go to workflow step", exact: true })
+      .selectOption("frontend");
+    await expect(page.locator(".step-inspector")).toContainText("Implement interface");
+    await expect.poll(zoom).toBeGreaterThanOrEqual(0.99);
+    await page.getByRole("button", { name: "Zoom Out", exact: true }).click();
+    await expect.poll(zoom).toBeLessThan(0.99);
+    // React Flow's zoom control animates before the resize under test.
+    await page.waitForTimeout(300);
+    const userZoom = await zoom();
+    await page.getByRole("button", { name: "Close step details", exact: true }).click();
+    await page.setViewportSize({ width: width + 20, height: 920 });
+    await expect.poll(zoom).toBeCloseTo(userZoom, 3);
+    await page.getByRole("button", { name: "Fit workflow", exact: true }).click();
+    await expect.poll(zoom).toBeLessThan(userZoom);
+    await page
+      .getByRole("combobox", { name: "Go to workflow step", exact: true })
+      .selectOption("review");
+    await expect(page.locator(".step-inspector")).toContainText("Review changes");
+    await expect.poll(zoom).toBeGreaterThanOrEqual(0.99);
+  });
+}
+
+test("workflow tabs support keyboard navigation and restore shared inspection URLs", async ({
+  page,
+}) => {
+  await createComposition(page);
+  await page
+    .getByRole("combobox", { name: "Go to workflow step", exact: true })
+    .selectOption("review");
+  const workflow = page.getByRole("tab", { name: "Workflow", exact: true });
+  await workflow.focus();
+  await workflow.press("ArrowRight");
+  const data = page.getByRole("tab", { name: "Data", exact: true });
+  await expect(data).toBeFocused();
+  await expect(data).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tabpanel", { name: "Data", exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/workspaceView=data/);
+  await page.reload();
+  await expect(data).toHaveAttribute("aria-selected", "true");
+  await expect(
+    page
+      .getByRole("region", { name: "Step data inspector", exact: true })
+      .getByRole("combobox", { name: "Step", exact: true }),
+  ).toHaveValue("review");
+  await page.goBack();
+  await expect(workflow).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".step-inspector")).toContainText("Review changes");
+  await workflow.focus();
+  await workflow.press("Home");
+  await expect(page.getByRole("tab", { name: "Results", exact: true })).toBeFocused();
+  await page.getByRole("tab", { name: "Results", exact: true }).press("End");
+  await expect(page.getByRole("tab", { name: "Editor", exact: true })).toBeFocused();
+  await expect(page.getByRole("tabpanel", { name: "Editor", exact: true })).toBeVisible();
 });

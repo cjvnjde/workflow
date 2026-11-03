@@ -4,6 +4,7 @@ import { writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
 import { ActivityFailure, WorkflowFailedError } from "@temporalio/client";
 import { ApplicationFailure } from "@temporalio/activity";
+import { Worker } from "@temporalio/worker";
 import type { BlockExecution } from "../src/core/execution/block-runner.js";
 import { runDemoBlock } from "../src/core/execution/block-runner.js";
 import { WorkflowEngine } from "../src/core/engine.js";
@@ -91,6 +92,98 @@ test("a failed Temporal start restores a draft with a newer revision and permits
   assert.equal((await engine.events(draft.id)).at(-1)?.kind, "draft");
   await assert.rejects(engine.approve(draft.id, draft.revision), /Draft changed/);
   await engine.approve(draft.id, restored.revision);
+  await engine.waitForIdle();
+  assert.equal(engine.get(draft.id).status, "completed");
+});
+
+test("a failed executor rejects approval and the next admission replaces it without retaining failed workers", async (t) => {
+  const { engine, library } = await setup(t);
+  const draft = await engine.create(
+    createTemplate("Replace failed worker", "bug", library),
+    library,
+  );
+  for (const { worker, done } of engine["workers"].values()) {
+    worker.shutdown();
+    await done;
+  }
+  const failure = new Error("Executor failed on startup");
+  const originalCreate = Worker.create;
+  const failed = {
+    run: () => Promise.reject(failure),
+    getState: () => "FAILED",
+  } as unknown as Worker;
+  Worker.create = async () => failed;
+  try {
+    await assert.rejects(engine.approve(draft.id), /worker is unavailable/);
+    assert.equal(engine.get(draft.id).status, "draft");
+    assert.equal(engine.get(draft.id).approvedAt, undefined);
+    assert.equal(engine["workers"].size, 0);
+  } finally {
+    Worker.create = originalCreate;
+  }
+
+  // Failed obsolete workers must not poison cleanup of the next admission.
+  const retired = Promise.reject(new Error("Retired executor failed"));
+  void retired.catch(() => {});
+  engine["workers"].set("retired", { worker: failed, done: retired });
+  await engine.approve(draft.id);
+  assert.equal(engine["workers"].has("retired"), false);
+  assert.equal(engine["workers"].get(draft.executionVersion!)?.worker.getState(), "RUNNING");
+  await engine.waitForIdle();
+  assert.equal(engine.get(draft.id).status, "completed");
+});
+
+test("an executor lost while approval is being saved cannot leave an accepted run without execution", async (t) => {
+  const { engine, library } = await setup(t);
+  const draft = await engine.create(
+    createTemplate("Worker lost during approval", "bug", library),
+    library,
+  );
+  for (const { worker, done } of engine["workers"].values()) {
+    worker.shutdown();
+    await done;
+  }
+  let state = "RUNNING";
+  const { promise: done, reject } = Promise.withResolvers<void>();
+  const originalCreate = Worker.create;
+  Worker.create = async () =>
+    ({
+      run: () => done,
+      getState: () => state,
+    }) as unknown as Worker;
+  const store = engine["store"];
+  const save = store.save.bind(store);
+  store.save = async (run) => {
+    await save(run);
+    if (run.temporalStart === "pending") {
+      state = "FAILED";
+      reject(new Error("Executor lost during durable approval"));
+      await Promise.resolve();
+    }
+  };
+  const workflow = engine["environment"]!.client.workflow;
+  const start = workflow.start;
+  let starts = 0;
+  workflow.start = async () => {
+    starts++;
+    throw new Error("A failed executor must not receive a new execution");
+  };
+  try {
+    await assert.rejects(engine.approve(draft.id), /worker is unavailable/);
+    assert.equal(starts, 0, "Do not submit an execution after its executor failed");
+    assert.equal(engine.get(draft.id).status, "draft");
+    assert.equal(engine.get(draft.id).approvedAt, undefined);
+    assert.equal(engine["workers"].size, 0);
+  } finally {
+    Worker.create = originalCreate;
+    store.save = save;
+    workflow.start = start;
+    if (state === "RUNNING") {
+      state = "FAILED";
+      reject(new Error("Test executor stopped"));
+    }
+  }
+  await engine.approve(draft.id);
   await engine.waitForIdle();
   assert.equal(engine.get(draft.id).status, "completed");
 });

@@ -11,7 +11,11 @@ import { describeActivity } from "../features/execution/activity.js";
 import type { RunEvent, WorkflowRun } from "../../src/contracts/index.js";
 import { client, type projectSchema } from "../shared/api.js";
 import { workflowQueryKeys } from "../shared/query-client.js";
-import { mergeEvents, mergeRuns, newerRun, type RunList } from "../features/execution/run-state.js";
+import { mergeEvents, newerRun } from "../features/execution/run-state.js";
+import {
+  cachedSessionTitle,
+  updateRunSessionHistory,
+} from "../features/sessions/use-session-history.js";
 
 const refreshKinds: Record<string, true> = {
   draft: true,
@@ -53,22 +57,14 @@ type WorkflowLocalState = {
 };
 type WorkflowSnapshot = WorkflowLocalState & {
   project: z.infer<typeof projectSchema> | undefined;
-  runs: RunList;
   run: WorkflowRun | undefined;
   events: RunEvent[];
 };
 
-const emptyRuns: RunList = [];
 const emptyEvents: RunEvent[] = [];
 const projectOptions = queryOptions({
   queryKey: workflowQueryKeys.project,
   queryFn: ({ signal }) => client.project(signal),
-});
-const runsOptions = queryOptions({
-  queryKey: workflowQueryKeys.runs,
-  queryFn: ({ signal }) => client.runs(signal),
-  structuralSharing: (previous, incoming) =>
-    mergeRuns((previous as RunList | undefined) ?? emptyRuns, incoming as RunList),
 });
 function runOptions(id: string | undefined) {
   return queryOptions({
@@ -85,25 +81,6 @@ function eventsOptions(id: string | undefined) {
     structuralSharing: (previous, incoming) =>
       mergeEvents((previous as RunEvent[] | undefined) ?? emptyEvents, incoming as RunEvent[]),
   });
-}
-function mergeRunSummary(queryClient: QueryClient, loaded: WorkflowRun) {
-  const { id, status, mode, createdAt, updatedAt, revision, cursor, deletedAt } = loaded;
-  queryClient.setQueryData(runsOptions.queryKey, (previous) =>
-    mergeRuns(previous ?? emptyRuns, [
-      {
-        id,
-        status,
-        mode,
-        createdAt,
-        updatedAt,
-        revision,
-        cursor,
-        deletedAt,
-        title: loaded.plan.title,
-        task: loaded.plan.task,
-      },
-    ]),
-  );
 }
 
 /** Only transient stream/UI state lives outside the Query cache. */
@@ -131,16 +108,16 @@ function createWorkflowStore(queryClient: QueryClient, initialId?: string) {
     queryClient.setQueryData(runOptions(loaded.id).queryKey, (current) =>
       newerRun(current, loaded, loaded.id),
     );
-    mergeRunSummary(queryClient, loaded);
+    updateRunSessionHistory(queryClient, loaded);
   }
   async function refreshRuns() {
-    await queryClient.invalidateQueries({ queryKey: workflowQueryKeys.runs });
+    await queryClient.invalidateQueries({ queryKey: workflowQueryKeys.sessions });
   }
   async function refreshProject() {
     await queryClient.invalidateQueries({ queryKey: workflowQueryKeys.project });
   }
   function refreshHistory(includeEvents: boolean) {
-    void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.runs });
+    void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.sessions });
     const id = snapshot.selectedId;
     if (id) {
       void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.run(id) });
@@ -177,8 +154,7 @@ function createWorkflowStore(queryClient: QueryClient, initialId?: string) {
           ["run_end", "interrupted", "paused"].includes(event.kind) &&
           !snapshot.notices.some((item) => item.id === event.id)
         ) {
-          const runs = queryClient.getQueryData(runsOptions.queryKey) ?? emptyRuns;
-          const title = runs.find((item) => item.id === event.runId)?.title ?? "Workflow";
+          const title = cachedSessionTitle(queryClient, event.runId);
           const summary = stepSummaries.get(event.runId);
           update({
             notices: [
@@ -217,7 +193,6 @@ function createWorkflowStore(queryClient: QueryClient, initialId?: string) {
             },
           });
           if (event.kind === "task_state") {
-            void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.tasks });
             void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.task(id) });
             refreshHistory(false);
           }
@@ -274,7 +249,6 @@ function createWorkflowStore(queryClient: QueryClient, initialId?: string) {
           if (lifetime.signal.aborted) return;
           update({ connected: true });
           void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.project });
-          void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.tasks });
           void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.taskDetails });
           void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.setup });
           void queryClient.invalidateQueries({ queryKey: workflowQueryKeys.usage });
@@ -295,7 +269,6 @@ function createWorkflowStore(queryClient: QueryClient, initialId?: string) {
     getSnapshot: (): WorkflowSnapshot => ({
       ...snapshot,
       project: queryClient.getQueryData(projectOptions.queryKey),
-      runs: queryClient.getQueryData(runsOptions.queryKey) ?? emptyRuns,
       run: queryClient.getQueryData(runOptions(snapshot.selectedId).queryKey),
       events: queryClient.getQueryData(eventsOptions(snapshot.selectedId).queryKey) ?? emptyEvents,
     }),
@@ -332,18 +305,13 @@ export function useWorkflowData(initialId?: string) {
   );
   const refetchInterval = snapshot.connected ? false : 5000;
   const project = useQuery(projectOptions);
-  const runs = useQuery({ ...runsOptions, refetchInterval });
   const run = useQuery({ ...runOptions(snapshot.selectedId), refetchInterval });
   const events = useQuery({ ...eventsOptions(snapshot.selectedId), refetchInterval });
   useEffect(() => store.start(), [store]);
-  useEffect(() => {
-    if (run.data) mergeRunSummary(queryClient, run.data);
-  }, [queryClient, run.data]);
-  const loadError = project.error ?? runs.error ?? run.error ?? events.error;
+  const loadError = project.error ?? run.error ?? events.error;
   return {
     ...snapshot,
     project: project.data,
-    runs: runs.data ?? emptyRuns,
     run: run.data,
     events: events.data ?? emptyEvents,
     error: snapshot.error || loadError?.message || "",
